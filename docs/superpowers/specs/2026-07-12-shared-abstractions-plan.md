@@ -2,7 +2,19 @@
 
 **Date:** 2026-07-12
 **Author:** architect-abstractions
-**Status:** Proposal — follow-up work, not a merge blocker
+**Status:** LANDED 2026-07-12 (same day, post-merge). Deviations from plan, with rationale:
+- `resolve_aliases/2` gained a third adopter (`StrictEquality` — its local add-only fold
+  replaced; multi-segment base makes the shared REMOVE half a no-op there, tests pin it).
+- `NoProcessSleepInTests` adopted `module_paths/1` inside `expand_matcher/1` (its
+  hand-rolled dual-spelling expansion was the same logic).
+- **Step 4 partial:** `remote_call/1` + `remote_call?/3` shipped with full tests and are
+  the documented entry point for new checks, but the seven existing `traverse` heads were
+  NOT converted. Head-guard pattern matching over precomputed `module_paths/1` attributes
+  is house style (multi-clause heads over body conditionals), the conversion had zero
+  behavioral gain, and restructuring seven reviewed traversals risked exactly the bug
+  class this plan kills. The duplication that shipped bugs — module identity, alias
+  resolution, path matching — is gone.
+- Param rename done: `ErrorMessageRequired`'s `excluded_files` → `excluded_paths`.
 **Scope:** Extract duplicated AST/source-filtering logic from the 14 checks (13 new lanes + the canonical `NoApplicationEnvOutsideConfig`) into shared helpers.
 
 ---
