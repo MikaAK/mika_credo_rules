@@ -108,3 +108,7 @@ terraform.rc
 # End of https://www.toptal.com/developers/gitignore/api/elixir,osx,terraform
 
 .claude/harness/
+
+# Claude harness session state
+.claude/harness/
+.claude/worktrees/
