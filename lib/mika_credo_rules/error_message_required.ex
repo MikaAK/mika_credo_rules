@@ -24,6 +24,8 @@ defmodule MikaCredoRules.ErrorMessageRequired do
       ]
     ]
 
+  alias MikaCredoRules.SourceFilter
+
   @moduledoc """
   Error tuples must carry a structured `%ErrorMessage{}`, not a bare string literal.
 
@@ -102,12 +104,7 @@ defmodule MikaCredoRules.ErrorMessageRequired do
   defp excluded_files(params), do: Params.get(params, :excluded_files, __MODULE__)
 
   defp excluded_file?(filename, excluded_files) do
-    Enum.any?(excluded_files, &fragment_matches?(filename, &1))
-  end
-
-  defp fragment_matches?(filename, fragment) do
-    String.ends_with?(filename, fragment) or String.starts_with?(filename, fragment) or
-      String.contains?(filename, "/#{fragment}")
+    SourceFilter.matches_fragment?(filename, excluded_files)
   end
 
   defp traverse(ast, acc, flag_atoms) do
