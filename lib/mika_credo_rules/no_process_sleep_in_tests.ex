@@ -23,6 +23,8 @@ defmodule MikaCredoRules.NoProcessSleepInTests do
       ]
     ]
 
+  alias MikaCredoRules.SourceFilter
+
   @moduledoc """
   Tests must not sleep — sleeping is the number one source of flaky, slow suites.
 
@@ -73,7 +75,7 @@ defmodule MikaCredoRules.NoProcessSleepInTests do
   defp test_files(params), do: Params.get(params, :test_files, __MODULE__)
 
   defp test_file?(filename, test_files) do
-    Enum.any?(test_files, &String.ends_with?(filename, &1))
+    SourceFilter.matches_suffix?(filename, test_files)
   end
 
   # Elixir modules appear in the AST as alias part lists, in both their plain and
