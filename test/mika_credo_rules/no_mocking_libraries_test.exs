@@ -155,6 +155,36 @@ defmodule MikaCredoRules.NoMockingLibrariesTest do
       |> run_check(NoMockingLibraries)
       |> refute_issues()
     end
+
+    test "does not report bare uses of a name shadowed by a project alias" do
+      """
+      defmodule MyApp.WorkerTest do
+        alias MyApp.Mock
+
+        def build, do: Mock.build()
+      end
+      """
+      |> to_source_file(@test_file)
+      |> run_check(NoMockingLibraries)
+      |> refute_issues()
+    end
+  end
+
+  describe "&run/2 resolves aliases of banned modules" do
+    test "reports uses through a renamed mocking library alias" do
+      """
+      defmodule MyApp.WorkerTest do
+        alias Mox, as: M
+
+        def stub, do: M.stub(MyApp.ClientStub, :fetch, fn -> :ok end)
+      end
+      """
+      |> to_source_file(@test_file)
+      |> run_check(NoMockingLibraries)
+      |> assert_issues(fn issues ->
+        assert issues |> Enum.map(& &1.line_no) |> Enum.sort() === [2, 4]
+      end)
+    end
   end
 
   describe "&run/2 honours the :modules param" do
