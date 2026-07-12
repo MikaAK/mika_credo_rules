@@ -24,6 +24,8 @@ defmodule MikaCredoRules.NoMockingLibraries do
       ]
     ]
 
+  alias MikaCredoRules.AstHelpers
+
   @moduledoc """
   Mocking libraries must not be used — define a behaviour and inject the
   implementation instead.
@@ -63,68 +65,12 @@ defmodule MikaCredoRules.NoMockingLibraries do
   end
 
   defp build_context(source_file, params) do
-    banned = params |> Params.get(:modules, __MODULE__) |> Enum.map(&segments/1)
+    banned = Params.get(params, :modules, __MODULE__)
 
     %{
-      module_segments: resolve_aliases(source_file, banned),
+      module_segments: AstHelpers.resolve_aliases(source_file, banned),
       erlang_modules: Params.get(params, :erlang_modules, __MODULE__)
     }
-  end
-
-  defp segments(module) do
-    module
-    |> Module.split()
-    |> Enum.map(&String.to_atom/1)
-  end
-
-  # Every name in this file that refers to a banned module, starting from the
-  # banned modules themselves and folding each alias over that base.
-  defp resolve_aliases(source_file, banned) do
-    source_file
-    |> Credo.Code.prewalk(&collect_aliases/2)
-    |> Enum.reduce(banned, &apply_alias/2)
-  end
-
-  defp collect_aliases({:alias, _, [{:__aliases__, _, target}]} = ast, aliases) do
-    {ast, [{[List.last(target)], target} | aliases]}
-  end
-
-  defp collect_aliases({:alias, _, [{:__aliases__, _, target}, opts]} = ast, aliases)
-       when is_list(opts) do
-    {ast, [{alias_name(target, opts), target} | aliases]}
-  end
-
-  defp collect_aliases(
-         {:alias, _, [{{:., _, [{:__aliases__, _, base}, :{}]}, _, inner_nodes}]} = ast,
-         aliases
-       ) do
-    grouped_aliases =
-      for {:__aliases__, _, inner} <- inner_nodes do
-        {[List.last(inner)], base ++ inner}
-      end
-
-    {ast, grouped_aliases ++ aliases}
-  end
-
-  defp collect_aliases(ast, aliases), do: {ast, aliases}
-
-  defp alias_name(target, opts) do
-    case Keyword.get(opts, :as) do
-      {:__aliases__, _, name} -> name
-      _ -> [List.last(target)]
-    end
-  end
-
-  # `alias Mox, as: M` — M now means Mox. `alias MyApp.Mock` — bare Mock now
-  # means the project's own module, not the mocking library.
-  defp apply_alias({name, target}, banned) do
-    target = strip_elixir_prefix(target)
-
-    cond do
-      target in banned -> [name | banned]
-      name in banned -> banned -- [name]
-      true -> banned
-    end
   end
 
   # `alias MyApp.{Mock, Foo}` — the inner aliases are relative to the base, so
