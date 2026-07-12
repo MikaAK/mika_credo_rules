@@ -23,6 +23,8 @@ defmodule MikaCredoRules.NoMixEnvAtRuntime do
       ]
     ]
 
+  alias MikaCredoRules.SourceFilter
+
   @moduledoc """
   `Mix.env()` and `Mix.target()` must not be called from compiled code.
 
@@ -107,22 +109,15 @@ defmodule MikaCredoRules.NoMixEnvAtRuntime do
   end
 
   defp mix_only_file?(source_file, params) do
-    script_file?(source_file.filename) or
+    SourceFilter.script_file?(source_file.filename) or
       excluded_path?(source_file.filename, excluded_paths(params)) or
       mix_task_file?(source_file)
   end
 
-  defp script_file?(filename), do: String.ends_with?(filename, ".exs")
-
   defp excluded_paths(params), do: Params.get(params, :excluded_paths, __MODULE__)
 
   defp excluded_path?(filename, excluded_paths) do
-    Enum.any?(excluded_paths, &fragment_matches?(filename, &1))
-  end
-
-  defp fragment_matches?(filename, fragment) do
-    String.ends_with?(filename, fragment) or String.starts_with?(filename, fragment) or
-      String.contains?(filename, "/#{fragment}")
+    SourceFilter.matches_fragment?(filename, excluded_paths)
   end
 
   defp mix_task_file?(source_file) do
