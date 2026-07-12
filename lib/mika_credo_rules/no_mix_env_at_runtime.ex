@@ -23,6 +23,7 @@ defmodule MikaCredoRules.NoMixEnvAtRuntime do
       ]
     ]
 
+  alias MikaCredoRules.AstHelpers
   alias MikaCredoRules.SourceFilter
 
   @moduledoc """
@@ -88,10 +89,8 @@ defmodule MikaCredoRules.NoMixEnvAtRuntime do
   """
   @explanation [check: @moduledoc]
 
-  @mix [:Mix]
-  @fully_qualified_mix [Elixir, :Mix]
-  @mix_task [:Mix, :Task]
-  @fully_qualified_mix_task [Elixir, :Mix, :Task]
+  @mix_paths AstHelpers.module_paths(Mix)
+  @mix_task_paths AstHelpers.module_paths(Mix.Task)
 
   @doc false
   @impl Credo.Check
@@ -125,8 +124,7 @@ defmodule MikaCredoRules.NoMixEnvAtRuntime do
   end
 
   defp find_use_mix_task({:use, _, [{:__aliases__, _, target} | _]} = ast, _mix_task_found)
-       when target === @mix_task
-       when target === @fully_qualified_mix_task do
+       when target in @mix_task_paths do
     {ast, true}
   end
 
@@ -137,8 +135,7 @@ defmodule MikaCredoRules.NoMixEnvAtRuntime do
          mix_calls,
          functions
        )
-       when module === @mix
-       when module === @fully_qualified_mix do
+       when module in @mix_paths do
     if function in functions and args === [] do
       {ast, [mix_call(Enum.join(module, "."), function, meta) | mix_calls]}
     else
