@@ -36,7 +36,16 @@ Then add the checks you want to `.credo.exs`:
 ```
 
 Entries in `checks:` are **additive** — they merge with Credo's default check set
-rather than replacing it.
+rather than replacing it. If you enable `TodosNeedTickets`, disable Credo's
+built-in `TagTODO` (default-on, flags every TODO even ticketed ones — you'd get two
+issues per TODO):
+
+```elixir
+checks: %{
+  enabled: [{MikaCredoRules.TodosNeedTickets, []}],
+  disabled: [{Credo.Check.Design.TagTODO, []}]   # superseded by TodosNeedTickets
+}
+```
 
 ## Checks
 
