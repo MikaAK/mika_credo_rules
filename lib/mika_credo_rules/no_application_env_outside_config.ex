@@ -14,7 +14,8 @@ defmodule MikaCredoRules.NoApplicationEnvOutsideConfig do
         :put_env,
         :put_all_env,
         :delete_env
-      ]
+      ],
+      erlang_functions: [:get_env, :get_all_env, :set_env, :unset_env]
     ],
     explanations: [
       params: [
@@ -28,6 +29,12 @@ defmodule MikaCredoRules.NoApplicationEnvOutsideConfig do
         functions: """
         A list of atoms naming the `Application` functions that count as environment
         access. Defaults to every read and write in the `Application` env API.
+        """,
+        erlang_functions: """
+        A list of atoms naming the erlang `:application` functions that count as
+        environment access. Erlang names its writes differently from Elixir
+        (`set_env`/`unset_env` rather than `put_env`/`delete_env`), so this is a
+        separate list from `:functions`.
         """
       ]
     ]
@@ -61,9 +68,26 @@ defmodule MikaCredoRules.NoApplicationEnvOutsideConfig do
   test reaching for `Application.put_env/3` is exactly the case this rule exists to
   catch.
 
-  Calls made through an alias (`alias Application, as: App`) are not detected.
+  Env access is caught through every spelling of the module:
+
+      alias Application, as: App
+      App.get_env(:my_app, :provider)          # caught
+      Elixir.Application.get_env(:my_app, :x)  # caught
+      :application.get_env(:my_app, :x)        # caught
+
+  Aliases are resolved from a flat, file-level table rather than a lexical scope
+  stack. An alias declared inside one function is treated as applying to the whole
+  file. Being wrong would require the same alias name to mean two different modules
+  in two functions of one file.
+
+  Aliases injected by a macro (via `__using__`) are invisible to Credo and cannot be
+  resolved.
   """
   @explanation [check: @moduledoc]
+
+  @application [:Application]
+  @fully_qualified_application [Elixir, :Application]
+  @erlang_application :application
 
   @doc false
   @impl Credo.Check
@@ -72,42 +96,102 @@ defmodule MikaCredoRules.NoApplicationEnvOutsideConfig do
       []
     else
       issue_meta = IssueMeta.for(source_file, params)
+      context = build_context(source_file, params)
 
       source_file
-      |> Credo.Code.prewalk(&traverse(&1, &2, functions(params)))
+      |> Credo.Code.prewalk(&traverse(&1, &2, context))
       |> Enum.map(&issue_for(&1, issue_meta))
     end
   end
 
   defp config_files(params), do: Params.get(params, :config_files, __MODULE__)
 
-  defp functions(params), do: Params.get(params, :functions, __MODULE__)
-
   defp config_module?(filename, config_files) do
     Enum.any?(config_files, &String.ends_with?(filename, &1))
   end
 
+  defp build_context(source_file, params) do
+    %{
+      modules: application_modules(source_file),
+      functions: Params.get(params, :functions, __MODULE__),
+      erlang_functions: Params.get(params, :erlang_functions, __MODULE__)
+    }
+  end
+
+  # Every module path in this file that refers to Elixir's `Application`, starting
+  # from the two spellings that always do and folding each alias over that base.
+  defp application_modules(source_file) do
+    source_file
+    |> Credo.Code.prewalk(&collect_aliases/2)
+    |> Enum.reduce([@application, @fully_qualified_application], &apply_alias/2)
+  end
+
+  defp collect_aliases({:alias, _, [{:__aliases__, _, target}]} = ast, aliases) do
+    {ast, [{[List.last(target)], target} | aliases]}
+  end
+
+  defp collect_aliases({:alias, _, [{:__aliases__, _, target}, opts]} = ast, aliases)
+       when is_list(opts) do
+    {ast, [{alias_name(target, opts), target} | aliases]}
+  end
+
+  defp collect_aliases(ast, aliases), do: {ast, aliases}
+
+  defp alias_name(target, opts) do
+    case Keyword.get(opts, :as) do
+      {:__aliases__, _, name} -> name
+      _ -> [List.last(target)]
+    end
+  end
+
+  # `alias Application, as: App` — App now means Application.
+  defp apply_alias({name, target}, modules)
+       when target === @application
+       when target === @fully_qualified_application do
+    [name | modules]
+  end
+
+  # `alias MyApp.Application` — bare Application no longer means Elixir's.
+  defp apply_alias({@application, _target}, modules), do: modules -- [@application]
+
+  defp apply_alias(_alias, modules), do: modules
+
   defp traverse(
-         {{:., _, [{:__aliases__, _, [:Application]}, function]}, meta, args} = ast,
+         {{:., _, [{:__aliases__, _, module}, function]}, meta, args} = ast,
          env_calls,
-         functions
+         context
        )
        when is_list(args) do
-    if function in functions do
-      {ast, [{function, length(args), meta[:line]} | env_calls]}
+    if module in context.modules and function in context.functions do
+      {ast, [env_call(Enum.join(module, "."), function, args, meta) | env_calls]}
     else
       {ast, env_calls}
     end
   end
 
-  defp traverse(ast, env_calls, _functions), do: {ast, env_calls}
+  defp traverse({{:., _, [@erlang_application, function]}, meta, args} = ast, env_calls, context)
+       when is_list(args) do
+    if function in context.erlang_functions do
+      {ast, [env_call(":application", function, args, meta) | env_calls]}
+    else
+      {ast, env_calls}
+    end
+  end
 
-  defp issue_for({function, arity, line_no}, issue_meta) do
+  defp traverse(ast, env_calls, _context), do: {ast, env_calls}
+
+  defp env_call(module, function, args, meta) do
+    %{module: module, function: function, arity: length(args), line_no: meta[:line]}
+  end
+
+  defp issue_for(env_call, issue_meta) do
+    trigger = "#{env_call.module}.#{env_call.function}"
+
     format_issue(issue_meta,
       message:
-        "Application.#{function}/#{arity} found — application env must only be read or written from a config module (e.g. MyApp.Config)",
-      trigger: "Application.#{function}",
-      line_no: line_no
+        "#{trigger}/#{env_call.arity} found — application env must only be read or written from a config module (e.g. MyApp.Config)",
+      trigger: trigger,
+      line_no: env_call.line_no
     )
   end
 end

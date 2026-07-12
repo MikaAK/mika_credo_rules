@@ -106,11 +106,44 @@ exemption adds one via `config_files` or the standard `files.excluded`.
 Application.put_env/3 found — application env must only be read or written from a config module (e.g. MyApp.Config)
 ```
 
-### Known limitation
+### Alias resolution (added after initial implementation)
 
-Aliased calls (`alias Application, as: App` then `App.get_env/2`) are not detected.
-Resolving aliases requires scope tracking the walker does not do. Documented in the
-README; not worth the complexity for a pattern nobody writes.
+Inspecting the real AST turned up four ways to reach app env, of which the original
+walker caught only one:
+
+| Spelling | AST | Originally |
+|---|---|---|
+| `Application.get_env` | dot on `[:Application]` | caught |
+| `alias Application, as: App` → `App.get_env` | dot on `[:App]` | missed |
+| `Elixir.Application.get_env` | dot on `[Elixir, :Application]` | missed |
+| `:application.get_env` | dot on the bare atom `:application` | missed |
+
+It also had a false positive: `alias MyApp.Application` rebinds bare `Application` to
+your module — and in an umbrella, `MyApp.Application` always exists.
+
+**Resolution is a flat, file-level alias table, not a lexical scope stack.** A prepass
+collects `{:alias, _, [{:__aliases__, _, target}, opts]}` nodes into `{name, target}`
+pairs, then folds them over a base set of `[[:Application], [Elixir, :Application]]`:
+
+- target is Elixir's `Application` → add the bound name to the set
+- bound name is `Application` but target is something else → remove `[:Application]`
+  from the set (shadowed)
+
+The erlang `:application` module gets its own `erlang_functions` param, because erlang
+names its writes `set_env`/`unset_env` rather than `put_env`/`delete_env`.
+
+### Known limitations
+
+True lexical scoping was considered and rejected. It needs `Macro.traverse/4` with a
+push/pop scope stack (Credo's `prewalk` is one-directional), runs ~200 lines, and
+**still cannot be correct**: macros inject aliases from inside `__using__`, and Credo
+does not macro-expand. The flat table's only imprecision — an alias declared in one
+function leaking to the whole file — requires the same alias name to mean two
+different modules in two functions of one file to actually be wrong.
+
+`import Application` followed by a bare `get_env/2` is not detected. It is a different
+mechanism (no dot node at all) and carries genuine false-positive risk, since a module
+defining its own `get_env/2` would trip it.
 
 ## Testing
 
