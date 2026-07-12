@@ -14,6 +14,8 @@ defmodule MikaCredoRules.RefuteOverAssertNot do
       ]
     ]
 
+  alias MikaCredoRules.SourceFilter
+
   @moduledoc """
   Negated assertions must use `refute`, not `assert !` or `assert not`.
 
@@ -59,7 +61,7 @@ defmodule MikaCredoRules.RefuteOverAssertNot do
   defp test_files(params), do: Params.get(params, :test_files, __MODULE__)
 
   defp test_file?(filename, test_files) do
-    Enum.any?(test_files, &String.ends_with?(filename, &1))
+    SourceFilter.matches_suffix?(filename, test_files)
   end
 
   # `assert value not in collection` compiles to `assert not (value in collection)`,
