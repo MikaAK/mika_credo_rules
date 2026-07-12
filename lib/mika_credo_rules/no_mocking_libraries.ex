@@ -1,3 +1,4 @@
+# credo:disable-for-this-file MikaCredoRules.NoMockingLibraries
 defmodule MikaCredoRules.NoMockingLibraries do
   use Credo.Check,
     base_priority: :high,
