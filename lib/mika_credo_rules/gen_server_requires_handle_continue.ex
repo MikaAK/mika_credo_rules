@@ -33,6 +33,8 @@ defmodule MikaCredoRules.GenServerRequiresHandleContinue do
       ]
     ]
 
+  alias MikaCredoRules.AstHelpers
+
   @moduledoc """
   GenServer `init/1` must defer real work to `handle_continue/2`.
 
@@ -95,6 +97,8 @@ defmodule MikaCredoRules.GenServerRequiresHandleContinue do
   """
   @explanation [check: @moduledoc]
 
+  @genserver_paths AstHelpers.module_paths(GenServer)
+
   @doc false
   @impl Credo.Check
   def run(source_file, params \\ []) do
@@ -116,8 +120,7 @@ defmodule MikaCredoRules.GenServerRequiresHandleContinue do
   end
 
   defp detect_use_genserver({:use, _, [{:__aliases__, _, path} | _]} = ast, _found)
-       when path === [:GenServer]
-       when path === [Elixir, :GenServer] do
+       when path in @genserver_paths do
     {ast, true}
   end
 

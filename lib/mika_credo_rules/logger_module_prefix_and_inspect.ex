@@ -32,6 +32,8 @@ defmodule MikaCredoRules.LoggerModulePrefixAndInspect do
       ]
     ]
 
+  alias MikaCredoRules.AstHelpers
+
   @moduledoc """
   Logger messages must start with `"\#{__MODULE__}: "` and wrap every interpolated
   value in `inspect/1`.
@@ -66,7 +68,7 @@ defmodule MikaCredoRules.LoggerModulePrefixAndInspect do
   """
   @explanation [check: @moduledoc]
 
-  @logger_modules [[:Logger], [Elixir, :Logger]]
+  @logger_modules AstHelpers.module_paths(Logger)
 
   @doc false
   @impl Credo.Check
