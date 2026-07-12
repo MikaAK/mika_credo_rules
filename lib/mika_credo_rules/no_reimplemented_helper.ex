@@ -33,6 +33,8 @@ defmodule MikaCredoRules.NoReimplementedHelper do
       ]
     ]
 
+  alias MikaCredoRules.SourceFilter
+
   @moduledoc """
   Helpers that already exist in a shared library must not be reimplemented locally.
 
@@ -80,14 +82,7 @@ defmodule MikaCredoRules.NoReimplementedHelper do
   defp excluded_paths(params), do: Params.get(params, :excluded_paths, __MODULE__)
 
   defp excluded_path?(filename, excluded_paths) do
-    Enum.any?(excluded_paths, &fragment_matches?(filename, &1))
-  end
-
-  # Matches on path-segment boundaries so `test/` exempts `test/support/factory.ex`
-  # but not `lib/latest/helpers.ex`.
-  defp fragment_matches?(filename, fragment) do
-    String.ends_with?(filename, fragment) or String.starts_with?(filename, fragment) or
-      String.contains?(filename, "/#{fragment}")
+    SourceFilter.matches_fragment?(filename, excluded_paths)
   end
 
   defp traverse({keyword, meta, [definition | _]} = ast, reimplementations, functions)
