@@ -228,5 +228,16 @@ defmodule MikaCredoRules.ErrorMessageRequiredTest do
       |> run_check(ErrorMessageRequired, excluded_paths: [])
       |> assert_issue()
     end
+
+    test "does not let a fragment match inside a path segment" do
+      """
+      defmodule MyApp.Helpers do
+        def fetch, do: {:error, "not found"}
+      end
+      """
+      |> to_source_file("lib/latest/helpers.ex")
+      |> run_check(ErrorMessageRequired, excluded_paths: ["test/"])
+      |> assert_issue()
+    end
   end
 end

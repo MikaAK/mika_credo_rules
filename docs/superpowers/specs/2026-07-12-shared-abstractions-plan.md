@@ -7,13 +7,17 @@
   replaced; multi-segment base makes the shared REMOVE half a no-op there, tests pin it).
 - `NoProcessSleepInTests` adopted `module_paths/1` inside `expand_matcher/1` (its
   hand-rolled dual-spelling expansion was the same logic).
-- **Step 4 partial:** `remote_call/1` + `remote_call?/3` shipped with full tests and are
-  the documented entry point for new checks, but the seven existing `traverse` heads were
-  NOT converted. Head-guard pattern matching over precomputed `module_paths/1` attributes
-  is house style (multi-clause heads over body conditionals), the conversion had zero
-  behavioral gain, and restructuring seven reviewed traversals risked exactly the bug
-  class this plan kills. The duplication that shipped bugs — module identity, alias
-  resolution, path matching — is gone.
+- **Step 4 NOT shipped:** the seven existing `traverse` heads were not converted —
+  head-guard pattern matching over precomputed `module_paths/1` attributes is house style,
+  the conversion had zero behavioral gain, and restructuring seven reviewed traversals
+  risked exactly the bug class this plan kills. `remote_call/1` + `remote_call?/3` were
+  built with full tests, then **held out of the public API at adversarial review**: zero
+  adopters (the plan's own three-adopter gate), and `remote_call?/3`'s contract was
+  alias-blind — freezing it at publish would hand the next check author the exact alias
+  bug this plan exists to kill. The implementation lives in git history (commit
+  `1ea1255`); resurrect it, alias-aware, when the first real adopter appears. The
+  duplication that shipped bugs — module identity, alias resolution, path matching — is
+  gone regardless.
 - Param rename done: `ErrorMessageRequired`'s `excluded_files` → `excluded_paths`.
 **Scope:** Extract duplicated AST/source-filtering logic from the 14 checks (13 new lanes + the canonical `NoApplicationEnvOutsideConfig`) into shared helpers.
 
