@@ -33,10 +33,10 @@ defmodule MikaCredoRules.NoSingleLetterVariables do
   already-flagged variable is not reported again, and neither is a pin (`^x`), since
   the pinned variable was reported where it was bound.
 
-  `cond` clause heads are boolean expressions rather than patterns, so they are not
-  searched for bindings — using an already-bound variable there is not reported
-  again, while a binding made inside a head, as in `(result = f()) > 1 -> result`,
-  is still caught through its `=`.
+  `cond` clause heads and the `after` head of a `receive` are expressions rather
+  than patterns, so they are not searched for bindings — using an already-bound
+  variable there is not reported again, while a binding made inside a head, as in
+  `(result = f()) > 1 -> result`, is still caught through its `=`.
 
   Type signatures (`@spec`, `@type`, `@typep`, `@opaque`, `@callback`, and
   `@macrocallback`) are ignored entirely — `a` and `b` in
@@ -95,23 +95,29 @@ defmodule MikaCredoRules.NoSingleLetterVariables do
     {nil, bindings}
   end
 
-  # cond clause heads are boolean expressions, not patterns. Renaming their arrows
-  # keeps the heads out of the `:->` clause above while the walk still descends
-  # into them, so a binding made inside a head is caught through its `=`.
-  defp traverse({:cond, meta, [clauses]}, bindings, _allowed_names) when is_list(clauses) do
-    {{:cond, meta, [neutralize_cond_clause_arrows(clauses)]}, bindings}
+  # cond clause heads and the after head of a receive are expressions, not
+  # patterns. Renaming their arrows keeps the heads out of the `:->` clause above
+  # while the walk still descends into them, so a binding made inside a head is
+  # caught through its `=`. receive do-heads remain patterns and stay untouched.
+  defp traverse({:cond, meta, [sections]}, bindings, _allowed_names) when is_list(sections) do
+    {{:cond, meta, [neutralize_arrows_under(sections, :do)]}, bindings}
+  end
+
+  defp traverse({:receive, meta, [sections]}, bindings, _allowed_names)
+       when is_list(sections) do
+    {{:receive, meta, [neutralize_arrows_under(sections, :after)]}, bindings}
   end
 
   defp traverse(ast, bindings, _allowed_names), do: {ast, bindings}
 
-  defp neutralize_cond_clause_arrows(clauses) do
-    Enum.map(clauses, fn
-      {:do, arrows} when is_list(arrows) -> {:do, Enum.map(arrows, &neutralize_arrow/1)}
-      clause -> clause
+  defp neutralize_arrows_under(sections, key) do
+    Enum.map(sections, fn
+      {^key, arrows} when is_list(arrows) -> {key, Enum.map(arrows, &neutralize_arrow/1)}
+      section -> section
     end)
   end
 
-  defp neutralize_arrow({:->, meta, clause}), do: {:cond_clause, meta, clause}
+  defp neutralize_arrow({:->, meta, clause}), do: {:expression_clause, meta, clause}
   defp neutralize_arrow(clause), do: clause
 
   defp function_parameters({:when, _, [head | _guards]}), do: function_parameters(head)

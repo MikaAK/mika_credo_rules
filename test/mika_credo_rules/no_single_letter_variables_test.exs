@@ -278,6 +278,26 @@ defmodule MikaCredoRules.NoSingleLetterVariablesTest do
       end)
     end
 
+    test "does not report the receive after head, only real bindings" do
+      """
+      defmodule MyApp.Worker do
+        def loop(t) do
+          receive do
+            {:msg, m} -> m
+          after
+            t -> :timed_out
+          end
+        end
+      end
+      """
+      |> to_source_file()
+      |> run_check(NoSingleLetterVariables)
+      |> assert_issues(fn issues ->
+        assert issues |> Enum.map(&{&1.line_no, &1.trigger}) |> Enum.sort() ===
+                 [{2, "t"}, {4, "m"}]
+      end)
+    end
+
     test "does not report single-letter module attributes" do
       """
       defmodule MyApp.Worker do
