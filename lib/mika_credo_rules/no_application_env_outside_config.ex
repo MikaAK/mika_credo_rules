@@ -39,6 +39,8 @@ defmodule MikaCredoRules.NoApplicationEnvOutsideConfig do
       ]
     ]
 
+  alias MikaCredoRules.SourceFilter
+
   @moduledoc """
   Application environment must only be read or written from a config module.
 
@@ -107,7 +109,7 @@ defmodule MikaCredoRules.NoApplicationEnvOutsideConfig do
   defp config_files(params), do: Params.get(params, :config_files, __MODULE__)
 
   defp config_module?(filename, config_files) do
-    Enum.any?(config_files, &String.ends_with?(filename, &1))
+    SourceFilter.matches_suffix?(filename, config_files)
   end
 
   defp build_context(source_file, params) do
