@@ -39,6 +39,7 @@ defmodule MikaCredoRules.NoApplicationEnvOutsideConfig do
       ]
     ]
 
+  alias MikaCredoRules.AstHelpers
   alias MikaCredoRules.SourceFilter
 
   @moduledoc """
@@ -87,8 +88,6 @@ defmodule MikaCredoRules.NoApplicationEnvOutsideConfig do
   """
   @explanation [check: @moduledoc]
 
-  @application [:Application]
-  @fully_qualified_application [Elixir, :Application]
   @erlang_application :application
 
   @doc false
@@ -120,43 +119,10 @@ defmodule MikaCredoRules.NoApplicationEnvOutsideConfig do
     }
   end
 
-  # Every module path in this file that refers to Elixir's `Application`, starting
-  # from the two spellings that always do and folding each alias over that base.
+  # Every module path in this file that refers to Elixir's `Application`.
   defp application_modules(source_file) do
-    source_file
-    |> Credo.Code.prewalk(&collect_aliases/2)
-    |> Enum.reduce([@application, @fully_qualified_application], &apply_alias/2)
+    AstHelpers.resolve_aliases(source_file, [Application])
   end
-
-  defp collect_aliases({:alias, _, [{:__aliases__, _, target}]} = ast, aliases) do
-    {ast, [{[List.last(target)], target} | aliases]}
-  end
-
-  defp collect_aliases({:alias, _, [{:__aliases__, _, target}, opts]} = ast, aliases)
-       when is_list(opts) do
-    {ast, [{alias_name(target, opts), target} | aliases]}
-  end
-
-  defp collect_aliases(ast, aliases), do: {ast, aliases}
-
-  defp alias_name(target, opts) do
-    case Keyword.get(opts, :as) do
-      {:__aliases__, _, name} -> name
-      _ -> [List.last(target)]
-    end
-  end
-
-  # `alias Application, as: App` — App now means Application.
-  defp apply_alias({name, target}, modules)
-       when target === @application
-       when target === @fully_qualified_application do
-    [name | modules]
-  end
-
-  # `alias MyApp.Application` — bare Application no longer means Elixir's.
-  defp apply_alias({@application, _target}, modules), do: modules -- [@application]
-
-  defp apply_alias(_alias, modules), do: modules
 
   defp traverse(
          {{:., _, [{:__aliases__, _, module}, function]}, meta, args} = ast,

@@ -254,6 +254,19 @@ defmodule MikaCredoRules.NoApplicationEnvOutsideConfigTest do
       |> refute_issues()
     end
 
+    test "does not report when Application is shadowed through a multi-alias" do
+      """
+      defmodule MyApp.Worker do
+        alias MyApp.{Application, Config}
+
+        def children, do: Application.get_env(:my_app, :children)
+      end
+      """
+      |> to_source_file(@worker_file)
+      |> run_check(NoApplicationEnvOutsideConfig)
+      |> refute_issues()
+    end
+
     test "still reports Application when a shadowing alias is renamed away" do
       """
       defmodule MyApp.Worker do
