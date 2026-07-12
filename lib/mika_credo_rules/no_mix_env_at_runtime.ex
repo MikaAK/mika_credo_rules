@@ -78,6 +78,11 @@ defmodule MikaCredoRules.NoMixEnvAtRuntime do
   `use Mix.Task` exempts the whole file, not just the enclosing module. Being
   wrong would require a file to define both a Mix task and an ordinary runtime
   module — one module per file makes this moot.
+
+  Dynamic dispatch escapes the check — `apply(Mix, :env, [])` crashes a release
+  exactly like `Mix.env()` but is not a dot-call node and is not matched. This
+  is an evasion vector, not an idiom; no static check catches it without taint
+  analysis.
   """
   @explanation [check: @moduledoc]
 
