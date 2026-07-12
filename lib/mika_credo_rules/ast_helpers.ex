@@ -116,4 +116,79 @@ defmodule MikaCredoRules.AstHelpers do
 
   defp strip_elixir_prefix([Elixir | segments]), do: segments
   defp strip_elixir_prefix(segments), do: segments
+
+  @doc """
+  Destructures a remote call, or `nil` when `ast` is not one.
+
+  Handles all three spellings of the module slot: alias paths, bare-atom Elixir
+  modules (bracket access `opts[:url]` desugars to a call on the literal atom
+  `Access` — it is normalized to `[Elixir, :Access]`), and erlang atoms.
+
+      iex> MikaCredoRules.AstHelpers.remote_call(quote(do: Mix.env()))
+      {[:Mix], :env, []}
+
+      iex> MikaCredoRules.AstHelpers.remote_call(quote(do: :application.get_env(:app, :key)))
+      {:application, :get_env, [:app, :key]}
+
+  The existing checks match remote calls in `traverse` function heads with
+  guards over precomputed `module_paths/1` attributes — that is equally valid
+  and stays. Reach for this function when classifying calls in a function body,
+  or when writing a new check.
+  """
+  @spec remote_call(Macro.t()) :: {module_path() | atom(), atom(), [Macro.t()]} | nil
+  def remote_call({{:., _, [{:__aliases__, _, path}, function]}, _, args})
+      when is_atom(function) and is_list(args) do
+    {path, function, args}
+  end
+
+  def remote_call({{:., _, [module, function]}, _, args})
+      when is_atom(module) and is_atom(function) and is_list(args) do
+    case Atom.to_string(module) do
+      "Elixir." <> _rest -> {elixir_atom_path(module), function, args}
+      _erlang_module -> {module, function, args}
+    end
+  end
+
+  def remote_call(_ast), do: nil
+
+  @doc """
+  True when `ast` is a call to any of `modules` (in any spelling) naming any of
+  `functions`. Elixir modules match both their bare and fully-qualified paths;
+  erlang modules are given as plain atoms (`:meck`).
+
+      iex> MikaCredoRules.AstHelpers.remote_call?(quote(do: Mix.env()), [Mix], [:env])
+      true
+
+  Never match a dot-call by function name alone — a wildcard module slot let
+  `Enum.join/2` borrow an Ecto exemption here.
+  """
+  @spec remote_call?(Macro.t(), [module() | atom()], [atom()]) :: boolean()
+  def remote_call?(ast, modules, functions) do
+    case remote_call(ast) do
+      {module, function, _args} -> function in functions and matches_module?(module, modules)
+      nil -> false
+    end
+  end
+
+  defp matches_module?(path, modules) when is_list(path) do
+    Enum.any?(modules, fn module ->
+      elixir_module?(module) and path in module_paths(module)
+    end)
+  end
+
+  defp matches_module?(erlang_module, modules) when is_atom(erlang_module) do
+    erlang_module in modules
+  end
+
+  defp elixir_module?(module) when is_atom(module) do
+    String.starts_with?(Atom.to_string(module), "Elixir.")
+  end
+
+  defp elixir_module?(_module), do: false
+
+  # Bounded input: module atoms from a check's params, never scanned source.
+  # skill-ok: string-to-atom
+  defp elixir_atom_path(module) do
+    [Elixir | module |> Module.split() |> Enum.map(&String.to_atom/1)]
+  end
 end

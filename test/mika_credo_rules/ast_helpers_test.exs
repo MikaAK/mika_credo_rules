@@ -74,6 +74,70 @@ defmodule MikaCredoRules.AstHelpersTest do
     end
   end
 
+  describe "remote_call/1" do
+    test "destructures a call through an alias path" do
+      assert AstHelpers.remote_call(quote(do: Mix.env())) === {[:Mix], :env, []}
+    end
+
+    test "destructures a nested alias path with arguments" do
+      assert {[:Ecto, :Query], :where, [_query, _bindings, _expr]} =
+               AstHelpers.remote_call(quote(do: Ecto.Query.where(query, [u], u.age)))
+    end
+
+    test "destructures an erlang call" do
+      assert AstHelpers.remote_call(quote(do: :ets.new(:table, []))) ===
+               {:ets, :new, [:table, []]}
+    end
+
+    test "normalizes a bare-atom Elixir module to its fully-qualified path" do
+      bracket_access = quote(do: opts[:url])
+
+      assert {[Elixir, :Access], :get, [_opts, :url]} = AstHelpers.remote_call(bracket_access)
+    end
+
+    test "returns nil for local calls, variables, and literals" do
+      assert is_nil(AstHelpers.remote_call(quote(do: env())))
+      assert is_nil(AstHelpers.remote_call(quote(do: value)))
+      assert is_nil(AstHelpers.remote_call(quote(do: 42)))
+      assert is_nil(AstHelpers.remote_call(quote(do: %{a: 1})))
+    end
+
+    test "returns nil for a dot access without a call" do
+      assert is_nil(AstHelpers.remote_call(quote(do: map.field)))
+    end
+  end
+
+  describe "remote_call?/3" do
+    test "true for a matching module and function in either spelling" do
+      assert AstHelpers.remote_call?(quote(do: Mix.env()), [Mix], [:env])
+      assert AstHelpers.remote_call?(quote(do: Elixir.Mix.env()), [Mix], [:env])
+    end
+
+    test "true for a matching erlang call" do
+      assert AstHelpers.remote_call?(quote(do: :ets.new(:table, [])), [:ets], [:new])
+    end
+
+    test "false when the function does not match" do
+      refute AstHelpers.remote_call?(quote(do: Mix.target()), [Mix], [:env])
+    end
+
+    test "false when only the function name collides on another module" do
+      refute AstHelpers.remote_call?(quote(do: Enum.join(list)), [Ecto.Query], [:join])
+    end
+
+    test "false for bracket access when Access is not listed" do
+      refute AstHelpers.remote_call?(quote(do: opts[:url]), [Mix], [:get])
+    end
+
+    test "true for bracket access when Access is listed" do
+      assert AstHelpers.remote_call?(quote(do: opts[:url]), [Access], [:get])
+    end
+
+    test "false for non-call AST" do
+      refute AstHelpers.remote_call?(quote(do: value), [Mix], [:env])
+    end
+  end
+
   defp resolve(code, modules) do
     code
     |> Credo.SourceFile.parse("lib/sample.ex")
