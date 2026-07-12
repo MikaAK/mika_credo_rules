@@ -14,7 +14,8 @@ defmodule MikaCredoRules.NoMixEnvAtRuntime do
         """,
         excluded_paths: """
         A list of path fragments treated as Mix-only code. A source file whose path
-        contains any of these is exempt from the check.
+        contains any of these at a directory boundary is exempt from the check —
+        `"test/"` matches `test/foo.ex` and `lib/test/foo.ex`, not `lib/latest/foo.ex`.
 
         Defaults to `["mix/tasks/"]`, which exempts the conventional Mix task
         directory. Modules that `use Mix.Task` are exempt regardless of path.
@@ -111,7 +112,12 @@ defmodule MikaCredoRules.NoMixEnvAtRuntime do
   defp excluded_paths(params), do: Params.get(params, :excluded_paths, __MODULE__)
 
   defp excluded_path?(filename, excluded_paths) do
-    Enum.any?(excluded_paths, &String.contains?(filename, &1))
+    Enum.any?(excluded_paths, &fragment_matches?(filename, &1))
+  end
+
+  defp fragment_matches?(filename, fragment) do
+    String.ends_with?(filename, fragment) or String.starts_with?(filename, fragment) or
+      String.contains?(filename, "/#{fragment}")
   end
 
   defp mix_task_file?(source_file) do

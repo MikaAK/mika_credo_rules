@@ -149,6 +149,17 @@ defmodule MikaCredoRules.NoMixEnvAtRuntimeTest do
       |> run_check(NoMixEnvAtRuntime)
       |> refute_issues()
     end
+
+    test "does not report Mix.env() in an umbrella app's mix/tasks/" do
+      """
+      defmodule Mix.Tasks.MyApp.Deploy do
+        def env, do: Mix.env()
+      end
+      """
+      |> to_source_file("apps/my_app/lib/mix/tasks/deploy.ex")
+      |> run_check(NoMixEnvAtRuntime)
+      |> refute_issues()
+    end
   end
 
   describe "&run/2 honours the :excluded_paths param" do
@@ -172,6 +183,28 @@ defmodule MikaCredoRules.NoMixEnvAtRuntimeTest do
       |> to_source_file("lib/mix/tasks/helper.ex")
       |> run_check(NoMixEnvAtRuntime, excluded_paths: [])
       |> assert_issue()
+    end
+
+    test "does not exclude a fragment matching inside a directory name" do
+      """
+      defmodule MyApp.Latest do
+        def env, do: Mix.env()
+      end
+      """
+      |> to_source_file("lib/latest/foo.ex")
+      |> run_check(NoMixEnvAtRuntime, excluded_paths: ["test/"])
+      |> assert_issue()
+    end
+
+    test "does not exempt a lookalike path containing mix/tasks/ inside a segment" do
+      """
+      defmodule MyApp.Vendor.Remix.Thing do
+        def env, do: Mix.env()
+      end
+      """
+      |> to_source_file("lib/vendor/remix/tasks/thing.ex")
+      |> run_check(NoMixEnvAtRuntime)
+      |> assert_issue(fn issue -> assert issue.message =~ "Mix.env/0" end)
     end
   end
 
