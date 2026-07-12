@@ -214,18 +214,18 @@ defmodule MikaCredoRules.ErrorMessageRequiredTest do
       end
       """
       |> to_source_file("lib/my_app/legacy.ex")
-      |> run_check(ErrorMessageRequired, excluded_files: ["legacy.ex"])
+      |> run_check(ErrorMessageRequired, excluded_paths: ["legacy.ex"])
       |> refute_issues()
     end
 
-    test "flags a test file once :excluded_files is emptied" do
+    test "flags a test file once :excluded_paths is emptied" do
       """
       defmodule MyApp.WorkerTest do
         def fixture, do: {:error, "not found"}
       end
       """
       |> to_source_file(@test_file)
-      |> run_check(ErrorMessageRequired, excluded_files: [])
+      |> run_check(ErrorMessageRequired, excluded_paths: [])
       |> assert_issue()
     end
   end

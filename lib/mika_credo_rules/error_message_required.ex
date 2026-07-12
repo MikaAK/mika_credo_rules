@@ -3,12 +3,12 @@ defmodule MikaCredoRules.ErrorMessageRequired do
     base_priority: :high,
     category: :design,
     param_defaults: [
-      excluded_files: ["_test.exs", "test/"],
+      excluded_paths: ["_test.exs", "test/"],
       also_flag_atoms: false
     ],
     explanations: [
       params: [
-        excluded_files: """
+        excluded_paths: """
         A list of path fragments naming files this check skips. A fragment matches
         when the source file's path starts with it, ends with it, or contains it
         after a directory separator.
@@ -58,11 +58,11 @@ defmodule MikaCredoRules.ErrorMessageRequired do
         {:error, "expired"} -> :retry           # passes — a match, not a construction
       end
 
-  Test files are skipped by default (see `:excluded_files`) — `{:error, "..."}`
-  literals are legitimate fixture data in tests. `:excluded_files` is the single
+  Test files are skipped by default (see `:excluded_paths`) — `{:error, "..."}`
+  literals are legitimate fixture data in tests. `:excluded_paths` is the single
   scoping mechanism on purpose: Credo's builtin `:files` param is deliberately not
   defaulted, because it prunes files before `run/2` is ever called and would
-  silently override `excluded_files: []` for consumers re-enabling test-file
+  silently override `excluded_paths: []` for consumers re-enabling test-file
   flagging.
 
   ## Known limitations
@@ -88,7 +88,7 @@ defmodule MikaCredoRules.ErrorMessageRequired do
   @doc false
   @impl Credo.Check
   def run(source_file, params \\ []) do
-    if excluded_file?(source_file.filename, excluded_files(params)) do
+    if excluded_path?(source_file.filename, excluded_paths(params)) do
       []
     else
       issue_meta = IssueMeta.for(source_file, params)
@@ -101,10 +101,10 @@ defmodule MikaCredoRules.ErrorMessageRequired do
     end
   end
 
-  defp excluded_files(params), do: Params.get(params, :excluded_files, __MODULE__)
+  defp excluded_paths(params), do: Params.get(params, :excluded_paths, __MODULE__)
 
-  defp excluded_file?(filename, excluded_files) do
-    SourceFilter.matches_fragment?(filename, excluded_files)
+  defp excluded_path?(filename, excluded_paths) do
+    SourceFilter.matches_fragment?(filename, excluded_paths)
   end
 
   defp traverse(ast, acc, flag_atoms) do

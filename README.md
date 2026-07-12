@@ -87,7 +87,7 @@ Variables, atoms and structs pass — only string literals are flagged.
 
 | Param | Default | Meaning |
 |---|---|---|
-| `excluded_files` | `["_test.exs", "test/"]` | Path fragments naming files to skip (matched on segment boundaries) — `{:error, "..."}` literals are legitimate fixture data in tests |
+| `excluded_paths` | `["_test.exs", "test/"]` | Path fragments naming files to skip (matched on segment boundaries) — `{:error, "..."}` literals are legitimate fixture data in tests |
 | `also_flag_atoms` | `false` | When `true`, atom reasons like `{:error, :timeout}` are flagged too |
 
 ### `GenServerRequiresHandleContinue`
