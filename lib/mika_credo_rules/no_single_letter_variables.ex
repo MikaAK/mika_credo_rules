@@ -28,10 +28,19 @@ defmodule MikaCredoRules.NoSingleLetterVariables do
       def double(number), do: number * 2
       Enum.map(users, fn user -> user.name end)
 
-  Only binding sites are reported — function heads, `fn` clauses, `case`/`cond`/
-  `receive` and `rescue` clauses, `=` matches, and `for`/`with` generators. A later
-  use of an already-flagged variable is not reported again, and neither is a pin
-  (`^x`), since the pinned variable was reported where it was bound.
+  Only binding sites are reported — function heads, `fn` clauses, `case`/`receive`
+  and `rescue` clauses, `=` matches, and `for`/`with` generators. A later use of an
+  already-flagged variable is not reported again, and neither is a pin (`^x`), since
+  the pinned variable was reported where it was bound.
+
+  `cond` clause heads are boolean expressions rather than patterns, so they are not
+  searched for bindings — using an already-bound variable there is not reported
+  again, while a binding made inside a head, as in `(result = f()) > 1 -> result`,
+  is still caught through its `=`.
+
+  Type signatures (`@spec`, `@type`, `@typep`, `@opaque`, `@callback`, and
+  `@macrocallback`) are ignored entirely — `a` and `b` in
+  `@spec transform(t, (a -> b)) :: [b]` are type variables, not variables.
 
   The wildcard `_` and underscore-prefixed names such as `_x` mark intentionally
   unused values and are always allowed.
@@ -42,6 +51,7 @@ defmodule MikaCredoRules.NoSingleLetterVariables do
   @explanation [check: @moduledoc]
 
   @def_operations [:def, :defp, :defmacro, :defmacrop, :defguard, :defguardp]
+  @typespec_attributes [:spec, :type, :typep, :opaque, :callback, :macrocallback]
 
   @doc false
   @impl Credo.Check
@@ -78,7 +88,31 @@ defmodule MikaCredoRules.NoSingleLetterVariables do
     {ast, head |> function_parameters() |> collect(bindings, allowed_names)}
   end
 
+  # Names in a type signature are type variables, not variables — the whole
+  # subtree is dropped from the walk.
+  defp traverse({:@, _, [{attribute, _, _}]}, bindings, _allowed_names)
+       when attribute in @typespec_attributes do
+    {nil, bindings}
+  end
+
+  # cond clause heads are boolean expressions, not patterns. Renaming their arrows
+  # keeps the heads out of the `:->` clause above while the walk still descends
+  # into them, so a binding made inside a head is caught through its `=`.
+  defp traverse({:cond, meta, [clauses]}, bindings, _allowed_names) when is_list(clauses) do
+    {{:cond, meta, [neutralize_cond_clause_arrows(clauses)]}, bindings}
+  end
+
   defp traverse(ast, bindings, _allowed_names), do: {ast, bindings}
+
+  defp neutralize_cond_clause_arrows(clauses) do
+    Enum.map(clauses, fn
+      {:do, arrows} when is_list(arrows) -> {:do, Enum.map(arrows, &neutralize_arrow/1)}
+      clause -> clause
+    end)
+  end
+
+  defp neutralize_arrow({:->, meta, clause}), do: {:cond_clause, meta, clause}
+  defp neutralize_arrow(clause), do: clause
 
   defp function_parameters({:when, _, [head | _guards]}), do: function_parameters(head)
   defp function_parameters({_name, _, parameters}) when is_list(parameters), do: parameters

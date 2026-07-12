@@ -154,6 +154,25 @@ defmodule MikaCredoRules.NoSingleLetterVariablesTest do
       end)
     end
 
+    test "reports a binding made inside a cond clause head" do
+      """
+      defmodule MyApp.Worker do
+        def check(value) do
+          cond do
+            (r = transform(value)) > 1 -> r
+            true -> :none
+          end
+        end
+      end
+      """
+      |> to_source_file()
+      |> run_check(NoSingleLetterVariables)
+      |> assert_issue(fn issue ->
+        assert issue.line_no === 4
+        assert issue.trigger === "r"
+      end)
+    end
+
     test "reports a guarded parameter exactly once" do
       """
       defmodule MyApp.Worker do
@@ -209,6 +228,54 @@ defmodule MikaCredoRules.NoSingleLetterVariablesTest do
       |> to_source_file()
       |> run_check(NoSingleLetterVariables)
       |> assert_issue(fn issue -> assert issue.line_no === 2 end)
+    end
+
+    test "does not report type variables in a spec" do
+      """
+      defmodule MyApp.Worker do
+        @spec transform(Enumerable.t(), (a -> b)) :: [b] when a: var, b: var
+        def transform(enumerable, fun), do: Enum.map(enumerable, fun)
+      end
+      """
+      |> to_source_file()
+      |> run_check(NoSingleLetterVariables)
+      |> refute_issues()
+    end
+
+    test "does not report type variables in type and callback attributes" do
+      """
+      defmodule MyApp.Worker do
+        @type mapper(a, b) :: (a -> b)
+        @typep pair(a) :: {a, a}
+        @opaque wrapped(t) :: {:ok, t}
+        @callback run(a, mapper(a, b)) :: b when a: var, b: var
+        @macrocallback build(a) :: Macro.t() when a: var
+      end
+      """
+      |> to_source_file()
+      |> run_check(NoSingleLetterVariables)
+      |> refute_issues()
+    end
+
+    test "does not report a variable used in a cond clause head, only its binding" do
+      """
+      defmodule MyApp.Worker do
+        def bucket(number) do
+          x = compute(number)
+
+          cond do
+            x > 10 -> :many
+            true -> :few
+          end
+        end
+      end
+      """
+      |> to_source_file()
+      |> run_check(NoSingleLetterVariables)
+      |> assert_issue(fn issue ->
+        assert issue.line_no === 3
+        assert issue.trigger === "x"
+      end)
     end
 
     test "does not report single-letter module attributes" do
