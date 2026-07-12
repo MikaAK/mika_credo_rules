@@ -45,9 +45,18 @@ appears to pass. Always probe with project-relative paths.
 - **The config MUST be named `"default"`.** Credo selects by name; any other name is **silently
   ignored** and Credo runs its own stock checks instead — printing a green result that executed
   **none** of yours. (A 14-check dogfood sweep once ran zero of them this way.)
-- **`checks:` is ADDITIVE**, not a replacement: listing 1 check runs ~70 (Credo's defaults + yours).
-- Consequence: `TodosNeedTickets` double-reports against default-on `Credo.Check.Design.TagTODO`.
-  Consumers need `disabled: [{Credo.Check.Design.TagTODO, []}]`.
+- **`checks:` is ADDITIVE — but only in the LIST form.** `checks: [ ... ]` merges with Credo's
+  ~70 defaults; the map form `checks: %{enabled: [ ... ]}` runs ONLY the listed checks, no
+  defaults. Don't reason from the form — read `running N checks on M files` in the output: N
+  bigger than what you listed means defaults merged in (list form → you need the TagTODO
+  disable); N equal means map form and no `disabled:` block is needed.
+- Consequence (list form): `TodosNeedTickets` double-reports against default-on
+  `Credo.Check.Design.TagTODO`. Consumers need `disabled: [{Credo.Check.Design.TagTODO, []}]`.
+- **Read the file count too.** `running N checks on 0 files` means the `included` globs match
+  nothing — `included` resolves relative to CWD, not the config file, so an umbrella root with
+  `included: ["lib/", "test/"]` scans zero files and the whole config passes vacuously (a real
+  repo's Credo CI job did this for its entire life). Umbrella configs need
+  `["lib/", "test/", "apps/*/lib/", "apps/*/test/"]` to work from both the root and app dirs.
 
 ## 4. Ground-truth every reference a check emits
 

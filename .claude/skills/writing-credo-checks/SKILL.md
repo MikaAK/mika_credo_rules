@@ -83,6 +83,15 @@ Single-segment base paths (`[:Application]`) are shadowable → need **both**. M
 must implement both, because it serves both callers. `no_mocking_libraries.ex` has the superset
 (multi-alias + shadowing) — copy from there, not from a single-caller version.
 
+**`defmodule` is a third shadowing source that alias resolution does NOT cover.** A locally
+nested `defmodule Mock do` emits the same `{:__aliases__, _, [:Mock]}` as a reference to a banned
+single-segment name — it exact-matches, and nothing removes it from the match set, so the check
+FPs on the definition and every bare-name reference (shipped: a plain RPC test helper named
+`Mock` in learn_elixir, PR #278). If the check bans single-segment names, either treat
+`defmodule <Name>` as shadowing (deregister the name for that file and skip the `__aliases__`
+node that is the defmodule's name argument) or scope the moduledoc's "project modules are never
+flagged" claim to qualified spellings only.
+
 ## `->` is overloaded: five constructs, three semantics
 
 One `{:->, _, [lhs, _body]}` clause serves:
