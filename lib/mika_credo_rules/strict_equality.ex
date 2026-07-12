@@ -30,6 +30,8 @@ defmodule MikaCredoRules.StrictEquality do
       ]
     ]
 
+  alias MikaCredoRules.AstHelpers
+
   @moduledoc """
   Comparisons must use `===`/`!==` instead of `==`/`!=`.
 
@@ -69,8 +71,6 @@ defmodule MikaCredoRules.StrictEquality do
 
   @loose_operators [:==, :!=]
   @strict_replacements %{:== => :===, :!= => :!==}
-  @ecto_query [:Ecto, :Query]
-  @fully_qualified_ecto_query [Elixir, :Ecto, :Query]
 
   @doc false
   @impl Credo.Check
@@ -87,53 +87,10 @@ defmodule MikaCredoRules.StrictEquality do
     |> Enum.map(&issue_for(&1, issue_meta))
   end
 
-  # Every module path in this file that refers to Ecto.Query, starting from the
-  # two spellings that always do and folding each alias over that base.
+  # Every module path in this file that refers to Ecto.Query.
   defp ecto_query_modules(source_file) do
-    source_file
-    |> Credo.Code.prewalk(&collect_aliases/2)
-    |> Enum.reduce([@ecto_query, @fully_qualified_ecto_query], &apply_alias/2)
+    AstHelpers.resolve_aliases(source_file, [Ecto.Query])
   end
-
-  defp collect_aliases({:alias, _, [{:__aliases__, _, target}]} = ast, aliases) do
-    {ast, [{[List.last(target)], target} | aliases]}
-  end
-
-  defp collect_aliases({:alias, _, [{:__aliases__, _, target}, opts]} = ast, aliases)
-       when is_list(opts) do
-    {ast, [{alias_name(target, opts), target} | aliases]}
-  end
-
-  # `alias Ecto.{Query, Changeset}` — the inner aliases are relative to the base.
-  defp collect_aliases(
-         {:alias, _, [{{:., _, [{:__aliases__, _, base}, :{}]}, _, inner_nodes}]} = ast,
-         aliases
-       ) do
-    grouped_aliases =
-      for {:__aliases__, _, inner} <- inner_nodes do
-        {[List.last(inner)], base ++ inner}
-      end
-
-    {ast, grouped_aliases ++ aliases}
-  end
-
-  defp collect_aliases(ast, aliases), do: {ast, aliases}
-
-  defp alias_name(target, opts) do
-    case Keyword.get(opts, :as) do
-      {:__aliases__, _, name} -> name
-      _ -> [List.last(target)]
-    end
-  end
-
-  # `alias Ecto.Query` / `alias Ecto.Query, as: Q` — Query/Q now mean Ecto.Query.
-  defp apply_alias({name, target}, modules)
-       when target === @ecto_query
-       when target === @fully_qualified_ecto_query do
-    [name | modules]
-  end
-
-  defp apply_alias(_alias, modules), do: modules
 
   defp traverse({operator, meta, [left, right]} = ast, loose_comparisons, _context)
        when operator in @loose_operators do
