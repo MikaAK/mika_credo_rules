@@ -23,6 +23,7 @@ defmodule MikaCredoRules.NoProcessSleepInTests do
       ]
     ]
 
+  alias MikaCredoRules.AstHelpers
   alias MikaCredoRules.SourceFilter
 
   @moduledoc """
@@ -85,11 +86,7 @@ defmodule MikaCredoRules.NoProcessSleepInTests do
   defp expand_matcher({module, function}) do
     case Atom.to_string(module) do
       "Elixir." <> _rest ->
-        # Bounded input: the :functions check param from .credo.exs (a handful of
-        # module names supplied by the developer), never scanned source code.
-        # skill-ok: string-to-atom
-        parts = module |> Module.split() |> Enum.map(&String.to_atom/1)
-        [{parts, function}, {[Elixir | parts], function}]
+        Enum.map(AstHelpers.module_paths(module), &{&1, function})
 
       _erlang_module ->
         [{module, function}]
