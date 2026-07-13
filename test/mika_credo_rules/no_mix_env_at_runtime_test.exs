@@ -42,22 +42,6 @@ defmodule MikaCredoRules.NoMixEnvAtRuntimeTest do
       |> assert_issue(fn issue -> assert issue.message =~ "Mix.target/0" end)
     end
 
-    test "reports Mix.env() in a module attribute" do
-      """
-      defmodule MyApp.Worker do
-        @env Mix.env()
-
-        def env, do: @env
-      end
-      """
-      |> to_source_file(@lib_file)
-      |> run_check(NoMixEnvAtRuntime)
-      |> assert_issue(fn issue ->
-        assert issue.line_no === 2
-        assert issue.message =~ "Mix.env/0"
-      end)
-    end
-
     test "reports fully qualified Elixir.Mix.env()" do
       """
       defmodule MyApp.Worker do
@@ -80,6 +64,63 @@ defmodule MikaCredoRules.NoMixEnvAtRuntimeTest do
       |> run_check(NoMixEnvAtRuntime)
       |> assert_issues(fn issues ->
         assert issues |> Enum.map(& &1.line_no) |> Enum.sort() === [2, 3]
+      end)
+    end
+  end
+
+  describe "&run/2 allows Mix env access at compile time" do
+    test "does not report Mix.env() in a module attribute" do
+      """
+      defmodule MyApp.Worker do
+        @env Mix.env()
+
+        def env, do: @env
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoMixEnvAtRuntime)
+      |> refute_issues()
+    end
+
+    test "does not report Mix.env() in a use option list" do
+      """
+      defmodule MyApp.Worker do
+        use GenServer, restart: (if Mix.env() === :test, do: :temporary, else: :permanent)
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoMixEnvAtRuntime)
+      |> refute_issues()
+    end
+
+    test "does not report Mix.env() in a module-level if" do
+      """
+      defmodule MyApp.Worker do
+        if Mix.env() === :test do
+          def env, do: :test
+        else
+          def env, do: :real
+        end
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoMixEnvAtRuntime)
+      |> refute_issues()
+    end
+
+    test "still reports Mix.env() called from inside a def body, alongside a safe module attribute" do
+      """
+      defmodule MyApp.Worker do
+        @env Mix.env()
+
+        def check, do: Mix.env() === :prod
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoMixEnvAtRuntime)
+      |> assert_issue(fn issue ->
+        assert issue.line_no === 4
+        assert issue.message =~ "Mix.env/0"
       end)
     end
   end

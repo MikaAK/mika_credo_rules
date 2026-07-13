@@ -33,25 +33,38 @@ defmodule MikaCredoRules.NoMixEnvAtRuntime do
   compiles fine in dev crashes in prod with `UndefinedFunctionError`. Branch on the
   environment at compile time via config instead.
 
-      # BAD — crashes in a release
+      # BAD — a def/defp body re-executes on every call; crashes in a release
       defmodule MyApp.Worker do
         def start_link(opts) do
           if Mix.env() === :prod, do: connect(opts), else: :ignore
         end
       end
 
-      # GOOD — config decides, code reads config
-      # config/prod.exs
-      config :my_app, connect_on_start: true
-
-      # worker.ex
+      # GOOD — a module attribute bakes the value in once, at compile time
       defmodule MyApp.Worker do
-        @connect_on_start Application.compile_env(:my_app, :connect_on_start, false)
+        @connect_on_start? Mix.env() === :prod
 
         def start_link(opts) do
-          if @connect_on_start, do: connect(opts), else: :ignore
+          if @connect_on_start?, do: connect(opts), else: :ignore
         end
       end
+
+      # GOOD — same for `use` option lists and a module-level `if`
+      defmodule MyApp.Worker do
+        use GenServer, restart: (if Mix.env() === :test, do: :temporary, else: :permanent)
+
+        if Mix.env() === :test do
+          def toplogy_supervisor(_opts), do: []
+        else
+          def toplogy_supervisor(_opts), do: real_impl()
+        end
+      end
+
+  Only a `def`/`defp` *body* counts as runtime access — that is the only
+  position where the call re-executes on every invocation and can crash a
+  release. A module attribute, a `use` option list, and a module-level `if`
+  all run exactly once, while the module compiles, and are never flagged —
+  `Mix` is always available at compile time, in a release build same as dev.
 
   Script files are exempt: any file ending in `.exs` (`mix.exs`, `config/*.exs`,
   tests) runs under Mix, where `Mix.env()` is available and appropriate.
@@ -60,15 +73,11 @@ defmodule MikaCredoRules.NoMixEnvAtRuntime do
   file is treated as a Mix task when it contains `use Mix.Task` or when its path
   contains an entry of `:excluded_paths` (default `["mix/tasks/"]`).
 
-  Module attributes are still flagged. `@env Mix.env()` is evaluated at compile
-  time and does not crash a release, but it bakes the build environment into the
-  code invisibly — use `Application.compile_env/3` with per-environment config so
-  the branch is auditable from `config/`.
-
-  `test/support/*.ex` files are still flagged too. They compile only for tests and
-  never ship in a release, but the stance is the same as for module attributes:
-  the environment branch belongs in config. Add `"test/support/"` to
-  `:excluded_paths` to opt out.
+  `test/support/*.ex` files are flagged the same as any other file when a call
+  sits inside a `def`/`defp` body — they compile only for tests and never ship
+  in a release, but the stance is the same as elsewhere: a runtime-position
+  branch belongs in config, not a hardcoded `Mix.env()` check. Add
+  `"test/support/"` to `:excluded_paths` to opt out.
 
   ## Known limitations
 
@@ -130,7 +139,33 @@ defmodule MikaCredoRules.NoMixEnvAtRuntime do
 
   defp find_use_mix_task(ast, mix_task_found), do: {ast, mix_task_found}
 
-  defp traverse(
+  # `quote do ... end` defines code at the macro's call site, not in this
+  # file — don't descend into quoted code.
+  defp traverse({:quote, _, args}, mix_calls, _functions) when is_list(args) do
+    {nil, mix_calls}
+  end
+
+  # Only a `def`/`defp` BODY re-executes on every call — that is the only
+  # position where `Mix.env()`/`Mix.target()` crashes a release. Module
+  # attributes, `use` option lists, and module-level `if` all run once, at
+  # compile time, and are left alone. Pruning the def/defp subtree here and
+  # walking it ourselves keeps the outer prewalk from visiting it a second
+  # time.
+  defp traverse({kind, _, [_head, _body]} = ast, mix_calls, functions)
+       when kind in [:def, :defp] do
+    {nil, collect_runtime_mix_calls(ast, functions) ++ mix_calls}
+  end
+
+  defp traverse(ast, mix_calls, _functions), do: {ast, mix_calls}
+
+  defp collect_runtime_mix_calls(def_ast, functions) do
+    def_ast
+    |> Macro.prewalk([], &collect_mix_call(&1, &2, functions))
+    |> elem(1)
+    |> Enum.reverse()
+  end
+
+  defp collect_mix_call(
          {{:., _, [{:__aliases__, _, module}, function]}, meta, args} = ast,
          mix_calls,
          functions
@@ -143,7 +178,7 @@ defmodule MikaCredoRules.NoMixEnvAtRuntime do
     end
   end
 
-  defp traverse(ast, mix_calls, _functions), do: {ast, mix_calls}
+  defp collect_mix_call(ast, mix_calls, _functions), do: {ast, mix_calls}
 
   defp mix_call(module, function, meta) do
     %{module: module, function: function, line_no: meta[:line]}
