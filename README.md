@@ -67,7 +67,7 @@ checks: %{
 | [`NoReimplementedHelper`](#noreimplementedhelper) | `:design` | Local re-implementations of shared library helpers |
 | [`NoSingleLetterVariables`](#nosinglelettervariables) | `:readability` | Single-letter variable bindings |
 | [`RefuteOverAssertNot`](#refuteoverassertnot) | `:readability` | `assert !expr` / `assert not expr` — use `refute` |
-| [`SingleModulePerFile`](#singlemoduleperfile) | `:design` | More than one `defmodule` per file |
+| [`SingleModulePerFile`](#singlemoduleperfile) | `:design` | More than one top-level `defmodule` per file (nested modules allowed) |
 | [`StrictEquality`](#strictequality) | `:warning` | `==`/`!=` — use `===`/`!==` (Ecto query DSL exempt) |
 | [`TodosNeedTickets`](#todosneedtickets) | `:design` | TODO/FIXME comments without an adjacent ticket URL |
 
@@ -467,10 +467,10 @@ refute valid?(user)
 
 ### `SingleModulePerFile`
 
-Each module gets its own file. A file that defines several modules recompiles
-them together — anything depending on one is recompiled whenever any co-located
-module changes, and mutual references between co-located modules can grow into
-cycles the compiler cannot split apart.
+One top-level module per file. A file that defines several top-level modules
+recompiles them together — anything depending on one is recompiled whenever any
+co-located module changes, and mutual references between co-located modules can
+grow into cycles the compiler cannot split apart.
 
 ```elixir
 # BAD — two sibling modules in one file
@@ -482,16 +482,20 @@ defmodule MyApp.WorkerSupervisor do
   def start_link, do: :ok
 end
 
-# GOOD — exactly one module per file
+# GOOD — a nested module belongs to its parent, never flagged
 defmodule MyApp.Worker do
+  defmodule State do
+    defstruct [:status]
+  end
+
   def run, do: :ok
 end
 ```
 
-Every `defmodule` after the first is flagged, nested or sibling. `defimpl` and
-`defprotocol` are never flagged, and `defmodule` inside a `quote` block is
-skipped — a macro that generates a module defines it at the call site. Test
-files are excluded by default — nested test-helper modules are idiomatic there.
+Only top-level `defmodule`s count — a module nested inside another is part of
+its parent. `defimpl` and `defprotocol` are never flagged, and `defmodule`
+inside a `quote` block is skipped — a macro that generates a module defines it
+at the call site. Test files are excluded by default.
 
 | Param | Default | Meaning |
 |---|---|---|

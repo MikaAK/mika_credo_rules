@@ -13,7 +13,7 @@ defmodule MikaCredoRules.SingleModulePerFile do
         `_test.exs` match through the ends-with half, so this one param covers
         both directory and suffix exclusion.
 
-        Defaults to `["test/", "test/support/", "_test.exs"]` — nested
+        Defaults to `["test/", "test/support/", "_test.exs"]` — sibling
         test-helper modules are idiomatic in test files.
         """
       ]
@@ -22,13 +22,13 @@ defmodule MikaCredoRules.SingleModulePerFile do
   alias MikaCredoRules.SourceFilter
 
   @moduledoc """
-  Never nest multiple modules in one file — each module gets its own file.
+  One top-level module per file — a second sibling module gets its own file.
 
-  A file that defines several modules causes cyclic compilation dependencies:
-  the modules recompile together, so anything depending on one of them is
-  recompiled whenever any co-located module changes, and mutual references
-  between the co-located modules can grow into cycles the compiler cannot
-  split apart.
+  A file that defines several top-level modules causes cyclic compilation
+  dependencies: the modules recompile together, so anything depending on one
+  of them is recompiled whenever any co-located module changes, and mutual
+  references between the co-located modules can grow into cycles the compiler
+  cannot split apart.
 
       # BAD — two sibling modules in one file
       defmodule MyApp.Worker do
@@ -39,7 +39,12 @@ defmodule MikaCredoRules.SingleModulePerFile do
         def start_link, do: :ok
       end
 
-      # BAD — a nested module counts too
+      # GOOD — exactly one top-level module per file
+      defmodule MyApp.Worker do
+        def run, do: :ok
+      end
+
+      # GOOD — a nested module belongs to its parent and is never flagged
       defmodule MyApp.Worker do
         defmodule State do
           defstruct [:status]
@@ -48,18 +53,14 @@ defmodule MikaCredoRules.SingleModulePerFile do
         def run, do: :ok
       end
 
-      # GOOD — exactly one module per file
-      defmodule MyApp.Worker do
-        def run, do: :ok
-      end
-
-  Every `defmodule` after the first in a file is flagged, nested or sibling.
-  `defimpl` and `defprotocol` are not `defmodule` and are never flagged, and
-  `defmodule` inside a `quote` block is skipped — a macro that generates a
-  module defines it at the call site, not in this file.
+  Only top-level `defmodule`s count: a module nested inside another module is
+  part of its parent and is never flagged. `defimpl` and `defprotocol` are not
+  `defmodule` and are never flagged, and `defmodule` inside a `quote` block is
+  skipped — a macro that generates a module defines it at the call site, not
+  in this file.
 
   Test files are excluded by default (`test/`, `test/support/`, and the
-  `_test.exs` suffix via `:excluded_paths`) — nested test-helper modules are
+  `_test.exs` suffix via `:excluded_paths`) — sibling test-helper modules are
   idiomatic there.
   """
   @explanation [check: @moduledoc]
@@ -92,8 +93,10 @@ defmodule MikaCredoRules.SingleModulePerFile do
     {nil, modules}
   end
 
-  defp traverse({:defmodule, meta, [name | _]} = ast, modules) do
-    {ast, [%{name: Macro.to_string(name), line_no: meta[:line]} | modules]}
+  # Pruning the defmodule subtree keeps the count to TOP-LEVEL modules only —
+  # a module nested inside another is part of its parent, never flagged.
+  defp traverse({:defmodule, meta, [name | _]}, modules) do
+    {nil, [%{name: Macro.to_string(name), line_no: meta[:line]} | modules]}
   end
 
   defp traverse(ast, modules), do: {ast, modules}

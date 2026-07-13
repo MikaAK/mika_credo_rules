@@ -28,7 +28,7 @@ defmodule MikaCredoRules.SingleModulePerFileTest do
       end)
     end
 
-    test "reports the nested-module BAD example" do
+    test "does not report the GOOD nested-module example" do
       """
       defmodule MyApp.Worker do
         defmodule State do
@@ -40,10 +40,7 @@ defmodule MikaCredoRules.SingleModulePerFileTest do
       """
       |> to_source_file(@lib_file)
       |> run_check(SingleModulePerFile)
-      |> assert_issue(fn issue ->
-        assert issue.line_no === 2
-        assert issue.message === "multiple modules in one file found — move State to its own file"
-      end)
+      |> refute_issues()
     end
 
     test "does not report the GOOD single-module example" do
@@ -58,7 +55,7 @@ defmodule MikaCredoRules.SingleModulePerFileTest do
     end
   end
 
-  describe "&run/2 flags every module after the first" do
+  describe "&run/2 flags every top-level module after the first" do
     test "reports two issues for three sibling modules" do
       """
       defmodule MyApp.One do
@@ -85,15 +82,56 @@ defmodule MikaCredoRules.SingleModulePerFileTest do
     test "renders a __MODULE__-based name argument" do
       """
       defmodule MyApp.Worker do
-        defmodule __MODULE__.State do
-          defstruct [:status]
-        end
+        def run, do: :ok
+      end
+
+      defmodule __MODULE__.State do
+        defstruct [:status]
       end
       """
       |> to_source_file(@lib_file)
       |> run_check(SingleModulePerFile)
       |> assert_issue(fn issue ->
         assert issue.message =~ "move __MODULE__.State to its own file"
+      end)
+    end
+
+    test "does not report a module nested deeply inside a sibling-free module" do
+      """
+      defmodule MyApp.Server do
+        defmodule State do
+          defmodule Inner do
+            defstruct [:value]
+          end
+        end
+
+        def run, do: :ok
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(SingleModulePerFile)
+      |> refute_issues()
+    end
+
+    test "reports only the top-level sibling when both files nest modules" do
+      """
+      defmodule MyApp.Worker do
+        defmodule State do
+          defstruct [:status]
+        end
+      end
+
+      defmodule MyApp.WorkerSupervisor do
+        defmodule Options do
+          defstruct [:limit]
+        end
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(SingleModulePerFile)
+      |> assert_issue(fn issue ->
+        assert issue.line_no === 7
+        assert issue.message =~ "move MyApp.WorkerSupervisor to its own file"
       end)
     end
   end
@@ -135,10 +173,12 @@ defmodule MikaCredoRules.SingleModulePerFileTest do
   describe "&run/2 excludes test files by default" do
     test "does not report multiple modules in a _test.exs file" do
       """
+      defmodule MyApp.FakeAdapter do
+        def fetch, do: :ok
+      end
+
       defmodule MyApp.WorkerTest do
-        defmodule FakeAdapter do
-          def fetch, do: :ok
-        end
+        def run, do: :ok
       end
       """
       |> to_source_file(@test_file)
@@ -149,9 +189,11 @@ defmodule MikaCredoRules.SingleModulePerFileTest do
     test "does not report multiple modules in a test support file" do
       """
       defmodule MyApp.Factory do
-        defmodule Defaults do
-          def build, do: :ok
-        end
+        def build, do: :ok
+      end
+
+      defmodule MyApp.Factory.Defaults do
+        def build, do: :ok
       end
       """
       |> to_source_file("test/support/factory.ex")
@@ -192,17 +234,19 @@ defmodule MikaCredoRules.SingleModulePerFileTest do
 
     test "reports test files again once the exclusions are overridden" do
       """
+      defmodule MyApp.FakeAdapter do
+        def fetch, do: :ok
+      end
+
       defmodule MyApp.WorkerTest do
-        defmodule FakeAdapter do
-          def fetch, do: :ok
-        end
+        def run, do: :ok
       end
       """
       |> to_source_file(@test_file)
       |> run_check(SingleModulePerFile, excluded_paths: [])
       |> assert_issue(fn issue ->
-        assert issue.line_no === 2
-        assert issue.message =~ "move FakeAdapter to its own file"
+        assert issue.line_no === 5
+        assert issue.message =~ "move MyApp.WorkerTest to its own file"
       end)
     end
   end
