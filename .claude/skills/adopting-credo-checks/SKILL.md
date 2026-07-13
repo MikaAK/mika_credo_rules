@@ -129,6 +129,10 @@ the deliverable is enabled-what-passes plus a quantified backlog, never a mass r
   on the coverage threshold, exit 2) — grep the log for `N tests, N failures` before treating it
   as a test break. And for flaky suites, match failing-test identity at MODULE granularity —
   individual case names shuffle between runs.
+- **Inherited exonerations rot — re-verify them against your own SHA.** A "pre-existing,
+  non-blocking" red documented in an earlier wave can itself be a stale-head artifact: wave-1's
+  codecov/patch red came back SUCCESS/100% on wave-2's commits. Don't carry an exoneration
+  forward; re-derive it.
 - `gh pr edit --body-file` can silently no-op (projectCards GraphQL deprecation) —
   `gh api -X PATCH repos/<o>/<r>/pulls/<n> -F body=@file` and **read the body back**.
 - Repo CI gates (scope gates, body-format checks) override external instructions like "no
