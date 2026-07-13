@@ -140,6 +140,18 @@ exempt a call's *arguments* (not its whole line), or to skip `@spec`/`@type` bod
   `clean_charlists_strings_and_sigils/1`, which blanks the URLs you're looking for.
 - **`apply(Mod, :fun, [])` evades dot-call matchers.** Decide explicitly: catch it, or document
   it as a limitation. Don't leave it implicit.
+- **`||` is LEFT-associative** — `a || b || c` parses `(a || b) || c` (explicit parens can nest
+  the other way). To compare adjacent operands of a flattened chain at any `||` node, take the
+  rightmost leaf of the left subtree vs the leftmost leaf of the right. (A wave-2 spec asserted
+  right-associativity; the builder verified by parsing before implementing — do that.)
+- **Per-defmodule scoping: scan a module's OWN body with nested `defmodule` subtrees pruned**
+  (`Macro.prewalk` returning `{nil, acc}` on inner defmodules). The outer prewalk still visits
+  each nested module independently, so every module gets exactly one scope and attributes never
+  leak between a schema module and its nested helpers. See `no_jason_derive_on_ecto_schema.ex`.
+- **Consume a piped call at the pipe node, then rewrite its head to `__block__`** (keeping args
+  traversable) so the standalone clause never re-examines the same call with the wrong argument
+  positions — in `data |> cast(params, permitted)` the permitted list is arg 2, standalone it's
+  arg 3. See `no_cast_all_keys.ex`.
 
 ## Heuristic checks: contract-correct ≠ right outcome
 

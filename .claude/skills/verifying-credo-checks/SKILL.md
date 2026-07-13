@@ -52,6 +52,12 @@ appears to pass. Always probe with project-relative paths.
   disable); N equal means map form and no `disabled:` block is needed.
 - Consequence (list form): `TodosNeedTickets` double-reports against default-on
   `Credo.Check.Design.TagTODO`. Consumers need `disabled: [{Credo.Check.Design.TagTODO, []}]`.
+- **`--checks` FILTERS the registered set — it does not enable.** `mix credo --checks
+  "MyNewCheck"` for a check not yet in `.credo.exs` prints a green run that executed
+  **zero** checks (`running 0 checks on N files`). All five wave-2 builders hit this
+  independently. To dogfood an unregistered check, point at a scratch config:
+  `mix credo --config-file /tmp/probe.credo.exs` (map form, name `"default"`, only your
+  check) — then confirm `running 1 check` AND plant a positive-control fixture that fires.
 - **Read the file count too.** `running N checks on 0 files` means the `included` globs match
   nothing — `included` resolves relative to CWD, not the config file, so an umbrella root with
   `included: ["lib/", "test/"]` scans zero files and the whole config passes vacuously (a real

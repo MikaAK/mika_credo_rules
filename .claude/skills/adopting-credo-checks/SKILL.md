@@ -46,6 +46,23 @@ the deliverable is enabled-what-passes plus a quantified backlog, never a mass r
 - **Semantics-preserving beats file count as the axis.** ErrorMessageRequired at 11 issues is
   harder than NoNilComparison at 131: error-shape changes ripple into `result.error =~ ...` tests
   and type-consistency of free-form string fields. Low count ≠ easy.
+- **A pre-issued "defer this check" order is conditioned on it being non-zero.** Run the counts
+  before honoring it — one lane was told to defer SingleModulePerFile, it came back 0/0, and
+  deferring a free guardrail would have been strictly worse than enabling it.
+- **Prove a zero is the check being RIGHT, not just non-vacuous.** Beyond `running 1 check on
+  N files`, grep for what the check hunts and read the hits: finding near-misses the check
+  correctly DECLINED to flag (different-name `||` fallbacks, cast with a literal list) is
+  stronger evidence than finding nothing. A planted violating probe that fires completes the
+  proof.
+- **Ask of every defensive-read check: does it flag where the bug SHOWS UP or where the bug
+  IS?** NoAtomStringKeyFallback flags read sites, but dual-keyed maps are made at producer
+  boundaries — when the two differ, defer with that reason, honestly stated ("too much churn"
+  would be a lie).
+- **Wave-N inverts wave-1's ratio.** Wave-1 style-convention checks: 3/14 adoptable on a green
+  mature repo. Wave-2 narrow anti-pattern checks: 3–4/5 landed free everywhere. Checks authored
+  AFTER a rollout target what healthy repos already do right — budget triage accordingly, and
+  don't rank by how alarming the check sounds (the security check landed 0; the boring
+  `@derive` check was the biggest backlog).
 - Which tier a mechanical check lands in per-repo tracks whether the repo already **documents**
   the convention (AGENTS.md listing `is_nil`/`===` predicts a 3-file cleanup; its absence predicts
   a 70-file bloodbath). Profile before promising.
@@ -66,6 +83,14 @@ the deliverable is enabled-what-passes plus a quantified backlog, never a mass r
 - **Read the check's source before fixing or promising a param tune** — params are narrower than
   you hope (NoProcessSleepInTests has NO excluded_paths; NoApplicationEnvOutsideConfig only has
   `config_files`). Deferral is the universal fallback.
+- **Fix ALL sites or defer — never half.** A check with 1 remaining issue is exactly as deferred
+  as one with 2; partial fixes are churn with zero adoption payoff. The question is "can I get
+  this check to zero?", not "is this site fixable?".
+- **NoIdentityRewrap removals: the catch-all clause is the mechanical safety discriminator.**
+  `error -> error` present → the case asserts nothing, removal provably safe. Absent → the case
+  asserts shape; removal widens accepted input. Also: a map "identity" isn't — `%{a: x}` as a
+  PATTERN matches supersets but as a CONSTRUCTOR drops extra keys; trace the producer before
+  removing.
 
 ## Deferral discipline
 
@@ -96,6 +121,14 @@ the deliverable is enabled-what-passes plus a quantified backlog, never a mass r
   If the PR merged under you: cherry-pick onto current main as a `-wave-N` branch, open a fresh
   PR (minimal diff), and leave the dead branch alone — remote branch deletion trips the
   permission classifier for agents and belongs to the user.
+- **`gh pr checks` lies three more ways even without a merge:** (a) right after a push it serves
+  the PREVIOUS head's finished runs and exits 0 while your SHA's runs are still queued — a stale
+  green is worse than a red; (b) codecov/project can read FAIL then settle to PASS once all
+  shard uploads land — `gh api repos/<o>/<r>/commits/<sha>/check-runs` gives the settled
+  conclusion plus `output.title`; (c) a red "Coverage" job may contain ZERO test failures (dies
+  on the coverage threshold, exit 2) — grep the log for `N tests, N failures` before treating it
+  as a test break. And for flaky suites, match failing-test identity at MODULE granularity —
+  individual case names shuffle between runs.
 - `gh pr edit --body-file` can silently no-op (projectCards GraphQL deprecation) —
   `gh api -X PATCH repos/<o>/<r>/pulls/<n> -F body=@file` and **read the body back**.
 - Repo CI gates (scope gates, body-format checks) override external instructions like "no
