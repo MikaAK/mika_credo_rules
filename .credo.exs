@@ -16,7 +16,11 @@
         {MikaCredoRules.GenServerRequiresHandleContinue, []},
         {MikaCredoRules.LoggerModulePrefixAndInspect, []},
         {MikaCredoRules.NoApplicationEnvOutsideConfig, []},
+        {MikaCredoRules.NoAtomStringKeyFallback, []},
         {MikaCredoRules.NoBlanketRescue, []},
+        {MikaCredoRules.NoCastAllKeys, []},
+        {MikaCredoRules.NoIdentityRewrap, []},
+        {MikaCredoRules.NoJasonDeriveOnEctoSchema, []},
         {MikaCredoRules.NoMixEnvAtRuntime, []},
         {MikaCredoRules.NoMockingLibraries, []},
         {MikaCredoRules.NoNilComparison, []},
@@ -24,6 +28,7 @@
         {MikaCredoRules.NoReimplementedHelper, []},
         {MikaCredoRules.NoSingleLetterVariables, []},
         {MikaCredoRules.RefuteOverAssertNot, []},
+        {MikaCredoRules.SingleModulePerFile, []},
         {MikaCredoRules.StrictEquality, []},
         {MikaCredoRules.TodosNeedTickets, []}
       ]

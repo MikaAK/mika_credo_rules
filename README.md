@@ -55,7 +55,11 @@ checks: %{
 | [`GenServerRequiresHandleContinue`](#genserverrequireshandlecontinue) | `:refactor` | Real work in `init/1` instead of `handle_continue/2` |
 | [`LoggerModulePrefixAndInspect`](#loggermoduleprefixandinspect) | `:warning` | Logger messages missing the `#{__MODULE__}: ` prefix or interpolating values without `inspect/1` |
 | [`NoApplicationEnvOutsideConfig`](#noapplicationenvoutsideconfig) | `:design` | Any read or write of application env outside a config module |
+| [`NoAtomStringKeyFallback`](#noatomstringkeyfallback) | `:warning` | `m["key"] \|\| m[:key]` mixed-key fallback reads — normalize keys at the boundary |
 | [`NoBlanketRescue`](#noblanketrescue) | `:warning` | Catch-all rescue clauses that swallow exceptions |
+| [`NoCastAllKeys`](#nocastallkeys) | `:warning` | `cast(data, params, Map.keys(params))` — a mass-assignment hole |
+| [`NoIdentityRewrap`](#noidentityrewrap) | `:refactor` | `case` expressions whose every clause returns its pattern unchanged |
+| [`NoJasonDeriveOnEctoSchema`](#nojasonderiveonectoschema) | `:design` | `@derive Jason.Encoder` inside Ecto schema modules |
 | [`NoMixEnvAtRuntime`](#nomixenvatruntime) | `:warning` | `Mix.env()`/`Mix.target()` in compiled code — crashes in releases |
 | [`NoMockingLibraries`](#nomockinglibraries) | `:design` | Any reference to Mox, Hammox, Mock, Mimic, Patch or `:meck` |
 | [`NoNilComparison`](#nonilcomparison) | `:readability` | `x == nil` / `x != nil` — use `is_nil/1` |
@@ -63,6 +67,7 @@ checks: %{
 | [`NoReimplementedHelper`](#noreimplementedhelper) | `:design` | Local re-implementations of shared library helpers |
 | [`NoSingleLetterVariables`](#nosinglelettervariables) | `:readability` | Single-letter variable bindings |
 | [`RefuteOverAssertNot`](#refuteoverassertnot) | `:readability` | `assert !expr` / `assert not expr` — use `refute` |
+| [`SingleModulePerFile`](#singlemoduleperfile) | `:design` | More than one `defmodule` per file |
 | [`StrictEquality`](#strictequality) | `:warning` | `==`/`!=` — use `===`/`!==` (Ecto query DSL exempt) |
 | [`TodosNeedTickets`](#todosneedtickets) | `:design` | TODO/FIXME comments without an adjacent ticket URL |
 
@@ -170,6 +175,33 @@ rule exists to catch. Env access is caught through every spelling, including
 | `functions` | every `Application` env function | Which `Application` functions count as env access |
 | `erlang_functions` | `[:get_env, :get_all_env, :set_env, :unset_env]` | Which `:application` functions count as env access |
 
+### `NoAtomStringKeyFallback`
+
+Reading the same key under both spellings must not be used — normalize the map's
+keys at its boundary instead. A map with mixed atom/string keys has no reliable
+shape: every read site has to guess, the fallback gets copy-pasted everywhere the
+map is read, and any site that forgets it becomes a bug.
+
+```elixir
+# BAD — every read site guesses at the map's shape
+Map.get(payload, "link") || Map.get(payload, :link)
+params["id"] || params[:id]
+
+# GOOD — normalize once at the context boundary, read plainly after
+def handle_webhook(payload) do
+  payload = payload_keys_to_strings(payload)
+
+  payload["link"]
+end
+```
+
+A fallback is reported when both sides of a `||` read the same subject with
+literal counterpart keys — one atom and one string spelling the same name — in
+either order. `Map.get/2`, `Map.get/3` and bracket access all count, in any
+combination, including adjacent reads inside a chained fallback. Different key
+names, same-type keys, different subjects and plain lookup-or-default
+(`params["id"] || %{}`) are never flagged.
+
 ### `NoBlanketRescue`
 
 A rescue clause must not catch every exception only to swallow it. A blanket
@@ -198,6 +230,83 @@ pass. Both explicit `try/rescue` and the implicit `def ... rescue` form are chec
 | Param | Default | Meaning |
 |---|---|---|
 | `allowed_recovery_calls` | `[:reraise, :raise, Logger]` | Calls that count as handling — module entries allow any call on the module, atom entries allow local/imported calls. Replaces the default when supplied. |
+
+### `NoCastAllKeys`
+
+`cast` must receive an explicit list of permitted fields, never
+`Map.keys(params)`. The permitted list exists to whitelist which client-supplied
+keys may reach the changeset — `Map.keys(params)` turns it into "whatever the
+client sent", a mass-assignment hole that lets a request set fields the endpoint
+never meant to expose (`role`, `admin`, `balance`).
+
+```elixir
+# BAD — every client-supplied key is cast
+cast(user, attrs, Map.keys(attrs))
+
+# GOOD — the permitted fields are enumerated
+user
+|> cast(attrs, [:name, :email])
+|> validate_required([:email])
+```
+
+Every spelling of the call is caught: local `cast/3,4`, piped `|> cast(...)`,
+qualified `Ecto.Changeset.cast(...)` and `Changeset.cast(...)` under an alias.
+Indirection through a variable (`fields = Map.keys(attrs)` then
+`cast(user, attrs, fields)`) is invisible to the check — literal lists, module
+attributes and variables are all left alone.
+
+### `NoIdentityRewrap`
+
+A `case` whose every clause returns its pattern unchanged is a no-op re-wrap —
+drop the `case` and return the matched value directly.
+
+```elixir
+# BAD — re-emits exactly what it matched
+case fetch_user(id) do
+  {:ok, user} -> {:ok, user}
+  {:error, reason} -> {:error, reason}
+end
+
+# GOOD
+fetch_user(id)
+```
+
+A `case` is only flagged when **every** clause is an identity. A transforming
+clause, a guard, or a multi-expression body means the `case` does real work and
+it passes. If the `case` exists purely to assert the value's shape, prefer an
+explicit pattern match (`{:ok, user} = fetch_user(id)`) — an identity `case`
+hides that intent.
+
+### `NoJasonDeriveOnEctoSchema`
+
+Ecto schemas must not derive `Jason.Encoder` — serialize in a view or JSON layer
+instead. A derived encoder welds the schema's fields to a wire format: adding a
+field silently changes every API response, and every caller is forced through
+the one shape the schema picked.
+
+```elixir
+# BAD — the schema knows about serialization
+defmodule MyApp.User do
+  use Ecto.Schema
+
+  @derive {Jason.Encoder, only: [:id, :name]}
+  schema "users" do
+    field :name, :string
+  end
+end
+
+# GOOD — a JSON layer owns the shape
+defmodule MyAppWeb.UserJSON do
+  def show(%{user: user}), do: %{id: user.id, name: user.name}
+end
+```
+
+Scoped per module, not per file — only a `defmodule` whose own body contains
+`use Ecto.Schema` (embedded schemas use the same module) is inspected, and a
+nested `defmodule` without its own `use Ecto.Schema` is a separate scope. Every
+spelling of both modules is caught, including aliases and `@derive` lists.
+`defimpl Jason.Encoder` is out of scope — a `defimpl` is its own module and can
+live in the JSON layer.
 
 ### `NoMixEnvAtRuntime`
 
@@ -355,6 +464,38 @@ refute valid?(user)
 | Param | Default | Meaning |
 |---|---|---|
 | `test_files` | `["_test.exs"]` | Path suffixes the check runs on |
+
+### `SingleModulePerFile`
+
+Each module gets its own file. A file that defines several modules recompiles
+them together — anything depending on one is recompiled whenever any co-located
+module changes, and mutual references between co-located modules can grow into
+cycles the compiler cannot split apart.
+
+```elixir
+# BAD — two sibling modules in one file
+defmodule MyApp.Worker do
+  def run, do: :ok
+end
+
+defmodule MyApp.WorkerSupervisor do
+  def start_link, do: :ok
+end
+
+# GOOD — exactly one module per file
+defmodule MyApp.Worker do
+  def run, do: :ok
+end
+```
+
+Every `defmodule` after the first is flagged, nested or sibling. `defimpl` and
+`defprotocol` are never flagged, and `defmodule` inside a `quote` block is
+skipped — a macro that generates a module defines it at the call site. Test
+files are excluded by default — nested test-helper modules are idiomatic there.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `excluded_paths` | `["test/", "test/support/", "_test.exs"]` | Path fragments and filename suffixes exempt from the check (segment-boundary matched) |
 
 ### `StrictEquality`
 
