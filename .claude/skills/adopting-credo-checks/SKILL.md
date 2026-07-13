@@ -90,6 +90,12 @@ the deliverable is enabled-what-passes plus a quantified backlog, never a mass r
   with zero changes passes. Match on failing-test identity, never shard index or failure count.
 - Log access: `gh run view --log-failed` truncates/comes back empty for some jobs —
   `gh api repos/<o>/<r>/actions/jobs/<id>/logs` (grep -a) is reliable.
+- **A PR can merge mid-adoption — and `gh pr checks <n>` keeps serving the OLD merged head's
+  runs as if current** (two lanes nearly reported a stale green wall as their own). Always match
+  CI results on head SHA: `git rev-parse HEAD` vs the run's `headSha` / the PR's `headRefOid`.
+  If the PR merged under you: cherry-pick onto current main as a `-wave-N` branch, open a fresh
+  PR (minimal diff), and leave the dead branch alone — remote branch deletion trips the
+  permission classifier for agents and belongs to the user.
 - `gh pr edit --body-file` can silently no-op (projectCards GraphQL deprecation) —
   `gh api -X PATCH repos/<o>/<r>/pulls/<n> -F body=@file` and **read the body back**.
 - Repo CI gates (scope gates, body-format checks) override external instructions like "no
