@@ -15,7 +15,8 @@ defmodule MikaCredoRules.GenServerRequiresHandleContinue do
         String,
         {Process, :flag},
         {Process, :monitor},
-        {Process, :send_after}
+        {Process, :send_after},
+        {:ets, :new}
       ]
     ],
     explanations: [
@@ -77,8 +78,11 @@ defmodule MikaCredoRules.GenServerRequiresHandleContinue do
   The allow-list mixes whole modules and single functions. A bare module entry
   (`Keyword`, `Logger`) allows every call on it; a `{module, function}` tuple grants
   one function surgically. The defaults allow the cheap init idioms
-  `Process.flag/2`, `Process.monitor/1` and `Process.send_after/3` without allowing
-  `Process` wholesale — so a blocking `Process.sleep/1` in `init/1` stays flagged.
+  `Process.flag/2`, `Process.monitor/1`, `Process.send_after/3` and `:ets.new/2`
+  without allowing `Process` or `:ets` wholesale — so a blocking `Process.sleep/1`
+  or a `:ets.lookup/2` against another process's table in `init/1` stays flagged.
+  `:ets.new/2` is in-process and O(1), carrying none of the DB/HTTP/network
+  blocking risk this check guards against.
 
   Known approximations, chosen to keep the check cheap and false positives rare:
 

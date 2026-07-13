@@ -126,6 +126,38 @@ defmodule MikaCredoRules.GenServerRequiresHandleContinueTest do
       |> run_check(GenServerRequiresHandleContinue)
       |> refute_issues()
     end
+
+    test "does not report :ets.new/2" do
+      """
+      defmodule MyApp.Server do
+        use GenServer
+
+        def init(opts) do
+          table = :ets.new(:my_table, [:set, :named_table])
+          {:ok, %{opts: opts, table: table}}
+        end
+      end
+      """
+      |> to_source_file()
+      |> run_check(GenServerRequiresHandleContinue)
+      |> refute_issues()
+    end
+
+    test "still reports :ets.lookup/2 (only :ets.new/2 is allowed)" do
+      """
+      defmodule MyApp.Server do
+        use GenServer
+
+        def init(opts) do
+          rows = :ets.lookup(:other_table, opts.key)
+          {:ok, %{rows: rows}}
+        end
+      end
+      """
+      |> to_source_file()
+      |> run_check(GenServerRequiresHandleContinue)
+      |> assert_issue(fn issue -> assert issue.message =~ ":ets.lookup" end)
+    end
   end
 
   describe "&run/2 passes init/1 that defers work via {:continue, _}" do
