@@ -336,6 +336,22 @@ defmodule MikaCredoRules.GenServerRequiresHandleContinueTest do
       |> refute_issues()
     end
 
+    test "extra_allowed_modules extends the defaults instead of replacing them" do
+      """
+      defmodule MyApp.Server do
+        use GenServer
+
+        def init(_opts) do
+          MyApp.Cache.warm()
+          {:ok, Map.new()}
+        end
+      end
+      """
+      |> to_source_file()
+      |> run_check(GenServerRequiresHandleContinue, extra_allowed_modules: [MyApp.Cache])
+      |> refute_issues()
+    end
+
     test "replaces the default list instead of extending it" do
       """
       defmodule MyApp.Server do

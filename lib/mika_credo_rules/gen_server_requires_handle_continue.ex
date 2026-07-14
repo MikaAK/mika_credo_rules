@@ -45,7 +45,8 @@ defmodule MikaCredoRules.GenServerRequiresHandleContinue do
         {:telemetry, :attach},
         {:telemetry, :attach_many},
         {:telemetry, :execute}
-      ]
+      ],
+      extra_allowed_modules: []
     ],
     explanations: [
       params: [
@@ -55,9 +56,18 @@ defmodule MikaCredoRules.GenServerRequiresHandleContinue do
         it; a `{module, function}` tuple (e.g. `{Process, :flag}`) allows only that
         function, keeping the rest of the module flagged.
 
-        The list replaces the default rather than extending it, so include the defaults
-        again when adding your own. Erlang modules are given as plain atoms (e.g. `:ets`
-        or `{:ets, :new}`).
+        This list REPLACES the default, so setting it means re-listing every default you
+        still want. To add to the defaults instead, use `:extra_allowed_modules`. Erlang
+        modules are given as plain atoms (e.g. `:ets` or `{:ets, :new}`).
+        """,
+        extra_allowed_modules: """
+        Entries to allow IN ADDITION to `:allowed_modules`, in the same format. This is
+        what you usually want: a project adds its own pure state-builders and its own
+        pubsub/registry wrappers without re-listing (or silently dropping) the defaults.
+
+        Note the check does not resolve aliases — a module is matched by the name it is
+        written as at the call site, so a wrapper is listed by its short alias
+        (`{MyTopics, :subscribe}`), not its full name.
         """
       ]
     ]
@@ -191,9 +201,10 @@ defmodule MikaCredoRules.GenServerRequiresHandleContinue do
   defp detect_use_genserver(ast, found), do: {ast, found}
 
   defp allowed_entries(params) do
-    params
-    |> Params.get(:allowed_modules, __MODULE__)
-    |> Enum.map(&normalize_allowed_entry/1)
+    allowed = Params.get(params, :allowed_modules, __MODULE__)
+    extra = Params.get(params, :extra_allowed_modules, __MODULE__)
+
+    Enum.map(allowed ++ extra, &normalize_allowed_entry/1)
   end
 
   defp normalize_allowed_entry({module, function}), do: {normalize_atom_module(module), function}
