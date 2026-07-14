@@ -13,10 +13,18 @@ defmodule MikaCredoRules.GenServerRequiresHandleContinue do
         Map,
         NimbleOptions,
         String,
+        {Application, :get_env},
+        {Application, :fetch_env},
+        {Application, :fetch_env!},
         {Process, :flag},
         {Process, :monitor},
         {Process, :send_after},
-        {:ets, :new}
+        {Phoenix.PubSub, :subscribe},
+        {Registry, :register},
+        {:ets, :new},
+        {:telemetry, :attach},
+        {:telemetry, :attach_many},
+        {:telemetry, :execute}
       ]
     ],
     explanations: [
@@ -68,12 +76,46 @@ defmodule MikaCredoRules.GenServerRequiresHandleContinue do
         end
       end
 
+  Returning a `{:continue, _}` does not excuse a blocking call. The call still runs
+  inside `init/1`, before `start_link/3` returns — a continue next to it defers
+  nothing. Deferring means *moving the call* into `handle_continue/2`. So a
+  disallowed call is flagged wherever it appears in `init/1`, continue or no
+  continue.
+
+  ## Registration belongs in `init/1`
+
+  The mirror image of blocking work, and why the allow-list carries
+  `Phoenix.PubSub.subscribe/2`, `Registry.register/3` and `:telemetry.attach*`:
+  registering to *receive* asynchronous messages must complete before
+  `start_link/3` returns.
+
+  `handle_continue/2` runs after `init/1` returns — after the caller resumes and
+  after the supervisor starts the next child. That is safe for anything arriving as
+  a message to this process (a `GenServer.call/3` queues behind the pending
+  continue). It is not safe for anything requiring this process to already be
+  registered elsewhere: a broadcast or telemetry event reaches only those registered
+  *at emit time*, so one published in that window is lost forever rather than
+  delayed. Calls queue; broadcasts do not.
+
+  Under `:one_for_one` that window is not boot-only — a lone crash-restart rejoins a
+  tree whose producers are already hot, so it reopens on every restart.
+
+  The property is *synchronous-before-return*, not speed. Reading it as "subscribe
+  is cheap, so `init/1` is fine" sends the next reader to `handle_continue/2` for a
+  slow remote subscribe and reintroduces the bug. A self-scheduled timer
+  (`Process.send_after/3`) is genuinely deferrable — nothing external can miss it.
+  The test is: can something be lost while this is pending?
+
+  `:telemetry.execute/3` is allowed for a different reason: emitting an event runs its
+  handlers in-process and is not the DB/HTTP/network blocking this check guards against,
+  and a `cold_start`-style event can only mean what it says if it fires in `init/1`.
+  `:telemetry.span/3` stays flagged — it runs an arbitrary function, which may block.
+
   This check is a heuristic. Files without a literal `use GenServer` are skipped
   entirely. In files that have one, an `init/1` clause is flagged when it contains a
-  remote call not covered by the `:allowed_modules` list and no `{:continue, _}`
-  tuple anywhere in the clause. Each clause is judged on its own — a `{:continue, _}`
-  in one clause does not excuse blocking work in another — and each violating clause
-  produces one issue, anchored at its first disallowed call.
+  remote call not covered by the `:allowed_modules` list. Each clause is judged on
+  its own, and each violating clause produces one issue, anchored at its first
+  disallowed call.
 
   The allow-list mixes whole modules and single functions. A bare module entry
   (`Keyword`, `Logger`) allows every call on it; a `{module, function}` tuple grants
@@ -86,8 +128,6 @@ defmodule MikaCredoRules.GenServerRequiresHandleContinue do
 
   Known approximations, chosen to keep the check cheap and false positives rare:
 
-    * A `{:continue, _}` tuple anywhere in a clause counts as deferring, even when it
-      is not in return position.
     * Local function calls are always allowed — the check cannot cheaply resolve what
       a private helper does.
     * Struct literals (`%__MODULE__{}`, `%SomeStruct{}`) and calls on `__MODULE__`
@@ -160,25 +200,15 @@ defmodule MikaCredoRules.GenServerRequiresHandleContinue do
   defp init_head?({:init, _, [_single_arg]}), do: true
   defp init_head?(_head), do: false
 
+  # A `{:continue, _}` in the return does NOT excuse a blocking call: the call
+  # still executes inside `init/1`, before `start_link/3` returns. Deferring means
+  # MOVING the call into `handle_continue/2`, not accompanying it with a continue.
   defp clause_violations(clause, allowed_entries) do
-    if contains_continue?(clause) do
-      []
-    else
-      clause
-      |> remote_calls()
-      |> Enum.filter(&disallowed?(&1, allowed_entries))
-      |> Enum.take(1)
-    end
-  end
-
-  defp contains_continue?(clause) do
     clause
-    |> Macro.prewalk(false, &detect_continue/2)
-    |> elem(1)
+    |> remote_calls()
+    |> Enum.filter(&disallowed?(&1, allowed_entries))
+    |> Enum.take(1)
   end
-
-  defp detect_continue({:continue, _term} = ast, _found), do: {ast, true}
-  defp detect_continue(ast, found), do: {ast, found}
 
   defp remote_calls(clause) do
     clause
@@ -224,7 +254,7 @@ defmodule MikaCredoRules.GenServerRequiresHandleContinue do
 
     format_issue(issue_meta,
       message:
-        "#{trigger} found in GenServer init/1 — defer init work to handle_continue/2 by returning {:ok, state, {:continue, term}}",
+        "#{trigger} found in GenServer init/1 — move the call into handle_continue/2 (returning {:continue, term} beside it defers nothing; the call still runs in init/1). If it registers this process for asynchronous delivery (pubsub subscribe, telemetry attach, registry register) it belongs in init/1 — add it to :allowed_modules instead.",
       trigger: trigger,
       line_no: remote_call.line_no
     )

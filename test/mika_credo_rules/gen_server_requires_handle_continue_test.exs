@@ -160,8 +160,8 @@ defmodule MikaCredoRules.GenServerRequiresHandleContinueTest do
     end
   end
 
-  describe "&run/2 passes init/1 that defers work via {:continue, _}" do
-    test "does not report init/1 returning {:ok, state, {:continue, term}}" do
+  describe "&run/2 does not let a {:continue, _} excuse work left in init/1" do
+    test "reports the blocking call even when init/1 also returns {:continue, term}" do
       """
       defmodule MyApp.Server do
         use GenServer
@@ -174,10 +174,10 @@ defmodule MikaCredoRules.GenServerRequiresHandleContinueTest do
       """
       |> to_source_file()
       |> run_check(GenServerRequiresHandleContinue)
-      |> refute_issues()
+      |> assert_issue(&assert(&1.trigger === "MyApp.Repo.all"))
     end
 
-    test "does not report a {:continue, _} that appears in only one branch" do
+    test "reports a blocking call in the branch a {:continue, _} elsewhere does not defer" do
       """
       defmodule MyApp.Server do
         use GenServer
@@ -193,7 +193,76 @@ defmodule MikaCredoRules.GenServerRequiresHandleContinueTest do
       """
       |> to_source_file()
       |> run_check(GenServerRequiresHandleContinue)
+      |> assert_issue(&assert(&1.trigger === "MyApp.Repo.all"))
+    end
+
+    test "does not report init/1 that only builds state and returns a continue" do
+      """
+      defmodule MyApp.Server do
+        use GenServer
+
+        def init(opts) do
+          {:ok, %{rows: [], opts: opts}, {:continue, :load}}
+        end
+      end
+      """
+      |> to_source_file()
+      |> run_check(GenServerRequiresHandleContinue)
       |> refute_issues()
+    end
+  end
+
+  describe "&run/2 allows registration for asynchronous delivery in init/1" do
+    test "does not report pubsub subscribe, registry register or telemetry attach" do
+      """
+      defmodule MyApp.Server do
+        use GenServer
+
+        def init(opts) do
+          Phoenix.PubSub.subscribe(MyApp.PubSub, "topic")
+          Registry.register(MyApp.Registry, :key, nil)
+          :telemetry.attach_many("id", [[:a, :b]], &__MODULE__.handle/4, self())
+          {:ok, opts, {:continue, :schedule_tick}}
+        end
+      end
+      """
+      |> to_source_file()
+      |> run_check(GenServerRequiresHandleContinue)
+      |> refute_issues()
+    end
+
+    test "allows a one-off telemetry emit but still reports a span that wraps a function" do
+      """
+      defmodule MyApp.Server do
+        use GenServer
+
+        def init(host) do
+          :telemetry.execute([:my_app, :cold_start], %{}, %{host: host})
+          :telemetry.span([:my_app, :load], %{}, fn -> {slow_fetch(), %{}} end)
+          {:ok, host}
+        end
+      end
+      """
+      |> to_source_file()
+      |> run_check(GenServerRequiresHandleContinue)
+      |> assert_issue(&assert(&1.trigger === ":telemetry.span"))
+    end
+
+    test "allows Application.get_env/2 but still reports Application.ensure_all_started/1" do
+      """
+      defmodule MyApp.Server do
+        use GenServer
+
+        def init(_opts) do
+          config = Application.get_env(:my_app, :key)
+          Application.ensure_all_started(:inets)
+          {:ok, config}
+        end
+      end
+      """
+      |> to_source_file()
+      |> run_check(GenServerRequiresHandleContinue)
+      |> assert_issue(&assert(&1.trigger === "Application.ensure_all_started"))
     end
   end
 
