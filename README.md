@@ -59,6 +59,7 @@ checks: %{
 | [`NoBarePatternMatchOnFallible`](#nobarepatternmatchonfallible) | `:warning` | `{:ok, x} = call()` — a bare match with no handling for the failure path |
 | [`NoBlanketRescue`](#noblanketrescue) | `:warning` | Catch-all rescue clauses that swallow exceptions |
 | [`NoCastAllKeys`](#nocastallkeys) | `:warning` | `cast(data, params, Map.keys(params))` — a mass-assignment hole |
+| [`NoCondElseAtom`](#nocondelseatom) | `:readability` | A `cond`'s last clause falling through on `:else` instead of `true` |
 | [`NoIdentityRewrap`](#noidentityrewrap) | `:refactor` | `case` expressions whose every clause returns its pattern unchanged |
 | [`NoJasonDeriveOnEctoSchema`](#nojasonderiveonectoschema) | `:design` | `@derive Jason.Encoder` inside Ecto schema modules |
 | [`NoMixEnvAtRuntime`](#nomixenvatruntime) | `:warning` | `Mix.env()`/`Mix.target()` in compiled code — crashes in releases |
@@ -295,6 +296,34 @@ qualified `Ecto.Changeset.cast(...)` and `Changeset.cast(...)` under an alias.
 Indirection through a variable (`fields = Map.keys(attrs)` then
 `cast(user, attrs, fields)`) is invisible to the check — literal lists, module
 attributes and variables are all left alone.
+
+### `NoCondElseAtom`
+
+The last `cond` clause must fall through on `true`, not on an arbitrary truthy
+atom such as `:else`. Every atom other than `nil`/`false` is truthy in a `cond`
+head, so `:else -> ...` works — but it reads as if `cond` supported an `else`
+keyword the way `if`/`case` do, which it does not.
+
+```elixir
+# BAD
+cond do
+  a?() -> 1
+  :else -> 2
+end
+
+# GOOD
+cond do
+  a?() -> 1
+  true -> 2
+end
+```
+
+Only the last clause's head is inspected — an atom used as an earlier clause
+head is a different pattern this check does not cover.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `disallowed_atoms` | `[:else]` | Atoms that must not be used as the last `cond` clause's head. |
 
 ### `NoIdentityRewrap`
 

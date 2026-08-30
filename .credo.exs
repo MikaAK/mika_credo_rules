@@ -20,6 +20,7 @@
         {MikaCredoRules.NoBarePatternMatchOnFallible, []},
         {MikaCredoRules.NoBlanketRescue, []},
         {MikaCredoRules.NoCastAllKeys, []},
+        {MikaCredoRules.NoCondElseAtom, []},
         {MikaCredoRules.NoIdentityRewrap, []},
         {MikaCredoRules.NoJasonDeriveOnEctoSchema, []},
         {MikaCredoRules.NoMixEnvAtRuntime, []},
