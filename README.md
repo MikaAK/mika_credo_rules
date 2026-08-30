@@ -72,6 +72,7 @@ checks: %{
 | [`RefuteOverAssertNot`](#refuteoverassertnot) | `:readability` | `assert !expr` / `assert not expr` — use `refute` |
 | [`SingleModulePerFile`](#singlemoduleperfile) | `:design` | More than one top-level `defmodule` per file (nested modules allowed) |
 | [`StrictEquality`](#strictequality) | `:warning` | `==`/`!=` — use `===`/`!==` (Ecto query DSL exempt) |
+| [`TaskAsyncStreamRequiresTimeout`](#taskasyncstreamrequirestimeout) | `:warning` | `Task.async_stream`/`Task.Supervisor.async_stream` missing an explicit `:timeout` |
 | [`TodosNeedTickets`](#todosneedtickets) | `:design` | TODO/FIXME comments without an adjacent ticket URL |
 
 ---
@@ -623,6 +624,33 @@ caught. `start_permanent: Mix.env() == :prod` in mix.exs is also exempt.
 | Param | Default | Meaning |
 |---|---|---|
 | `ignored_functions` | `[:dynamic, :from, :where, :or_where, :having, :or_having, :select, :select_merge, :on, :join, :query, :subquery, :in]` | Calls whose arguments are exempt (the Ecto query DSL) |
+
+### `TaskAsyncStreamRequiresTimeout`
+
+`Task.async_stream/2,3` and `Task.Supervisor.async_stream/3,4` (and its
+`async_stream_nolink` sibling) default to a 5-second-per-item timeout when no
+`:timeout` option is given. One slow item then crashes the whole stream — pass
+`timeout:` explicitly, even when the value is `:infinity`.
+
+```elixir
+# BAD — silently uses the 5s default and kills long batches
+Task.async_stream(symbols, &process_one/1, max_concurrency: 5)
+
+# BAD — no options argument at all
+Task.async_stream(symbols, &process_one/1)
+
+# GOOD
+Task.async_stream(symbols, &process_one/1, max_concurrency: 5, timeout: 35_000)
+```
+
+Only a literal trailing options keyword list is inspected — options built by a
+helper or held in a variable are invisible to this check, an accepted false
+negative rather than a guess in either direction.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `functions` | `[{Task, :async_stream}, {Task.Supervisor, :async_stream}, {Task.Supervisor, :async_stream_nolink}]` | `{module, function}` pairs whose trailing options are checked |
+| `excluded_paths` | `[]` | Path fragments naming files to skip (segment-boundary matched) |
 
 ### `TodosNeedTickets`
 

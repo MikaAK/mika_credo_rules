@@ -33,6 +33,7 @@
         {MikaCredoRules.RefuteOverAssertNot, []},
         {MikaCredoRules.SingleModulePerFile, []},
         {MikaCredoRules.StrictEquality, []},
+        {MikaCredoRules.TaskAsyncStreamRequiresTimeout, []},
         {MikaCredoRules.TodosNeedTickets, []}
       ]
     }
