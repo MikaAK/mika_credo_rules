@@ -60,6 +60,7 @@ checks: %{
 | [`NoBlanketRescue`](#noblanketrescue) | `:warning` | Catch-all rescue clauses that swallow exceptions |
 | [`NoCastAllKeys`](#nocastallkeys) | `:warning` | `cast(data, params, Map.keys(params))` — a mass-assignment hole |
 | [`NoContinueFromLiveViewMount`](#nocontinuefromliveviewmount) | `:warning` | `mount/3` returning `{:ok, socket, {:continue, term}}` — a GenServer shape, not a LiveView one |
+| [`NoEctoSchemaInWebApp`](#noectoschemainwebapp) | `:design` | `use Ecto.Schema` inside a web app instead of the dedicated `_pg`/`schemas` app |
 | [`NoIdentityRewrap`](#noidentityrewrap) | `:refactor` | `case` expressions whose every clause returns its pattern unchanged |
 | [`NoJasonDeriveOnEctoSchema`](#nojasonderiveonectoschema) | `:design` | `@derive Jason.Encoder` inside Ecto schema modules |
 | [`NoMixEnvAtRuntime`](#nomixenvatruntime) | `:warning` | `Mix.env()`/`Mix.target()` in compiled code — crashes in releases |
@@ -324,6 +325,45 @@ opposite callback, opposite advice.
 | Param | Default | Meaning |
 |---|---|---|
 | `excluded_paths` | `[]` | Path fragments naming files this check skips |
+
+### `NoEctoSchemaInWebApp`
+
+`use Ecto.Schema` must not appear in a web app — schemas belong in a dedicated
+database-layer app (conventionally `_pg` or `schemas`). A schema inside the web
+app couples the wire/UI layer to the database layer, forcing every other app
+that wants the schema to depend on the whole web app.
+
+```elixir
+# BAD — apps/my_web/lib/my_web/user.ex
+defmodule MyWeb.User do
+  use Ecto.Schema
+
+  schema "users" do
+    field :name, :string
+  end
+end
+
+# GOOD — apps/my_pg/lib/my_pg/user.ex
+defmodule MyApp.User do
+  use Ecto.Schema
+
+  schema "users" do
+    field :name, :string
+  end
+end
+```
+
+`embedded_schema` is caught too — it's a macro `use Ecto.Schema` itself
+provides. In scope: any file with a directory segment ending in a
+`banned_path_fragments` entry (default `_web`, matching Phoenix's `<name>_web`
+convention), matched at a segment boundary — `lib/cobweb/user.ex` never
+matches.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `modules` | `[Ecto.Schema]` | Modules whose `use` counts as declaring a schema |
+| `banned_path_fragments` | `["_web/"]` | Directory-name suffixes that mark a web app |
+| `excluded_paths` | `[]` | Path fragments naming files this check skips even inside a banned directory |
 
 ### `NoIdentityRewrap`
 

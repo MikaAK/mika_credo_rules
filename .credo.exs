@@ -21,6 +21,7 @@
         {MikaCredoRules.NoBlanketRescue, []},
         {MikaCredoRules.NoCastAllKeys, []},
         {MikaCredoRules.NoContinueFromLiveViewMount, []},
+        {MikaCredoRules.NoEctoSchemaInWebApp, []},
         {MikaCredoRules.NoIdentityRewrap, []},
         {MikaCredoRules.NoJasonDeriveOnEctoSchema, []},
         {MikaCredoRules.NoMixEnvAtRuntime, []},
