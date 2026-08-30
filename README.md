@@ -59,6 +59,7 @@ checks: %{
 | [`NoBlanketRescue`](#noblanketrescue) | `:warning` | Catch-all rescue clauses that swallow exceptions |
 | [`NoCastAllKeys`](#nocastallkeys) | `:warning` | `cast(data, params, Map.keys(params))` — a mass-assignment hole |
 | [`NoDirectErlangRpc`](#nodirecterlangrpc) | `:design` | Direct `:rpc`/`:erpc` calls and `Node.spawn*` — route through your app's RPC wrapper |
+| [`NoDirectHttpClient`](#nodirecthttpclient) | `:design` | Direct `Finch`/`HTTPoison`/`Tesla`/`Req` calls — route through your app's HTTP wrapper |
 | [`NoIdentityRewrap`](#noidentityrewrap) | `:refactor` | `case` expressions whose every clause returns its pattern unchanged |
 | [`NoJasonDeriveOnEctoSchema`](#nojasonderiveonectoschema) | `:design` | `@derive Jason.Encoder` inside Ecto schema modules |
 | [`NoMixEnvAtRuntime`](#nomixenvatruntime) | `:warning` | `Mix.env()`/`Mix.target()` in compiled code — crashes in releases |
@@ -283,6 +284,44 @@ same wrapper.
 | `erlang_modules` | `[:rpc, :erpc]` | Erlang modules banned outright — every remote call on one of these is flagged |
 | `functions` | `[{Node, :spawn}, {Node, :spawn_link}, {Node, :spawn_monitor}]` | `{module, function}` pairs to ban, alias-aware |
 | `excluded_paths` | `["rpc_load_balancer/", "elixir_cache/"]` | Path fragments naming files exempt from the check (matched on segment boundaries) — the libraries that implement the wrapper itself |
+
+### `NoDirectHttpClient`
+
+Direct HTTP client libraries must not be used — call the app's HTTP wrapper
+instead. Scattered `Finch`, `HTTPoison`, `Tesla`, or `Req` calls duplicate
+pooling, header, and error-mapping logic that `SharedUtils.HTTP` already
+provides.
+
+```elixir
+# BAD — in a context module
+Finch.build(:get, url) |> Finch.request(MyFinch)
+
+# GOOD
+SharedUtils.HTTP.get(url, headers)
+```
+
+`use Tesla` and alias-free calls (`Finch.build/3` with no prior `alias`) are
+caught the same way as an explicit alias — every AST spelling of a banned
+module is checked, not just qualified remote calls, and `alias Req, as: R`
+followed by `R.get(url)` is still caught.
+
+Files under `excluded_paths` (default `["shared_utils/", "_api/"]`) are
+exempt. Matching happens on path-segment boundaries, so `_api/` does not
+exempt `lib/vendor/rest_api_notes/` — and a whole app directory that merely
+*ends* in `_api` (`tiingo_api/`) is matched only when the fragment is its own
+path segment; add such an app's own name to `excluded_paths` to exempt it
+specifically.
+
+**Why not the stock `Credo.Check.Warning.ForbiddenModule`?** It bans the same
+modules by name but is alias-blind (`alias Req, as: R; R.get(url)` evades it)
+and has no path-exemption mechanism, so it can't distinguish the wrapper layer
+from its callers.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `modules` | `[Finch, HTTPoison, Tesla, Req]` | Elixir HTTP client modules to ban |
+| `erlang_modules` | `[:httpc, :hackney]` | Erlang HTTP client modules to ban |
+| `excluded_paths` | `["shared_utils/", "_api/"]` | Path fragments naming files exempt from the check (matched on segment boundaries) |
 
 ### `NoIdentityRewrap`
 

@@ -20,6 +20,7 @@
         {MikaCredoRules.NoBlanketRescue, []},
         {MikaCredoRules.NoCastAllKeys, []},
         {MikaCredoRules.NoDirectErlangRpc, []},
+        {MikaCredoRules.NoDirectHttpClient, []},
         {MikaCredoRules.NoIdentityRewrap, []},
         {MikaCredoRules.NoJasonDeriveOnEctoSchema, []},
         {MikaCredoRules.NoMixEnvAtRuntime, []},
