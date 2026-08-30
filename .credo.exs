@@ -12,6 +12,7 @@
       },
       strict: true,
       checks: [
+        {MikaCredoRules.AbsintheDataloaderPluginRequired, []},
         {MikaCredoRules.ErrorMessageRequired, []},
         {MikaCredoRules.GenServerRequiresHandleContinue, []},
         {MikaCredoRules.LiveViewSubscribeRequiresConnected, []},

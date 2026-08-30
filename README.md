@@ -51,6 +51,7 @@ checks: %{
 
 | Check | Category | What it catches |
 |---|---|---|
+| [`AbsintheDataloaderPluginRequired`](#absinthedataloaderpluginrequired) | `:warning` | A schema that builds a `Dataloader` but omits `Absinthe.Middleware.Dataloader` from `plugins/0` |
 | [`ErrorMessageRequired`](#errormessagerequired) | `:design` | `{:error, "string literal"}` tuples — use `%ErrorMessage{}` |
 | [`GenServerRequiresHandleContinue`](#genserverrequireshandlecontinue) | `:refactor` | Real work in `init/1` instead of `handle_continue/2` |
 | [`LiveViewSubscribeRequiresConnected`](#liveviewsubscriberequiresconnected) | `:warning` | A PubSub subscribe in `mount/3` not guarded by `connected?/1` |
@@ -76,6 +77,40 @@ checks: %{
 | [`TodosNeedTickets`](#todosneedtickets) | `:design` | TODO/FIXME comments without an adjacent ticket URL |
 
 ---
+
+### `AbsintheDataloaderPluginRequired`
+
+A `use Absinthe.Schema` module that builds a `Dataloader` must list
+`Absinthe.Middleware.Dataloader` in `plugins/0`. Absinthe never runs the
+Dataloader batches unless the middleware is registered — without it, every
+`dataloader/1,2` field compiles and runs fine but silently returns `nil`.
+
+```elixir
+# BAD — no plugins/0, so the loader never batches
+defmodule MyAppWeb.Schema do
+  use Absinthe.Schema
+
+  def context(ctx) do
+    loader = Dataloader.new() |> Dataloader.add_source(MyApp.Accounts, source())
+    Map.put(ctx, :loader, loader)
+  end
+end
+
+# GOOD — the plugin is registered alongside the framework defaults
+def plugins, do: [Absinthe.Middleware.Dataloader] ++ Absinthe.Plugin.defaults()
+```
+
+Only fires when the module actually builds a loader (`Dataloader.new` or
+`Dataloader.add_source`, alias-aware) — a schema with no Dataloader usage is
+left alone regardless of `plugins/0`. `plugins/0` is accepted in any shape as
+long as every required module appears somewhere in its body — a bare list or a
+`++` chain in either order. Scoped per module, not per file, the same way as
+[`NoJasonDeriveOnEctoSchema`](#nojasonderiveonectoschema).
+
+| Param | Default | Meaning |
+|---|---|---|
+| `required_plugins` | `[Absinthe.Middleware.Dataloader]` | Modules that must all appear in `plugins/0` when the schema builds a Dataloader |
+| `excluded_paths` | `[]` | Path fragments naming files this check skips |
 
 ### `ErrorMessageRequired`
 
