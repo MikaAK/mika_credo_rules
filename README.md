@@ -60,6 +60,7 @@ checks: %{
 | [`NoCastAllKeys`](#nocastallkeys) | `:warning` | `cast(data, params, Map.keys(params))` — a mass-assignment hole |
 | [`NoIdentityRewrap`](#noidentityrewrap) | `:refactor` | `case` expressions whose every clause returns its pattern unchanged |
 | [`NoJasonDeriveOnEctoSchema`](#nojasonderiveonectoschema) | `:design` | `@derive Jason.Encoder` inside Ecto schema modules |
+| [`NoKernelPrefix`](#nokernelprefix) | `:readability` | `Kernel.inspect(value)` — `Kernel` is auto-imported, drop the prefix |
 | [`NoMixEnvAtRuntime`](#nomixenvatruntime) | `:warning` | `Mix.env()`/`Mix.target()` in compiled code — crashes in releases |
 | [`NoMockingLibraries`](#nomockinglibraries) | `:design` | Any reference to Mox, Hammox, Mock, Mimic, Patch or `:meck` |
 | [`NoNilComparison`](#nonilcomparison) | `:readability` | `x == nil` / `x != nil` — use `is_nil/1` |
@@ -307,6 +308,39 @@ nested `defmodule` without its own `use Ecto.Schema` is a separate scope. Every
 spelling of both modules is caught, including aliases and `@derive` lists.
 `defimpl Jason.Encoder` is out of scope — a `defimpl` is its own module and can
 live in the JSON layer.
+
+### `NoKernelPrefix`
+
+`Kernel` is auto-imported — never prefix a `Kernel` function with the module
+name. Every function in `Kernel` is already callable unqualified, so
+`Kernel.inspect(value)` says nothing `inspect(value)` doesn't already say.
+
+```elixir
+# BAD
+Kernel.inspect(value)
+Kernel.length(list)
+
+# GOOD
+inspect(value)
+length(list)
+```
+
+Operator captures are exempt — `&Kernel.+/2`, `&Kernel.>=/2`, `&Kernel.!/1` are
+the only way to capture an operator, since `&+/2` is not valid syntax. A
+capture of a named function (`&Kernel.inspect/1`) is not exempt: `&inspect/1`
+already works unqualified, so it is flagged like the call form. The module
+must resolve to exactly `Kernel` — `Kernel.SpecialForms` and
+`Kernel.ParallelCompiler` are never flagged, and aliasing/shadowing is
+resolved the same way as every other check in this package.
+
+`LoggerModulePrefixAndInspect` tolerates `Kernel.inspect(value)` inside a
+Logger call (it matches qualified spellings on the function name). This check
+tightens that outside of Logger messages.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `allowed_functions` | `[]` | Function name atoms allowed to keep the `Kernel.` prefix anyway |
+| `excluded_paths` | `[]` | Path fragments naming files this check skips |
 
 ### `NoMixEnvAtRuntime`
 

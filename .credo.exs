@@ -21,6 +21,7 @@
         {MikaCredoRules.NoCastAllKeys, []},
         {MikaCredoRules.NoIdentityRewrap, []},
         {MikaCredoRules.NoJasonDeriveOnEctoSchema, []},
+        {MikaCredoRules.NoKernelPrefix, []},
         {MikaCredoRules.NoMixEnvAtRuntime, []},
         {MikaCredoRules.NoMockingLibraries, []},
         {MikaCredoRules.NoNilComparison, []},
