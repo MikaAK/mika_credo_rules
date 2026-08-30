@@ -4,20 +4,26 @@ defmodule MikaCredoRules.TodosNeedTickets do
     base_priority: :high,
     category: :design,
     param_defaults: [
-      tags: ["Todo", "TODO", "Fixme", "FIXME"],
-      ticket_url: "http"
+      tags: ["TODO", "FIXME", "OPTIMIZE", "HACK", "REVIEW"],
+      ticket_url: "http",
+      require_uppercase: false
     ],
     explanations: [
       params: [
         tags: """
-        A list of tag words treated as todos. Matching is case-insensitive, so the
-        default list collapses to TODO and FIXME in any casing.
+        A list of tag words treated as todos. Matching is case-insensitive, so a
+        default entry like `"TODO"` matches `TODO`, `Todo` and `todo` alike.
         """,
         ticket_url: """
         The substring a line must contain to count as a ticket reference. The
         default of `"http"` accepts any `http://` or `https://` URL. Set it to your
         tracker's URL prefix (e.g. `"https://linear.app/company/issue/"`) so only
         real tickets count.
+        """,
+        require_uppercase: """
+        When `true`, a tag must be spelled in uppercase and immediately followed by
+        a colon (`TODO:`) — `todo:` and `Todo:` are reported even when ticketed.
+        Defaults to `false`.
         """
       ]
     ]
@@ -28,8 +34,9 @@ defmodule MikaCredoRules.TodosNeedTickets do
   Every todo comment must reference a ticket URL on the same or an adjacent line.
 
   A todo without a ticket has no owner, no priority and no deadline — it is a wish,
-  not a plan. Every TODO/FIXME comment must carry a ticket URL on its own line, the
-  line directly above it or the line directly below it.
+  not a plan. Every annotation comment (`TODO`, `FIXME`, `OPTIMIZE`, `HACK`,
+  `REVIEW` by default) must carry a ticket URL on its own line, the line directly
+  above it or the line directly below it.
 
       # BAD — nothing tracks this
       # TODO: make this faster
@@ -58,6 +65,17 @@ defmodule MikaCredoRules.TodosNeedTickets do
   `:ticket_url` param to your tracker's URL prefix so only real tickets count:
 
       {MikaCredoRules.TodosNeedTickets, ticket_url: "https://linear.app/company/issue/"}
+
+  Setting `:require_uppercase` to `true` additionally requires the tag itself to be
+  spelled in uppercase and immediately followed by a colon. This is a formatting
+  check, independent of ticketing — it fires even when the todo already carries a
+  ticket URL:
+
+      # BAD (require_uppercase: true) — lowercase tag, reported even though ticketed
+      # todo: make this faster, see https://linear.app/company/issue/443
+
+      # GOOD (require_uppercase: true) — uppercase tag with a colon
+      # TODO: make this faster, see https://linear.app/company/issue/443
   """
   @explanation [check: @moduledoc]
 
@@ -69,12 +87,67 @@ defmodule MikaCredoRules.TodosNeedTickets do
     issue_meta = IssueMeta.for(source_file, params)
     tags = Params.get(params, :tags, __MODULE__)
     ticket_url = Params.get(params, :ticket_url, __MODULE__)
+    require_uppercase = Params.get(params, :require_uppercase, __MODULE__)
     source_lines = source_lines(source_file)
+    todo_tags = todo_tags(source_file, tags)
 
-    source_file
-    |> todo_tags(tags)
-    |> Enum.reject(&ticketed?(&1, source_lines, ticket_url))
-    |> Enum.map(&issue_for(&1, issue_meta, ticket_url))
+    missing_ticket_issues =
+      todo_tags
+      |> Enum.reject(&ticketed?(&1, source_lines, ticket_url))
+      |> Enum.map(&issue_for(&1, issue_meta, ticket_url))
+
+    casing_issues = casing_issues(todo_tags, tags, require_uppercase, issue_meta)
+
+    missing_ticket_issues ++ casing_issues
+  end
+
+  defp casing_issues(_todo_tags, _tags, false, _issue_meta), do: []
+
+  defp casing_issues(todo_tags, tags, true, issue_meta) do
+    todo_tags
+    |> Enum.map(&casing(&1, tags))
+    |> Enum.reject(&(is_nil(&1) or &1.compliant?))
+    |> Enum.map(&casing_issue_for(&1, issue_meta))
+  end
+
+  # Extracts how the tag itself was spelled — its written casing and whether a
+  # colon immediately follows — from the trigger text. `nil` when the tag word
+  # cannot be found (should not happen, since `text` already matched one of
+  # `tags` when it was collected).
+  defp casing({_type, line_no, text}, tags) do
+    case Enum.find_value(tags, &extract_tag_casing(text, &1)) do
+      {written, has_colon?} ->
+        %{
+          line_no: line_no,
+          written: written,
+          compliant?: uppercase_with_colon?(written, has_colon?)
+        }
+
+      nil ->
+        nil
+    end
+  end
+
+  defp uppercase_with_colon?(written, has_colon?) do
+    written === String.upcase(written) and has_colon?
+  end
+
+  defp extract_tag_casing(text, tag) do
+    regex = Regex.compile!("\\A\\s*(?:#\\s*)?(#{Regex.escape(tag)})(:?)", "i")
+
+    case Regex.run(regex, text) do
+      [_full, written, colon] -> {written, colon === ":"}
+      nil -> nil
+    end
+  end
+
+  defp casing_issue_for(violation, issue_meta) do
+    format_issue(issue_meta,
+      message:
+        "#{violation.written} found — annotation tags must be uppercase followed by a colon (TODO: …)",
+      trigger: violation.written,
+      line_no: violation.line_no
+    )
   end
 
   defp todo_tags(source_file, tags) do

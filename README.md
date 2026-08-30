@@ -37,13 +37,16 @@ Then add the checks you want to `.credo.exs`:
 
 Entries in `checks:` are **additive** — they merge with Credo's default check set
 rather than replacing it. If you enable `TodosNeedTickets`, disable Credo's
-built-in `TagTODO` (default-on, flags every TODO even ticketed ones — you'd get two
-issues per TODO):
+built-in `TagTODO` and `TagFIXME` (both default-on, flagging every TODO/FIXME even
+ticketed ones — you'd get two issues per todo):
 
 ```elixir
 checks: %{
   enabled: [{MikaCredoRules.TodosNeedTickets, []}],
-  disabled: [{Credo.Check.Design.TagTODO, []}]   # superseded by TodosNeedTickets
+  disabled: [
+    {Credo.Check.Design.TagTODO, []},    # superseded by TodosNeedTickets
+    {Credo.Check.Design.TagFIXME, []}    # superseded by TodosNeedTickets
+  ]
 }
 ```
 
@@ -554,10 +557,24 @@ Suppression is **per-todo**, not per-file — a URL elsewhere in the file does n
 excuse an unticketed TODO. For `@doc`/`@moduledoc` todos, the URL must appear
 somewhere in the same doc string.
 
+Setting `:require_uppercase` to `true` additionally requires the tag itself to be
+spelled in uppercase and immediately followed by a colon — this is a formatting
+check, independent of ticketing, so `# todo: ...` is reported even with a ticket
+URL attached.
+
+```elixir
+# BAD (require_uppercase: true) — lowercase tag, reported even though ticketed
+# todo: make this faster, see https://linear.app/company/issue/443
+
+# GOOD (require_uppercase: true) — uppercase tag with a colon
+# TODO: make this faster, see https://linear.app/company/issue/443
+```
+
 | Param | Default | Meaning |
 |---|---|---|
-| `tags` | `["Todo", "TODO", "Fixme", "FIXME"]` | Tag words treated as todos (case-insensitive) |
+| `tags` | `["TODO", "FIXME", "OPTIMIZE", "HACK", "REVIEW"]` | Tag words treated as todos (case-insensitive) |
 | `ticket_url` | `"http"` | Substring a line must contain to count as a ticket reference — set to your tracker's URL prefix so only real tickets count |
+| `require_uppercase` | `false` | When `true`, a tag must be uppercase and immediately followed by a colon (`TODO:`) — reported even when ticketed |
 
 ## License
 
