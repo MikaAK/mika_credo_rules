@@ -120,12 +120,10 @@ defmodule MikaCredoRules.TestOnlyDepsScopedTest do
   describe "&run/2 reports both violations independently" do
     test "the moduledoc BAD example fires with both missing options" do
       """
-      defmodule MyApp.MixProject do
-        defp deps do
-          [
-            {:credo, "~> 1.7"}
-          ]
-        end
+      defp deps do
+        [
+          {:credo, "~> 1.7"}
+        ]
       end
       """
       |> to_source_file("mix.exs")
@@ -160,13 +158,11 @@ defmodule MikaCredoRules.TestOnlyDepsScopedTest do
 
     test "the moduledoc GOOD example raises no issues" do
       """
-      defmodule MyApp.MixProject do
-        defp deps do
-          [
-            {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-            {:ex_doc, "~> 0.34", only: [:dev, :test], runtime: false}
-          ]
-        end
+      defp deps do
+        [
+          {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+          {:ex_doc, "~> 0.34", only: [:dev, :test], runtime: false}
+        ]
       end
       """
       |> to_source_file("mix.exs")

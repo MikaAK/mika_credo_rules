@@ -6,20 +6,18 @@ defmodule MikaCredoRules.InUmbrellaDepsNoVersionTest do
   describe "&run/2 flags an in_umbrella dep that pins a version requirement" do
     test "reports the moduledoc BAD example" do
       """
-      defmodule MyUmbrella.MixProject do
-        defp deps do
-          [
-            {:my_app, "~> 0.1", in_umbrella: true}
-          ]
-        end
+      defp deps do
+        [
+          {:shared_utils, "~> 0.1", in_umbrella: true}
+        ]
       end
       """
       |> to_source_file("mix.exs")
       |> run_check(InUmbrellaDepsNoVersion)
       |> assert_issue(fn issue ->
-        assert issue.line_no === 4
-        assert issue.trigger === ":my_app"
-        assert issue.message =~ ":my_app"
+        assert issue.line_no === 3
+        assert issue.trigger === ":shared_utils"
+        assert issue.message =~ ":shared_utils"
         assert issue.message =~ "in_umbrella: true"
       end)
     end
@@ -46,12 +44,10 @@ defmodule MikaCredoRules.InUmbrellaDepsNoVersionTest do
   describe "&run/2 leaves correctly-formed deps alone" do
     test "does not report the moduledoc GOOD example" do
       """
-      defmodule MyUmbrella.MixProject do
-        defp deps do
-          [
-            {:my_app, in_umbrella: true}
-          ]
-        end
+      defp deps do
+        [
+          {:shared_utils, in_umbrella: true}
+        ]
       end
       """
       |> to_source_file("mix.exs")
