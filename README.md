@@ -68,6 +68,7 @@ checks: %{
 | [`NoProcessSleepInTests`](#noprocesssleepintests) | `:warning` | `Process.sleep/1` and `:timer.sleep/1` in test files |
 | [`NoReimplementedHelper`](#noreimplementedhelper) | `:design` | Local re-implementations of shared library helpers |
 | [`NoSingleLetterVariables`](#nosinglelettervariables) | `:readability` | Single-letter variable bindings |
+| [`NoWordSigilLists`](#nowordsigillists) | `:readability` | `~w`/`~W` sigils — use a list literal instead |
 | [`RefuteOverAssertNot`](#refuteoverassertnot) | `:readability` | `assert !expr` / `assert not expr` — use `refute` |
 | [`SingleModulePerFile`](#singlemoduleperfile) | `:design` | More than one top-level `defmodule` per file (nested modules allowed) |
 | [`StrictEquality`](#strictequality) | `:warning` | `==`/`!=` — use `===`/`!==` (Ecto query DSL exempt) |
@@ -512,6 +513,35 @@ Enum.map(users, fn user -> user.name end)
 | Param | Default | Meaning |
 |---|---|---|
 | `allowed_names` | `[]` | Single-letter names allowed anyway — atoms or strings |
+
+### `NoWordSigilLists`
+
+Word lists must be written as list literals, never the `~w`/`~W` sigil. `~w(a b)`
+and `["a", "b"]` compile to the identical list — the sigil saves a few characters
+of quoting and costs more than it saves: it isn't greppable for a specific
+element, and `~w(a b)a` vs `~w(a b)` differ by one easily-missed trailing `a`
+where `[:a]` vs `["a"]` cannot be misread.
+
+```elixir
+# BAD
+@enforce_keys ~w(id type changes)a
+Map.take(changes, ~w(customer_id customer_name))
+
+# GOOD
+@enforce_keys [:id, :type, :changes]
+Map.take(changes, ["customer_id", "customer_name"])
+```
+
+**Volume warning:** this rule is absolute, not situational — every existing
+`~w`/`~W` site in a mature codebase is reported the first time this check is
+enabled. Adopt with a baseline (fix the reported sites, or exempt legacy
+directories through `:excluded_paths`) rather than expecting a clean run
+immediately.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `sigils` | `[:sigil_w, :sigil_W]` | Sigil node atoms to ban |
+| `excluded_paths` | `[]` | Path fragments naming files this check skips |
 
 ### `RefuteOverAssertNot`
 
