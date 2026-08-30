@@ -43,27 +43,26 @@ defmodule MikaCredoRules.NoInspectModuleInMigrationSqlTest do
   end
 
   describe "&run/2 flags string interpolation of a module alias" do
-    test "reports the moduledoc BAD example" do
+    test "reports the moduledoc first BAD example (inspect assigned then interpolated)" do
       """
       defmodule MyApp.Repo.Migrations.RescanQueue do
         use Ecto.Migration
 
         def change do
-          worker_list =
-            [DeveloperAi.Workers.TicketScanner]
-            |> Enum.map(&inspect/1)
-            |> Enum.join("','")
-
-          execute "UPDATE oban_jobs SET queue = 'scanner' WHERE worker IN ('\#{worker_list}')"
+          worker = inspect(DeveloperAi.Workers.TicketScanner)
+          execute "UPDATE oban_jobs SET worker = '\#{worker}'"
         end
       end
       """
       |> to_source_file(@migration_file)
       |> run_check(NoInspectModuleInMigrationSql)
-      |> refute_issues()
+      |> assert_issue(fn issue ->
+        assert issue.trigger === "inspect"
+        assert issue.line_no === 5
+      end)
     end
 
-    test "reports a direct interpolation of a module alias" do
+    test "reports the moduledoc second BAD example (direct interpolation)" do
       """
       defmodule MyApp.Repo.Migrations.RescanQueue do
         use Ecto.Migration
@@ -100,6 +99,41 @@ defmodule MikaCredoRules.NoInspectModuleInMigrationSqlTest do
 
   describe "&run/2 allows the moduledoc GOOD example and unrelated calls" do
     test "does not report the moduledoc GOOD example" do
+      """
+      defmodule MyApp.Repo.Migrations.RescanQueue do
+        use Ecto.Migration
+
+        def change do
+          execute "UPDATE oban_jobs SET worker = 'DeveloperAi.Workers.TicketScanner'"
+        end
+      end
+      """
+      |> to_source_file(@migration_file)
+      |> run_check(NoInspectModuleInMigrationSql)
+      |> refute_issues()
+    end
+
+    test "does not report the documented Enum.map(&inspect/1) capture limitation" do
+      """
+      defmodule MyApp.Repo.Migrations.RescanQueue do
+        use Ecto.Migration
+
+        def change do
+          worker_list =
+            [DeveloperAi.Workers.TicketScanner]
+            |> Enum.map(&inspect/1)
+            |> Enum.join("','")
+
+          execute "UPDATE oban_jobs SET queue = 'scanner' WHERE worker IN ('\#{worker_list}')"
+        end
+      end
+      """
+      |> to_source_file(@migration_file)
+      |> run_check(NoInspectModuleInMigrationSql)
+      |> refute_issues()
+    end
+
+    test "does not report the ~w workaround suggested for the capture limitation" do
       """
       defmodule MyApp.Repo.Migrations.RescanQueue do
         use Ecto.Migration

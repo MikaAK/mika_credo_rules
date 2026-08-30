@@ -387,17 +387,21 @@ and `"\#{MyApp.Worker}"` both render `"Elixir.MyApp.Worker"` — a `WHERE worker
 
 ```elixir
 # BAD
-worker_list = Enum.map([DeveloperAi.Workers.TicketScanner], &inspect/1) |> Enum.join("','")
-execute "UPDATE oban_jobs SET queue = 'scanner' WHERE worker IN ('#{worker_list}')"
+worker = inspect(DeveloperAi.Workers.TicketScanner)
+execute "UPDATE oban_jobs SET worker = '#{worker}'"
+
+# BAD
+execute "UPDATE oban_jobs SET worker = '#{DeveloperAi.Workers.TicketScanner}'"
 
 # GOOD
-workers = ~w(DeveloperAi.Workers.TicketScanner) |> Enum.join("','")
-execute "UPDATE oban_jobs SET queue = 'scanner' WHERE worker IN ('#{workers}')"
+execute "UPDATE oban_jobs SET worker = 'DeveloperAi.Workers.TicketScanner'"
 ```
 
 Both spellings are caught anywhere in a migration file. Only the literal-argument
-form is detected — an `inspect/1` capture applied indirectly to a list
-(`Enum.map([...], &inspect/1)`) is invisible to this check.
+form is detected — `Enum.map([...], &inspect/1) |> Enum.join("','")` is NOT
+caught, since `&inspect/1` there is a capture rather than a call with a literal
+alias argument. Prefer `~w(DeveloperAi.Workers.TicketScanner)` over that pattern
+regardless; this check just can't see through it.
 
 | Param | Default | Meaning |
 |---|---|---|

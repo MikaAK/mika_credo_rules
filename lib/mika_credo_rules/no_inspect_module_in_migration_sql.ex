@@ -36,12 +36,14 @@ defmodule MikaCredoRules.NoInspectModuleInMigrationSql do
   (...)` built from either never matches a row.
 
       # BAD
-      worker_list = Enum.map([DeveloperAi.Workers.TicketScanner], &inspect/1) |> Enum.join("','")
-      execute "UPDATE oban_jobs SET queue = 'scanner' WHERE worker IN ('\#{worker_list}')"
+      worker = inspect(DeveloperAi.Workers.TicketScanner)
+      execute "UPDATE oban_jobs SET worker = '\#{worker}'"
+
+      # BAD
+      execute "UPDATE oban_jobs SET worker = '\#{DeveloperAi.Workers.TicketScanner}'"
 
       # GOOD
-      workers = ~w(DeveloperAi.Workers.TicketScanner) |> Enum.join("','")
-      execute "UPDATE oban_jobs SET queue = 'scanner' WHERE worker IN ('\#{workers}')"
+      execute "UPDATE oban_jobs SET worker = 'DeveloperAi.Workers.TicketScanner'"
 
   Both spellings are caught anywhere in a migration file: `inspect(MyApp.Worker)`
   and `"\#{MyApp.Worker}"`. Module names have no business being rendered in a
@@ -49,10 +51,12 @@ defmodule MikaCredoRules.NoInspectModuleInMigrationSql do
 
   ## Limitations
 
-    * Only the literal-argument form is detected. The BAD example above is
-      flagged through its `Enum.join("','")` interpolation, not through the
-      `Enum.map([...], &inspect/1)` capture — an `inspect/1` capture applied
-      indirectly to a list is invisible to this check.
+    * Only the literal-argument form is detected.
+      `Enum.map([DeveloperAi.Workers.TicketScanner], &inspect/1) |> Enum.join("','")`
+      is NOT caught — `&inspect/1` there is a capture, not a call with a literal
+      alias argument, and the interpolated value by the time it reaches the
+      string is a plain variable. Prefer `~w(DeveloperAi.Workers.TicketScanner)`
+      over that pattern regardless; this check just can't see through it.
     * `:also_flag_interpolation` set to `false` narrows the check to `inspect/1`
       only.
   """
