@@ -171,34 +171,21 @@ defmodule MikaCredoRules.GenServerRequiresHandleContinue do
   """
   @explanation [check: @moduledoc]
 
-  @genserver_paths AstHelpers.module_paths(GenServer)
-
   @doc false
   @impl Credo.Check
   def run(source_file, params \\ []) do
-    if genserver_file?(source_file) do
+    if AstHelpers.uses_module?(source_file, [GenServer]) do
       issue_meta = IssueMeta.for(source_file, params)
       allowed_entries = allowed_entries(params)
 
       source_file
-      |> Credo.Code.prewalk(&collect_init_clauses/2)
+      |> AstHelpers.callback_clauses([:init])
       |> Enum.flat_map(&clause_violations(&1, allowed_entries))
       |> Enum.map(&issue_for(&1, issue_meta))
     else
       []
     end
   end
-
-  defp genserver_file?(source_file) do
-    Credo.Code.prewalk(source_file, &detect_use_genserver/2, false)
-  end
-
-  defp detect_use_genserver({:use, _, [{:__aliases__, _, path} | _]} = ast, _found)
-       when path in @genserver_paths do
-    {ast, true}
-  end
-
-  defp detect_use_genserver(ast, found), do: {ast, found}
 
   defp allowed_entries(params) do
     allowed = Params.get(params, :allowed_modules, __MODULE__)
@@ -216,20 +203,6 @@ defmodule MikaCredoRules.GenServerRequiresHandleContinue do
       _erlang_name -> module
     end
   end
-
-  defp collect_init_clauses({:def, _, [head, _body]} = ast, clauses) do
-    if init_head?(head) do
-      {ast, [ast | clauses]}
-    else
-      {ast, clauses}
-    end
-  end
-
-  defp collect_init_clauses(ast, clauses), do: {ast, clauses}
-
-  defp init_head?({:when, _, [head | _guards]}), do: init_head?(head)
-  defp init_head?({:init, _, [_single_arg]}), do: true
-  defp init_head?(_head), do: false
 
   # A `{:continue, _}` in the return does NOT excuse a blocking call: the call
   # still executes inside `init/1`, before `start_link/3` returns. Deferring means
