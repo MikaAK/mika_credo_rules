@@ -59,6 +59,7 @@ checks: %{
 | [`NoAtomStringKeyFallback`](#noatomstringkeyfallback) | `:warning` | `m["key"] \|\| m[:key]` mixed-key fallback reads — normalize keys at the boundary |
 | [`NoBlanketRescue`](#noblanketrescue) | `:warning` | Catch-all rescue clauses that swallow exceptions |
 | [`NoCastAllKeys`](#nocastallkeys) | `:warning` | `cast(data, params, Map.keys(params))` — a mass-assignment hole |
+| [`NoContinueFromLiveViewMount`](#nocontinuefromliveviewmount) | `:warning` | `mount/3` returning `{:ok, socket, {:continue, term}}` — a GenServer shape, not a LiveView one |
 | [`NoIdentityRewrap`](#noidentityrewrap) | `:refactor` | `case` expressions whose every clause returns its pattern unchanged |
 | [`NoJasonDeriveOnEctoSchema`](#nojasonderiveonectoschema) | `:design` | `@derive Jason.Encoder` inside Ecto schema modules |
 | [`NoMixEnvAtRuntime`](#nomixenvatruntime) | `:warning` | `Mix.env()`/`Mix.target()` in compiled code — crashes in releases |
@@ -114,6 +115,11 @@ def handle_continue(:load, _state), do: {:noreply, MyApp.Repo.all(Job)}
 | Param | Default | Meaning |
 |---|---|---|
 | `allowed_modules` | `[Access, Enum, Keyword, Kernel, List, Logger, Map, NimbleOptions, String, {Process, :flag}, {Process, :monitor}, {Process, :send_after}]` | Callable from `init/1` without deferring. A bare module allows every function on it; a `{module, function}` tuple grants one function surgically — the defaults allow `Process.flag/2` while a blocking `Process.sleep/1` in `init/1` stays flagged. The list replaces the default. Erlang modules are plain atoms (`:ets` or `{:ets, :new}`). |
+
+Cross-reference: [`NoContinueFromLiveViewMount`](#nocontinuefromliveviewmount)
+covers the same `{:continue, term}` shape from the opposite side — it *forbids*
+that return from LiveView's `mount/3`, a different callback this check has
+nothing to do with.
 
 ### `LiveViewSubscribeRequiresConnected`
 
@@ -288,6 +294,35 @@ qualified `Ecto.Changeset.cast(...)` and `Changeset.cast(...)` under an alias.
 Indirection through a variable (`fields = Map.keys(attrs)` then
 `cast(user, attrs, fields)`) is invisible to the check — literal lists, module
 attributes and variables are all left alone.
+
+### `NoContinueFromLiveViewMount`
+
+`mount/3` must not return `{:ok, socket, {:continue, term}}`. `{:continue, term}`
+is a `GenServer.init/1` return value — LiveView's `mount/3` does not implement
+that protocol, so returning it either does nothing or crashes depending on the
+LiveView version.
+
+```elixir
+# BAD — {:continue, _} is GenServer-only; mount/3 does not implement it
+def mount(_params, _session, socket), do: {:ok, socket, {:continue, :load}}
+
+# GOOD — gate the deferred load on connected?/1 and message yourself
+def mount(_params, _session, socket) do
+  if connected?(socket), do: send(self(), :load)
+  {:ok, socket}
+end
+```
+
+Only the clause's own last expression is inspected — a continue tuple produced
+inside a `case`/`cond` branch that isn't literally the trailing expression of
+the `def` body is not flagged. Mirror image of
+[`GenServerRequiresHandleContinue`](#genserverrequireshandlecontinue), which
+*requires* `{:continue, term}` from a GenServer's `init/1` — same shape,
+opposite callback, opposite advice.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `excluded_paths` | `[]` | Path fragments naming files this check skips |
 
 ### `NoIdentityRewrap`
 

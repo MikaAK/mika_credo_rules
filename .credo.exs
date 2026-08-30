@@ -20,6 +20,7 @@
         {MikaCredoRules.NoAtomStringKeyFallback, []},
         {MikaCredoRules.NoBlanketRescue, []},
         {MikaCredoRules.NoCastAllKeys, []},
+        {MikaCredoRules.NoContinueFromLiveViewMount, []},
         {MikaCredoRules.NoIdentityRewrap, []},
         {MikaCredoRules.NoJasonDeriveOnEctoSchema, []},
         {MikaCredoRules.NoMixEnvAtRuntime, []},
