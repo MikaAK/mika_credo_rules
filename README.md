@@ -54,6 +54,7 @@ checks: %{
 | [`ErrorMessageRequired`](#errormessagerequired) | `:design` | `{:error, "string literal"}` tuples — use `%ErrorMessage{}` |
 | [`GenServerRequiresHandleContinue`](#genserverrequireshandlecontinue) | `:refactor` | Real work in `init/1` instead of `handle_continue/2` |
 | [`LoggerModulePrefixAndInspect`](#loggermoduleprefixandinspect) | `:warning` | Logger messages missing the `#{__MODULE__}: ` prefix or interpolating values without `inspect/1` |
+| [`MigrationExecuteInChange`](#migrationexecuteinchange) | `:warning` | `execute/1` inside `def change` — irreversible, Ecto cannot roll it back |
 | [`NoApplicationEnvOutsideConfig`](#noapplicationenvoutsideconfig) | `:design` | Any read or write of application env outside a config module |
 | [`NoAtomStringKeyFallback`](#noatomstringkeyfallback) | `:warning` | `m["key"] \|\| m[:key]` mixed-key fallback reads — normalize keys at the boundary |
 | [`NoBlanketRescue`](#noblanketrescue) | `:warning` | Catch-all rescue clauses that swallow exceptions |
@@ -140,6 +141,35 @@ Qualified spellings of allowed functions match on the function name, so
 | `logger_functions` | `[:debug, :info, :warning, :warn, :error, :critical]` | Logger functions whose messages are checked |
 | `enforce_prefix` | `true` | Require the `__MODULE__` interpolation as the very first segment |
 | `allowed_interpolations` | `[:__MODULE__, :inspect]` | What may appear inside an interpolation — add your own formatting helpers |
+
+### `MigrationExecuteInChange`
+
+`execute/1` inside `def change` is irreversible — Ecto cannot roll it back. `change/0`
+serves both `up` and `down`; a single-argument `execute/1` has no down side, so
+`mix ecto.rollback` either does nothing for that statement or raises
+`Ecto.MigrationError`.
+
+```elixir
+# BAD — no way to roll this back
+def change do
+  execute "UPDATE users SET role = 'student' WHERE role IS NULL"
+end
+
+# GOOD — moved to up/down
+def up, do: execute("UPDATE users SET role = 'student' WHERE role IS NULL")
+def down, do: :ok
+
+# ALSO GOOD — reversible two-arg form
+def change, do: execute("CREATE EXTENSION citext", "DROP EXTENSION citext")
+```
+
+`execute/2` is fine everywhere — the second argument is the down statement, so the
+operation is reversible by construction. `execute/1` inside `def up` or `def down` is
+fine too — those functions already commit to irreversibility.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `migration_paths` | `["migrations/"]` | Path fragments (segment-boundary match) treated as migration directories |
 
 ### `NoApplicationEnvOutsideConfig`
 
