@@ -173,6 +173,19 @@ defmodule MikaCredoRules.NoPhxBindingsInHoloTemplateTest do
       |> refute_issues()
     end
 
+    test "reports a lookalike path that only contains the fragment as a substring" do
+      """
+      defmodule MyApp.ProductPage do
+        use Hologram.Page
+
+        def template, do: ~HOLO"<button phx-click=\\"save\\">Save</button>"
+      end
+      """
+      |> to_source_file("apps/my_app/lib/my_app/legacynotreally/product_page.ex")
+      |> run_check(NoPhxBindingsInHoloTemplate, excluded_paths: ["legacy/"])
+      |> assert_issue()
+    end
+
     test "does not report the moduledoc GOOD example" do
       """
       defmodule MyApp.ProductPage do
