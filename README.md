@@ -52,6 +52,7 @@ checks: %{
 | Check | Category | What it catches |
 |---|---|---|
 | [`DistributionRequiresBuckets`](#distributionrequiresbuckets) | `:warning` | `distribution/2` whose literal opts omit `:reporter_options` |
+| [`EctoMetricsRequiresAppAtom`](#ectometricsrequiresappatom) | `:warning` | `PrometheusTelemetry.Metrics.Ecto.metrics/0` — pass the app atom |
 | [`ErrorMessageRequired`](#errormessagerequired) | `:design` | `{:error, "string literal"}` tuples — use `%ErrorMessage{}` |
 | [`GenServerRequiresHandleContinue`](#genserverrequireshandlecontinue) | `:refactor` | Real work in `init/1` instead of `handle_continue/2` |
 | [`LoggerModulePrefixAndInspect`](#loggermoduleprefixandinspect) | `:warning` | Logger messages missing the `#{__MODULE__}: ` prefix or interpolating values without `inspect/1` |
@@ -106,6 +107,34 @@ silently skipped.
 |---|---|---|
 | `functions` | `[:distribution]` | `Telemetry.Metrics` functions checked |
 | `required_keys` | `[:reporter_options]` | Options that must be present in the literal opts |
+| `excluded_paths` | `[]` | Path fragments exempt from the check |
+
+### `EctoMetricsRequiresAppAtom`
+
+`PrometheusTelemetry.Metrics.Ecto.metrics/0` must not be called — pass the app
+atom. `metrics/1` takes exactly one argument (an app atom, used as the telemetry
+event-name prefix and the metric's label tag) and has no `metrics/0` clause —
+calling it with no arguments does not compile.
+
+```elixir
+# BAD — metrics/0 has no clause; this does not compile
+metrics: [PrometheusTelemetry.Metrics.Ecto.metrics()]
+
+# GOOD — the app atom is the telemetry event-name prefix and label
+metrics: [PrometheusTelemetry.Metrics.Ecto.metrics(:my_app)]
+```
+
+Every spelling of the module is caught, including
+`alias PrometheusTelemetry.Metrics` + `Metrics.Ecto.metrics()` and the
+fully-qualified `Elixir.PrometheusTelemetry.Metrics.Ecto.metrics()`. It
+deliberately never matches a bare `Ecto.metrics()` — even one reached via
+`alias PrometheusTelemetry.Metrics.Ecto` — because `Ecto` is too common a name
+to trust a bare alias for on its own; that spelling is a known false negative,
+accepted to avoid flagging an unrelated module that happens to be named `Ecto`.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `functions` | `[{PrometheusTelemetry.Metrics.Ecto, :metrics}]` | `{module, function}` pairs whose zero-arity call is banned |
 | `excluded_paths` | `[]` | Path fragments exempt from the check |
 
 ### `ErrorMessageRequired`

@@ -13,6 +13,7 @@
       strict: true,
       checks: [
         {MikaCredoRules.DistributionRequiresBuckets, []},
+        {MikaCredoRules.EctoMetricsRequiresAppAtom, []},
         {MikaCredoRules.ErrorMessageRequired, []},
         {MikaCredoRules.GenServerRequiresHandleContinue, []},
         {MikaCredoRules.LoggerModulePrefixAndInspect, []},
