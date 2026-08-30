@@ -68,6 +68,7 @@ checks: %{
 | [`NoProcessSleepInTests`](#noprocesssleepintests) | `:warning` | `Process.sleep/1` and `:timer.sleep/1` in test files |
 | [`NoReimplementedHelper`](#noreimplementedhelper) | `:design` | Local re-implementations of shared library helpers |
 | [`NoSingleLetterVariables`](#nosinglelettervariables) | `:readability` | Single-letter variable bindings |
+| [`NoTruthyAndOr`](#notruthyandor) | `:warning` | `and`/`or`/`not` on a provably-nilable operand (`opts[:key]`, `Map.get/2`, ...) — use `&&`/`\|\|`/`!` |
 | [`RefuteOverAssertNot`](#refuteoverassertnot) | `:readability` | `assert !expr` / `assert not expr` — use `refute` |
 | [`SingleModulePerFile`](#singlemoduleperfile) | `:design` | More than one top-level `defmodule` per file (nested modules allowed) |
 | [`StrictEquality`](#strictequality) | `:warning` | `==`/`!=` — use `===`/`!==` (Ecto query DSL exempt) |
@@ -499,6 +500,31 @@ Enum.map(users, fn user -> user.name end)
 | Param | Default | Meaning |
 |---|---|---|
 | `allowed_names` | `[]` | Single-letter names allowed anyway — atoms or strings |
+
+### `NoTruthyAndOr`
+
+`and`/`or`/`not` must not be used on a provably-nilable operand. `and`, `or`, and
+`not` require a strictly boolean operand and raise `BadBooleanError` the moment
+either side is `nil` — `opts[:key]`, `Map.get/2`, `Keyword.get/2`, and
+`List.first/1` all evaluate to `nil` when the value is absent.
+
+```elixir
+# BAD — crashes with BadBooleanError when opts[:key] is nil
+if opts[:llm_merge] or opts[:ai_review], do: ...
+
+# GOOD — ||/&&/! handle nil/falsy operands
+if opts[:llm_merge] || opts[:ai_review], do: ...
+```
+
+`Map.get/3`/`Keyword.get/3` are only flagged when the default argument is the
+literal `nil` — a non-nil default means the result can never be `nil` and is not
+flagged. Plain variables, ordinary function calls, and comparisons are never
+flagged.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `nilable_functions` | `[{Access, :get, 2}, {Map, :get, 2}, {Keyword, :get, 2}, {List, :first, 1}, {Map, :get, 3}, {Keyword, :get, 3}]` | `{module, function, arity}` shapes that count as provably nilable — `{Access, :get, 2}` also covers `x[:k]` bracket syntax |
+| `excluded_paths` | `[]` | Path fragments exempt from the check (segment-boundary matched) |
 
 ### `RefuteOverAssertNot`
 
