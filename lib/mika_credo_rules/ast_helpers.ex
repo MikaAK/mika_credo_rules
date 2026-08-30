@@ -116,4 +116,39 @@ defmodule MikaCredoRules.AstHelpers do
 
   defp strip_elixir_prefix([Elixir | segments]), do: segments
   defp strip_elixir_prefix(segments), do: segments
+
+  @doc """
+  Whether a literal keyword-list AST contains `key`.
+
+  Returns `:not_literal` when `ast` is not statically a keyword list — a
+  variable, a module attribute reference, a function call, or a list holding
+  anything other than atom-keyed pairs. Callers must treat `:not_literal` as
+  "skip", not as "missing" — a non-literal option list is opaque to a static
+  check, so flagging it would be a guess dressed up as a fact.
+
+      iex> MikaCredoRules.AstHelpers.keyword_literal_has_key?([max_attempts: 3, queue: :default], :max_attempts)
+      true
+
+      iex> MikaCredoRules.AstHelpers.keyword_literal_has_key?([queue: :default], :max_attempts)
+      false
+
+      iex> MikaCredoRules.AstHelpers.keyword_literal_has_key?([], :max_attempts)
+      false
+
+      iex> MikaCredoRules.AstHelpers.keyword_literal_has_key?({:opts, [], nil}, :max_attempts)
+      :not_literal
+
+  Shared by every check that flags a missing key in a literal option list.
+  `Keyword.keyword?/1` already recognises the shape of a literal keyword
+  list — a 2-element tuple is unwrapped identically in the quoted AST and in
+  a real runtime value — so there is nothing to hand-roll here.
+  """
+  @spec keyword_literal_has_key?(Macro.t(), atom()) :: true | false | :not_literal
+  def keyword_literal_has_key?(ast, key) do
+    if Keyword.keyword?(ast) do
+      Keyword.has_key?(ast, key)
+    else
+      :not_literal
+    end
+  end
 end

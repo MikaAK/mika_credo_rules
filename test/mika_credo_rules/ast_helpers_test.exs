@@ -74,6 +74,39 @@ defmodule MikaCredoRules.AstHelpersTest do
     end
   end
 
+  describe "keyword_literal_has_key?/2" do
+    test "returns true when the literal keyword list has the key" do
+      assert AstHelpers.keyword_literal_has_key?(
+               [max_attempts: 3, queue: :default],
+               :max_attempts
+             ) ===
+               true
+    end
+
+    test "returns false when the literal keyword list lacks the key" do
+      assert AstHelpers.keyword_literal_has_key?([queue: :default], :max_attempts) === false
+    end
+
+    test "returns false for an empty literal list" do
+      assert AstHelpers.keyword_literal_has_key?([], :max_attempts) === false
+    end
+
+    test "returns :not_literal for a variable" do
+      opts_var = {:opts, [line: 1], nil}
+
+      assert AstHelpers.keyword_literal_has_key?(opts_var, :max_attempts) === :not_literal
+    end
+
+    test "returns :not_literal for a non-keyword list" do
+      assert AstHelpers.keyword_literal_has_key?([1, 2, 3], :max_attempts) === :not_literal
+    end
+
+    test "returns :not_literal for a list with a non-atom key" do
+      assert AstHelpers.keyword_literal_has_key?([{"queue", :default}], :max_attempts) ===
+               :not_literal
+    end
+  end
+
   defp resolve(code, modules) do
     code
     |> Credo.SourceFile.parse("lib/sample.ex")
