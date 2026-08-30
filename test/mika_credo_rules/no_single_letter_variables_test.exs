@@ -347,6 +347,96 @@ defmodule MikaCredoRules.NoSingleLetterVariablesTest do
     end
   end
 
+  describe "&run/2 honours the :banned_names param" do
+    test "flags a banned multi-letter def parameter" do
+      """
+      defmodule MyApp.Worker do
+        def summarize(cs), do: cs
+      end
+      """
+      |> to_source_file()
+      |> run_check(NoSingleLetterVariables, banned_names: [:cs])
+      |> assert_issue(fn issue ->
+        assert issue.trigger === "cs"
+        assert issue.message =~ ~s("cs" found)
+      end)
+    end
+
+    test "accepts banned names given as strings" do
+      """
+      defmodule MyApp.Worker do
+        def summarize(cs), do: cs
+      end
+      """
+      |> to_source_file()
+      |> run_check(NoSingleLetterVariables, banned_names: ["cs"])
+      |> assert_issue(fn issue -> assert issue.trigger === "cs" end)
+    end
+
+    test "does not flag a name outside the default banned list" do
+      """
+      defmodule MyApp.Worker do
+        def summarize(cs), do: cs
+      end
+      """
+      |> to_source_file()
+      |> run_check(NoSingleLetterVariables)
+      |> refute_issues()
+    end
+
+    test "does not flag an underscore-prefixed banned name" do
+      """
+      defmodule MyApp.Worker do
+        def summarize(_cs), do: :ok
+      end
+      """
+      |> to_source_file()
+      |> run_check(NoSingleLetterVariables, banned_names: [:cs])
+      |> refute_issues()
+    end
+
+    test "reports a banned name once even when referenced again later" do
+      """
+      defmodule MyApp.Worker do
+        def summarize(cs) do
+          transform(cs)
+        end
+      end
+      """
+      |> to_source_file()
+      |> run_check(NoSingleLetterVariables, banned_names: [:cs])
+      |> assert_issue(fn issue -> assert issue.line_no === 2 end)
+    end
+
+    test "flags a banned name bound in a match, not just def parameters" do
+      """
+      defmodule MyApp.Worker do
+        def fetch do
+          {:ok, sf} = call()
+          sf
+        end
+      end
+      """
+      |> to_source_file()
+      |> run_check(NoSingleLetterVariables, banned_names: [:sf])
+      |> assert_issue(fn issue ->
+        assert issue.line_no === 3
+        assert issue.trigger === "sf"
+      end)
+    end
+
+    test "still flags single-letter names when banned_names is set" do
+      """
+      defmodule MyApp.Worker do
+        def double(x), do: x * 2
+      end
+      """
+      |> to_source_file()
+      |> run_check(NoSingleLetterVariables, banned_names: [:cs])
+      |> assert_issue(fn issue -> assert issue.trigger === "x" end)
+    end
+  end
+
   describe "&run/2 reports each binding site once" do
     test "does not double-report a variable bound in an alias pattern" do
       """
