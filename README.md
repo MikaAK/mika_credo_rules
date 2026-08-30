@@ -70,6 +70,7 @@ checks: %{
 | [`NoSingleLetterVariables`](#nosinglelettervariables) | `:readability` | Single-letter variable bindings |
 | [`RefuteOverAssertNot`](#refuteoverassertnot) | `:readability` | `assert !expr` / `assert not expr` — use `refute` |
 | [`SingleModulePerFile`](#singlemoduleperfile) | `:design` | More than one top-level `defmodule` per file (nested modules allowed) |
+| [`SqlSandboxPlugMustBeCompileGated`](#sqlsandboxplugmustbecompilegated) | `:warning` | `plug Phoenix.Ecto.SQL.Sandbox` not gated on `Application.compile_env/2,3` |
 | [`StrictEquality`](#strictequality) | `:warning` | `==`/`!=` — use `===`/`!==` (Ecto query DSL exempt) |
 | [`TodosNeedTickets`](#todosneedtickets) | `:design` | TODO/FIXME comments without an adjacent ticket URL |
 
@@ -569,6 +570,36 @@ at the call site. Test files are excluded by default.
 | Param | Default | Meaning |
 |---|---|---|
 | `excluded_paths` | `["test/", "test/support/", "_test.exs"]` | Path fragments and filename suffixes exempt from the check (segment-boundary matched) |
+
+### `SqlSandboxPlugMustBeCompileGated`
+
+`plug Phoenix.Ecto.SQL.Sandbox` must be compile-gated — never shipped unguarded.
+The sandbox plug hands any client that knows the header format control over the
+request's database connection; it exists purely so feature tests can share a
+transaction with the test process.
+
+```elixir
+# BAD — ships to prod
+plug Phoenix.Ecto.SQL.Sandbox
+
+# GOOD — gated on a flag only config/test.exs ever sets
+if Application.compile_env(:my_web, :sql_sandbox, false) do
+  plug Phoenix.Ecto.SQL.Sandbox
+end
+```
+
+Every spelling of the module is caught, including a prefix alias (`alias
+Phoenix.Ecto.SQL` then `plug SQL.Sandbox`). The gate's module is resolved the
+same alias-aware way, so a shadowing `alias MyApp.Application` correctly stops
+`if Application.compile_env(...)` from counting as a gate. A gate expressed
+through a module attribute (`if @sandbox?`) is **not** recognised — see the
+moduledoc's `## Known limitations` for the `# credo:disable-for-next-line`
+escape.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `gate_functions` | `[{Application, :compile_env}]` | `{module, function}` pairs whose call, found in an enclosing `if`'s condition, counts as gating the plug |
+| `excluded_paths` | `[]` | Path fragments naming files this check skips |
 
 ### `StrictEquality`
 

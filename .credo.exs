@@ -31,6 +31,7 @@
         {MikaCredoRules.NoSingleLetterVariables, []},
         {MikaCredoRules.RefuteOverAssertNot, []},
         {MikaCredoRules.SingleModulePerFile, []},
+        {MikaCredoRules.SqlSandboxPlugMustBeCompileGated, []},
         {MikaCredoRules.StrictEquality, []},
         {MikaCredoRules.TodosNeedTickets, []}
       ]
