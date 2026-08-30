@@ -29,6 +29,7 @@
         {MikaCredoRules.NoSelfSendZeroDelay, []},
         {MikaCredoRules.NoSingleLetterVariables, []},
         {MikaCredoRules.NoTaskAsyncInGenServer, []},
+        {MikaCredoRules.NoUnsupervisedTaskStart, []},
         {MikaCredoRules.RefuteOverAssertNot, []},
         {MikaCredoRules.SingleModulePerFile, []},
         {MikaCredoRules.StrictEquality, []},

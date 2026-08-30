@@ -68,6 +68,7 @@ checks: %{
 | [`NoSelfSendZeroDelay`](#noselfsendzerodelay) | `:refactor` | `Process.send_after(self(), _, 0)` and `send(self(), _)` in `init/1` — use `{:continue, term}` instead |
 | [`NoSingleLetterVariables`](#nosinglelettervariables) | `:readability` | Single-letter variable bindings |
 | [`NoTaskAsyncInGenServer`](#notaskasyncingenserver) | `:warning` | `Task.async`/`Task.Supervisor.async` inside a GenServer/GenStage callback — a crashing task takes the server down |
+| [`NoUnsupervisedTaskStart`](#nounsupervisedtaskstart) | `:warning` | `Task.start` — a crash inside it is silently discarded |
 | [`RefuteOverAssertNot`](#refuteoverassertnot) | `:readability` | `assert !expr` / `assert not expr` — use `refute` |
 | [`SingleModulePerFile`](#singlemoduleperfile) | `:design` | More than one top-level `defmodule` per file (nested modules allowed) |
 | [`StrictEquality`](#strictequality) | `:warning` | `==`/`!=` — use `===`/`!==` (Ecto query DSL exempt) |
@@ -517,6 +518,30 @@ is a different, unlinked API and is never flagged here.
 | `banned` | `[{Task, :async}, {Task.Supervisor, :async}]` | `{module, function}` pairs banned inside a callback body |
 | `callbacks` | `[:init, :handle_call, :handle_cast, :handle_info, :handle_continue, :handle_events, :handle_demand, :terminate]` | Function names whose bodies are inspected |
 | `behaviour_modules` | `[GenServer, GenStage]` | Modules whose `use` marks a file as worth scanning at all (alias-aware) |
+
+### `NoUnsupervisedTaskStart`
+
+`Task.start/1,3` must not be used — a crash inside the task is silently
+discarded. Nothing supervises it and nothing is linked to it, so the failure
+disappears with no log, no restart and no trace.
+
+```elixir
+# BAD — a crash here is silently lost
+def notify(payload), do: Task.start(fn -> send_webhook(payload) end)
+
+# GOOD — supervised; a crash is visible and can be handled
+def notify(payload) do
+  Task.Supervisor.start_child(MyApp.TaskSupervisor, fn -> send_webhook(payload) end)
+end
+```
+
+`Task.start_link/1,3` links the caller instead of losing the crash silently — a
+different, often intentional trade-off — so it is left alone by default.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `also_flag_start_link` | `false` | Also flag `Task.start_link/1,3` |
+| `excluded_paths` | `["_test.exs", "test/"]` | Path fragments naming files to skip (segment-boundary matched) |
 
 ### `RefuteOverAssertNot`
 
