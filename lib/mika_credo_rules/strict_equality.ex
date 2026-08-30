@@ -3,21 +3,7 @@ defmodule MikaCredoRules.StrictEquality do
     base_priority: :high,
     category: :warning,
     param_defaults: [
-      ignored_functions: [
-        :dynamic,
-        :from,
-        :where,
-        :or_where,
-        :having,
-        :or_having,
-        :select,
-        :select_merge,
-        :on,
-        :join,
-        :query,
-        :subquery,
-        :in
-      ]
+      ignored_functions: MikaCredoRules.AstHelpers.ecto_query_functions()
     ],
     explanations: [
       params: [
@@ -110,29 +96,25 @@ defmodule MikaCredoRules.StrictEquality do
   # Qualified calls are only exempt on Ecto.Query or an alias of it, so an ignored
   # function name on another module (`Enum.join/2`) never hides its arguments.
   defp traverse(
-         {{:., _, [{:__aliases__, _, module}, function]}, _, args} = ast,
+         {{:., _, [{:__aliases__, _, _module}, function]}, _, args} = ast,
          loose_comparisons,
          context
        )
        when is_atom(function) and is_list(args) do
-    if module in context.ecto_query_modules do
-      prune_ignored(ast, function, loose_comparisons, context)
-    else
-      {ast, loose_comparisons}
-    end
+    prune_if_ecto_query_call(ast, loose_comparisons, context)
   end
 
   defp traverse({function, _, args} = ast, loose_comparisons, context)
        when is_atom(function) and is_list(args) do
-    prune_ignored(ast, function, loose_comparisons, context)
+    prune_if_ecto_query_call(ast, loose_comparisons, context)
   end
 
   defp traverse(ast, loose_comparisons, _context), do: {ast, loose_comparisons}
 
   # Replacing an ignored call with a leaf stops the prewalk from descending into
   # its arguments, so only the call itself is exempt — never its whole line.
-  defp prune_ignored(ast, function, loose_comparisons, context) do
-    if function in context.ignored_functions do
+  defp prune_if_ecto_query_call(ast, loose_comparisons, context) do
+    if AstHelpers.ecto_query_call?(ast, context.ecto_query_modules, context.ignored_functions) do
       {nil, loose_comparisons}
     else
       {ast, loose_comparisons}

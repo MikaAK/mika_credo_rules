@@ -4,21 +4,7 @@ defmodule MikaCredoRules.NoBooleanLiteralComparison do
     category: :readability,
     param_defaults: [
       operators: [:==, :===, :!=, :!==],
-      ignored_functions: [
-        :dynamic,
-        :from,
-        :where,
-        :or_where,
-        :having,
-        :or_having,
-        :select,
-        :select_merge,
-        :on,
-        :join,
-        :query,
-        :subquery,
-        :in
-      ],
+      ignored_functions: MikaCredoRules.AstHelpers.ecto_query_functions(),
       excluded_paths: []
     ],
     explanations: [
@@ -128,21 +114,17 @@ defmodule MikaCredoRules.NoBooleanLiteralComparison do
   # Qualified calls are only exempt on Ecto.Query or an alias of it, so an
   # ignored function name on another module never borrows the exemption.
   defp traverse(
-         {{:., _, [{:__aliases__, _, module}, function]}, _, args} = ast,
+         {{:., _, [{:__aliases__, _, _module}, function]}, _, args} = ast,
          comparisons,
          context
        )
        when is_atom(function) and is_list(args) do
-    if module in context.ecto_query_modules do
-      prune_ignored(ast, function, comparisons, context)
-    else
-      {ast, comparisons}
-    end
+    prune_if_ecto_query_call(ast, comparisons, context)
   end
 
   defp traverse({function, _, args} = ast, comparisons, context)
        when is_atom(function) and is_list(args) do
-    prune_ignored(ast, function, comparisons, context)
+    prune_if_ecto_query_call(ast, comparisons, context)
   end
 
   defp traverse(ast, comparisons, _context), do: {ast, comparisons}
@@ -158,8 +140,8 @@ defmodule MikaCredoRules.NoBooleanLiteralComparison do
   # Replacing an ignored call with a leaf stops the prewalk from descending
   # into its arguments, so only the call itself is exempt — never its whole
   # line.
-  defp prune_ignored(ast, function, comparisons, context) do
-    if function in context.ignored_functions do
+  defp prune_if_ecto_query_call(ast, comparisons, context) do
+    if AstHelpers.ecto_query_call?(ast, context.ecto_query_modules, context.ignored_functions) do
       {nil, comparisons}
     else
       {ast, comparisons}
