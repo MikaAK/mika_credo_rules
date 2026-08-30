@@ -12,6 +12,7 @@
       },
       strict: true,
       checks: [
+        {MikaCredoRules.EnsureLoadedBeforeExported, []},
         {MikaCredoRules.ErrorMessageRequired, []},
         {MikaCredoRules.GenServerRequiresHandleContinue, []},
         {MikaCredoRules.LoggerModulePrefixAndInspect, []},

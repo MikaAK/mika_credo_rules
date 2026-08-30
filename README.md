@@ -51,6 +51,7 @@ checks: %{
 
 | Check | Category | What it catches |
 |---|---|---|
+| [`EnsureLoadedBeforeExported`](#ensureloadedbeforeexported) | `:warning` | `function_exported?`/`macro_exported?` not guarded by `Code.ensure_loaded?/1` |
 | [`ErrorMessageRequired`](#errormessagerequired) | `:design` | `{:error, "string literal"}` tuples — use `%ErrorMessage{}` |
 | [`GenServerRequiresHandleContinue`](#genserverrequireshandlecontinue) | `:refactor` | Real work in `init/1` instead of `handle_continue/2` |
 | [`LoggerModulePrefixAndInspect`](#loggermoduleprefixandinspect) | `:warning` | Logger messages missing the `#{__MODULE__}: ` prefix or interpolating values without `inspect/1` |
@@ -72,6 +73,32 @@ checks: %{
 | [`TodosNeedTickets`](#todosneedtickets) | `:design` | TODO/FIXME comments without an adjacent ticket URL |
 
 ---
+
+### `EnsureLoadedBeforeExported`
+
+`function_exported?/3` and `macro_exported?/3` must be guarded by
+`Code.ensure_loaded?/1` in the same clause body. `function_exported?/3` returns
+`false` for a module that has not yet been loaded into the current process's code
+table — not an error, just silently wrong — which flakes intermittently across
+ExUnit seeds instead of failing deterministically.
+
+```elixir
+# BAD — returns false on first access before the code table loads
+if function_exported?(graph_module, :compile, 1) do
+  graph_module.compile(opts)
+end
+
+# GOOD
+if Code.ensure_loaded?(graph_module) and function_exported?(graph_module, :compile, 1) do
+  graph_module.compile(opts)
+end
+```
+
+| Param | Default | Meaning |
+|---|---|---|
+| `functions` | `[:function_exported?, :macro_exported?]` | Module-capability checks that must be guarded |
+| `guard_functions` | `[{Code, :ensure_loaded?}, {Code, :ensure_loaded}, {Code, :ensure_compiled}, {Code, :ensure_compiled!}]` | `{module, function}` calls that satisfy the guard anywhere in the same clause body |
+| `excluded_paths` | `[]` | Path fragments exempt from the check (segment-boundary matched) |
 
 ### `ErrorMessageRequired`
 
