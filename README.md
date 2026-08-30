@@ -55,6 +55,7 @@ checks: %{
 | [`GenServerRequiresHandleContinue`](#genserverrequireshandlecontinue) | `:refactor` | Real work in `init/1` instead of `handle_continue/2` |
 | [`LoggerModulePrefixAndInspect`](#loggermoduleprefixandinspect) | `:warning` | Logger messages missing the `#{__MODULE__}: ` prefix or interpolating values without `inspect/1` |
 | [`MigrationExecuteInChange`](#migrationexecuteinchange) | `:warning` | `execute/1` inside `def change` — irreversible, Ecto cannot roll it back |
+| [`MigrationFlushBetweenExecuteAndQuery`](#migrationflushbetweenexecuteandquery) | `:warning` | A direct `repo().query` after `execute/1,2` with no `flush()` between them |
 | [`NoApplicationEnvOutsideConfig`](#noapplicationenvoutsideconfig) | `:design` | Any read or write of application env outside a config module |
 | [`NoAtomStringKeyFallback`](#noatomstringkeyfallback) | `:warning` | `m["key"] \|\| m[:key]` mixed-key fallback reads — normalize keys at the boundary |
 | [`NoBlanketRescue`](#noblanketrescue) | `:warning` | Catch-all rescue clauses that swallow exceptions |
@@ -170,6 +171,39 @@ fine too — those functions already commit to irreversibility.
 | Param | Default | Meaning |
 |---|---|---|
 | `migration_paths` | `["migrations/"]` | Path fragments (segment-boundary match) treated as migration directories |
+
+### `MigrationFlushBetweenExecuteAndQuery`
+
+A direct `repo().query`/`query!`/`query_many` call must not follow `execute/1,2` in
+the same migration body without a `flush()` between them. `execute/1,2` is DSL —
+Ecto queues it to run at the end of the migration, on the migration runner's
+connection. A direct query runs immediately, on a separate connection from the
+pool, so without `flush()` it sees the pre-`execute` state.
+
+```elixir
+# BAD — the SELECT runs before the UPDATE has committed
+def up do
+  execute "UPDATE oban_jobs SET queue = 'scanner' WHERE worker IN ('A','B')"
+  repo().query!("SELECT DISTINCT worker FROM oban_jobs WHERE queue = 'default'")
+end
+
+# GOOD — flush() forces the UPDATE to run first
+def up do
+  execute "UPDATE oban_jobs SET queue = 'scanner' WHERE worker IN ('A','B')"
+  flush()
+  repo().query!("SELECT DISTINCT worker FROM oban_jobs WHERE queue = 'default'")
+end
+```
+
+Only the top-level statements of a `def up`/`down`/`change` body are read — a plain,
+in-order scan for `execute`, `flush()` and a direct query call. An `execute`/query
+pair nested inside a conditional branch is invisible to this check.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `migration_paths` | `["migrations/"]` | Path fragments (segment-boundary match) treated as migration directories |
+| `direct_query_functions` | `[:query, :query!, :query_many]` | `repo()` functions that run immediately |
+| `flush_function` | `:flush` | The function that forces deferred `execute/1,2` statements to run |
 
 ### `NoApplicationEnvOutsideConfig`
 

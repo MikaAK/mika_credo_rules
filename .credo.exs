@@ -16,6 +16,7 @@
         {MikaCredoRules.GenServerRequiresHandleContinue, []},
         {MikaCredoRules.LoggerModulePrefixAndInspect, []},
         {MikaCredoRules.MigrationExecuteInChange, []},
+        {MikaCredoRules.MigrationFlushBetweenExecuteAndQuery, []},
         {MikaCredoRules.NoApplicationEnvOutsideConfig, []},
         {MikaCredoRules.NoAtomStringKeyFallback, []},
         {MikaCredoRules.NoBlanketRescue, []},
