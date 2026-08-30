@@ -199,6 +199,47 @@ defmodule MikaCredoRules.NoProcessSleepInTestsTest do
     end
   end
 
+  describe "&run/2 honours the :excluded_paths param" do
+    test "does not report a sleep inside an excluded timing fixture" do
+      """
+      defmodule MyApp.Test.Fixtures.TimingTest do
+        test "waits for the external clock to tick" do
+          Process.sleep(100)
+        end
+      end
+      """
+      |> to_source_file("apps/my_app/test/fixtures/timing/clock_test.exs")
+      |> run_check(NoProcessSleepInTests, excluded_paths: ["test/fixtures/timing/"])
+      |> refute_issues()
+    end
+
+    test "still reports a sleep in a test file that merely contains the excluded fragment as a substring" do
+      """
+      defmodule MyApp.WorkerTest do
+        test "eventually finishes" do
+          Process.sleep(100)
+        end
+      end
+      """
+      |> to_source_file("apps/my_app/test/fixtures/timing_helpers_test.exs")
+      |> run_check(NoProcessSleepInTests, excluded_paths: ["test/fixtures/timing/"])
+      |> assert_issue()
+    end
+
+    test "does not affect other test files when the param is left at its default" do
+      """
+      defmodule MyApp.WorkerTest do
+        test "eventually finishes" do
+          Process.sleep(100)
+        end
+      end
+      """
+      |> to_source_file(@test_file)
+      |> run_check(NoProcessSleepInTests)
+      |> assert_issue()
+    end
+  end
+
   describe "&run/2 honours the :functions param" do
     test "flags only the configured sleep functions" do
       """

@@ -400,10 +400,15 @@ Orders.update_status(order, :shipped)
 assert_receive {:order_updated, _}, 500
 ```
 
+Some suites keep a directory of timing fixtures that legitimately sleep (a fake
+clock, a poller driving a real external service). Exempt just those directories
+with `:excluded_paths` instead of disabling the whole check.
+
 | Param | Default | Meaning |
 |---|---|---|
 | `test_files` | `["_test.exs"]` | Path suffixes the check runs on — everything else is skipped |
 | `functions` | `[{Process, :sleep}, {:timer, :sleep}]` | Sleep functions to flag |
+| `excluded_paths` | `[]` | Path fragments exempt from the check (segment-boundary matched) |
 
 ### `NoReimplementedHelper`
 

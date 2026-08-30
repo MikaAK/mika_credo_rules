@@ -4,7 +4,8 @@ defmodule MikaCredoRules.NoProcessSleepInTests do
     category: :warning,
     param_defaults: [
       test_files: ["_test.exs"],
-      functions: [{Process, :sleep}, {:timer, :sleep}]
+      functions: [{Process, :sleep}, {:timer, :sleep}],
+      excluded_paths: []
     ],
     explanations: [
       params: [
@@ -19,6 +20,13 @@ defmodule MikaCredoRules.NoProcessSleepInTests do
         functions: """
         A list of `{module, function}` tuples naming the sleep functions to flag.
         Defaults to `Process.sleep/1` and erlang's `:timer.sleep/1`.
+        """,
+        excluded_paths: """
+        A list of path fragments exempt from the check, matched at a path-segment
+        boundary. Defaults to `[]`. Some test suites keep timing fixtures that
+        legitimately sleep (polling a real external clock, driving a fake
+        scheduler) — exempt just those directories rather than disabling the whole
+        check.
         """
       ]
     ]
@@ -55,13 +63,24 @@ defmodule MikaCredoRules.NoProcessSleepInTests do
 
   The check only runs on test files, identified by filename via the `:test_files`
   param — a sleep in `lib/` code (backoff, rate limiting) is outside this rule.
+
+  Some suites keep a directory of timing fixtures that legitimately sleep — a fake
+  clock, a poller driving a real external service. Exempt just those directories
+  with `:excluded_paths` instead of disabling the whole check:
+
+      {MikaCredoRules.NoProcessSleepInTests, excluded_paths: ["test/fixtures/timing/"]}
+
+  `:excluded_paths` matches at a path-segment boundary, same as every other path
+  fragment param in this package — `"test/fixtures/timing/"` does not exempt
+  `test/fixtures/timing_helpers_test.exs`, only files under the `timing/`
+  directory itself.
   """
   @explanation [check: @moduledoc]
 
   @doc false
   @impl Credo.Check
   def run(source_file, params \\ []) do
-    if test_file?(source_file.filename, test_files(params)) do
+    if checked_test_file?(source_file.filename, params) do
       issue_meta = IssueMeta.for(source_file, params)
       matchers = params |> Params.get(:functions, __MODULE__) |> build_matchers()
 
@@ -73,10 +92,21 @@ defmodule MikaCredoRules.NoProcessSleepInTests do
     end
   end
 
+  defp checked_test_file?(filename, params) do
+    test_file?(filename, test_files(params)) and
+      not excluded_path?(filename, excluded_paths(params))
+  end
+
   defp test_files(params), do: Params.get(params, :test_files, __MODULE__)
+
+  defp excluded_paths(params), do: Params.get(params, :excluded_paths, __MODULE__)
 
   defp test_file?(filename, test_files) do
     SourceFilter.matches_suffix?(filename, test_files)
+  end
+
+  defp excluded_path?(filename, excluded_paths) do
+    SourceFilter.matches_fragment?(filename, excluded_paths)
   end
 
   # Elixir modules appear in the AST as alias part lists, in both their plain and
