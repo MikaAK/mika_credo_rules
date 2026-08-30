@@ -67,6 +67,7 @@ checks: %{
 | [`NoRawMarkupInTemplates`](#norawmarkupintemplates) | `:design` | Literal `style="..."`, hardcoded hex colors, inline `<svg>`, and banned raw tags inside `~H`/`~F` bodies |
 | [`NoReimplementedHelper`](#noreimplementedhelper) | `:design` | Local re-implementations of shared library helpers |
 | [`NoSingleLetterVariables`](#nosinglelettervariables) | `:readability` | Single-letter variable bindings |
+| [`PhxValueNoDashes`](#phxvaluenodashes) | `:warning` | A dashed multiword `phx-value-*` key — LiveView never converts it, so a `%{"foo_bar" => _}` handler clause won't match |
 | [`RefuteOverAssertNot`](#refuteoverassertnot) | `:readability` | `assert !expr` / `assert not expr` — use `refute` |
 | [`SingleModulePerFile`](#singlemoduleperfile) | `:design` | More than one top-level `defmodule` per file (nested modules allowed) |
 | [`StrictEquality`](#strictequality) | `:warning` | `==`/`!=` — use `===`/`!==` (Ecto query DSL exempt) |
@@ -497,6 +498,37 @@ Enum.map(users, fn user -> user.name end)
 | Param | Default | Meaning |
 |---|---|---|
 | `allowed_names` | `[]` | Single-letter names allowed anyway — atoms or strings |
+
+### `PhxValueNoDashes`
+
+A multiword `phx-value-*` attribute key must use underscores, never dashes.
+LiveView takes the text after `phx-value-` verbatim as the param key —
+`phx-value-group-id` becomes `%{"group-id" => ...}`, the dash is kept, not
+converted — so a handler clause pattern-matching on `%{"group_id" => group_id}`
+never matches and the click raises `FunctionClauseError` instead of running.
+
+```elixir
+# BAD — never matches a %{"group_id" => _} handler clause
+~H"""
+<button phx-click="delete" phx-value-group-id={@id}>Delete</button>
+"""
+
+# GOOD
+~H"""
+<button phx-click="delete" phx-value-group_id={@id}>Delete</button>
+"""
+```
+
+Single-word keys (`phx-value-id`, `phx-value-kind`) are unaffected.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `sigils` | `[:sigil_H, :sigil_F]` | Which sigil names count as template bodies |
+| `excluded_paths` | `[]` | Path fragments whose files are skipped entirely |
+
+**Limitations.** Same as `NoRawMarkupInTemplates` — only `~H`/`~F` sigils
+colocated inside a `.ex`/`.exs` module are covered; a `.html.heex` file is
+never read by Credo.
 
 ### `RefuteOverAssertNot`
 
