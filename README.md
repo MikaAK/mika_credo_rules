@@ -66,6 +66,7 @@ checks: %{
 | [`NoProcessSleepInTests`](#noprocesssleepintests) | `:warning` | `Process.sleep/1` and `:timer.sleep/1` in test files |
 | [`NoReimplementedHelper`](#noreimplementedhelper) | `:design` | Local re-implementations of shared library helpers |
 | [`NoSingleLetterVariables`](#nosinglelettervariables) | `:readability` | Single-letter variable bindings |
+| [`NoTelemetrySupervisorModule`](#notelemetrysupervisormodule) | `:design` | A `*Telemetry` module using `Supervisor` — add a `PrometheusTelemetry` child spec instead |
 | [`PrometheusExporterMustBeGated`](#prometheusexportermustbegated) | `:warning` | `exporter: [enabled?: true]` — the metrics endpoint must be gated to prod |
 | [`RefuteOverAssertNot`](#refuteoverassertnot) | `:readability` | `assert !expr` / `assert not expr` — use `refute` |
 | [`SingleModulePerFile`](#singlemoduleperfile) | `:design` | More than one top-level `defmodule` per file (nested modules allowed) |
@@ -445,6 +446,39 @@ Enum.map(users, fn user -> user.name end)
 | Param | Default | Meaning |
 |---|---|---|
 | `allowed_names` | `[]` | Single-letter names allowed anyway — atoms or strings |
+
+### `NoTelemetrySupervisorModule`
+
+A dedicated `*Telemetry` supervisor module must not exist — add a
+`{PrometheusTelemetry, ...}` child spec to `application.ex` instead. `phx.new`
+generates a `MyAppWeb.Telemetry` supervisor wrapping `:telemetry_poller`; the
+house convention starts `PrometheusTelemetry` directly as a child of the
+application, so the separate supervisor module only adds indirection.
+
+```elixir
+# BAD — the file phx.new generates
+defmodule MyAppWeb.Telemetry do
+  use Supervisor
+
+  def start_link(arg), do: Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
+end
+
+# GOOD — a child spec in application.ex, no separate supervisor module
+children = [{PrometheusTelemetry, exporter: [enabled?: @is_prod], metrics: [...]}]
+```
+
+Flagged when a `defmodule`'s last name segment is a member of
+`:module_suffixes` **and** its own body contains `use Supervisor`. Scoped per
+module — a nested `defmodule Telemetry do ... end` is its own scope, the same
+way `NoJasonDeriveOnEctoSchema` scopes `@derive`, and `use Supervisor` is
+alias-aware: a project module shadowing the bare name (`alias MyApp.Supervisor`)
+is correctly not treated as Elixir's `Supervisor`.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `module_suffixes` | `[:Telemetry]` | Last-segment module names inspected |
+| `supervisor_modules` | `[Supervisor]` | Modules that count as the `Supervisor` behaviour in a `use` expression (alias-aware) |
+| `excluded_paths` | `[]` | Path fragments exempt from the check (segment-boundary matched) |
 
 ### `PrometheusExporterMustBeGated`
 
