@@ -56,6 +56,7 @@ checks: %{
 | [`LoggerModulePrefixAndInspect`](#loggermoduleprefixandinspect) | `:warning` | Logger messages missing the `#{__MODULE__}: ` prefix or interpolating values without `inspect/1` |
 | [`MigrationExecuteInChange`](#migrationexecuteinchange) | `:warning` | `execute/1` inside `def change` — irreversible, Ecto cannot roll it back |
 | [`MigrationFlushBetweenExecuteAndQuery`](#migrationflushbetweenexecuteandquery) | `:warning` | A direct `repo().query` after `execute/1,2` with no `flush()` between them |
+| [`MigrationForeignKeyNeedsIndex`](#migrationforeignkeyneedsindex) | `:warning` | A `references(...)` foreign key column with no covering index in the same migration |
 | [`NoApplicationEnvOutsideConfig`](#noapplicationenvoutsideconfig) | `:design` | Any read or write of application env outside a config module |
 | [`NoAtomStringKeyFallback`](#noatomstringkeyfallback) | `:warning` | `m["key"] \|\| m[:key]` mixed-key fallback reads — normalize keys at the boundary |
 | [`NoBlanketRescue`](#noblanketrescue) | `:warning` | Catch-all rescue clauses that swallow exceptions |
@@ -206,6 +207,39 @@ pair nested inside a conditional branch is invisible to this check.
 | `migration_paths` | `["migrations/"]` | Path fragments (segment-boundary match) treated as migration directories |
 | `direct_query_functions` | `[:query, :query!, :query_many]` | `repo()` functions that run immediately |
 | `flush_function` | `:flush` | The function that forces deferred `execute/1,2` statements to run |
+
+### `MigrationForeignKeyNeedsIndex`
+
+A `references(...)` foreign key column needs a covering index in the same
+migration file. An unindexed foreign key forces a sequential scan on every join
+and on every cascading delete or update from the referenced table — Postgres
+does not create one automatically for a `references/1,2` column the way it does
+for a primary key.
+
+```elixir
+# BAD
+create table(:users) do
+  add :organization_id, references(:organizations), null: false
+end
+
+# GOOD
+create table(:users) do
+  add :organization_id, references(:organizations), null: false
+end
+
+create index(:users, [:organization_id])
+```
+
+Any index whose column list includes the foreign key column covers it — a
+composite index counts regardless of the column's position, and a
+`concurrently: true` index counts the same as a plain one. Coverage is only
+checked within the same file; an index added in a different migration is
+invisible to this check.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `migration_paths` | `["migrations/"]` | Path fragments (segment-boundary match) treated as migration directories |
+| `index_functions` | `[:index, :unique_index]` | `create`/`create_if_not_exists` functions that count as an index |
 
 ### `NoApplicationEnvOutsideConfig`
 

@@ -17,6 +17,7 @@
         {MikaCredoRules.LoggerModulePrefixAndInspect, []},
         {MikaCredoRules.MigrationExecuteInChange, []},
         {MikaCredoRules.MigrationFlushBetweenExecuteAndQuery, []},
+        {MikaCredoRules.MigrationForeignKeyNeedsIndex, []},
         {MikaCredoRules.NoApplicationEnvOutsideConfig, []},
         {MikaCredoRules.NoAtomStringKeyFallback, []},
         {MikaCredoRules.NoBlanketRescue, []},
