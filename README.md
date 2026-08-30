@@ -56,6 +56,7 @@ checks: %{
 | [`LoggerModulePrefixAndInspect`](#loggermoduleprefixandinspect) | `:warning` | Logger messages missing the `#{__MODULE__}: ` prefix or interpolating values without `inspect/1` |
 | [`NoApplicationEnvOutsideConfig`](#noapplicationenvoutsideconfig) | `:design` | Any read or write of application env outside a config module |
 | [`NoAtomStringKeyFallback`](#noatomstringkeyfallback) | `:warning` | `m["key"] \|\| m[:key]` mixed-key fallback reads — normalize keys at the boundary |
+| [`NoBarePatternMatchOnFallible`](#nobarepatternmatchonfallible) | `:warning` | `{:ok, x} = call()` — a bare match with no handling for the failure path |
 | [`NoBlanketRescue`](#noblanketrescue) | `:warning` | Catch-all rescue clauses that swallow exceptions |
 | [`NoCastAllKeys`](#nocastallkeys) | `:warning` | `cast(data, params, Map.keys(params))` — a mass-assignment hole |
 | [`NoIdentityRewrap`](#noidentityrewrap) | `:refactor` | `case` expressions whose every clause returns its pattern unchanged |
@@ -201,6 +202,46 @@ either order. `Map.get/2`, `Map.get/3` and bracket access all count, in any
 combination, including adjacent reads inside a chained fallback. Different key
 names, same-type keys, different subjects and plain lookup-or-default
 (`params["id"] || %{}`) are never flagged.
+
+### `NoBarePatternMatchOnFallible`
+
+A bare `=` match against a fallible-tagged call must be handled explicitly with
+`case` or `with`, not left to crash with an opaque `MatchError`. `{:ok, user} =
+Accounts.fetch(id)` works right up until `Accounts.fetch/1` returns
+`{:error, reason}`, at which point it crashes with no context about why the call
+failed.
+
+```elixir
+# BAD — a MatchError with no context if the call fails
+def sync(id) do
+  {:ok, user} = Accounts.fetch(id)
+  broadcast(user)
+end
+
+# GOOD
+def sync(id) do
+  with {:ok, user} <- Accounts.fetch(id) do
+    broadcast(user)
+  end
+end
+```
+
+Only a match whose right-hand side is an actual call — a local call, a remote
+call, or a pipe — is flagged. Rebinding an already-tagged value
+(`{:ok, user} = result`) reads as a shape assertion and is left alone, and a
+`case`/`fn` clause head that binds a shape (`{:ok, _} = result -> ...`) is a
+pattern, not a statement, so only its body is inspected. `<-` in `with` and
+`for` is a different construct entirely and is never matched.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `tags` | `[:ok, :error]` | Atoms that mark a 2-tuple as fallible. |
+| `excluded_paths` | `["_test.exs", "test/", "application.ex"]` | Path fragments exempt from the check — tests use the bare match as an assertion, and a boot-time `{:ok, pid} = Supervisor.start_link(...)` in `application.ex` is deliberate. |
+
+**Limitations.** Only a literal local call, remote call, or pipe on the
+right-hand side counts as a call. A control-flow expression (`case`, `if`,
+`cond`, `for`, a `fn`) on the right-hand side is never flagged, even when it
+ultimately returns a fallible-tagged tuple.
 
 ### `NoBlanketRescue`
 

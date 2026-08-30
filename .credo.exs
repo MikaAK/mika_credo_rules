@@ -17,6 +17,7 @@
         {MikaCredoRules.LoggerModulePrefixAndInspect, []},
         {MikaCredoRules.NoApplicationEnvOutsideConfig, []},
         {MikaCredoRules.NoAtomStringKeyFallback, []},
+        {MikaCredoRules.NoBarePatternMatchOnFallible, []},
         {MikaCredoRules.NoBlanketRescue, []},
         {MikaCredoRules.NoCastAllKeys, []},
         {MikaCredoRules.NoIdentityRewrap, []},
