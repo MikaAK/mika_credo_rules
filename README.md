@@ -550,6 +550,62 @@ somewhere in the same doc string.
 | `tags` | `["Todo", "TODO", "Fixme", "FIXME"]` | Tag words treated as todos (case-insensitive) |
 | `ticket_url` | `"http"` | Substring a line must contain to count as a ticket reference — set to your tracker's URL prefix so only real tickets count |
 
+## Adopting incrementally
+
+A repo that is green on stock Credo can still light up hundreds of issues on
+these checks. That is an adoption in progress, not a failure — the deliverable is
+"enable what passes, quantify the rest", never a mass rewrite.
+
+1. **Prove the baseline.** `git stash push .credo.exs mix.exs mix.lock && mix credo && git stash pop` —
+   old-config green means every new issue is attributable to these checks.
+2. **Read the file count.** `running N checks on 0 files` means `included` matches
+   nothing (`included` resolves relative to CWD, not the config file). Umbrella
+   roots need `["lib/", "test/", "apps/*/lib/", "apps/*/test/"]`. Checks that
+   inspect `mix.exs`, `.credo.exs` or `config/*.exs` need those paths listed too.
+3. **Tier every check before fixing anything** (`MIX_ENV=test mix credo --strict --only MikaCredoRules.<Check>`):
+   - **Free** (0 issues) — enable now; it locks in what the repo already does.
+   - **Mechanical** (semantics-preserving rewrite — `NoNilComparison`,
+     `RefuteOverAssertNot`, `StrictEquality`, `NoSingleLetterVariables`,
+     `LoggerModulePrefixAndInspect`) — fix, then enable.
+   - **Architectural** (`NoApplicationEnvOutsideConfig`, `ErrorMessageRequired`,
+     `NoBlanketRescue`, `GenServerRequiresHandleContinue`, the accessor-routing
+     checks) — defer; these change behaviour and ripple into tests.
+4. **Defer honestly.** `{MikaCredoRules.Check, false}, # not yet adopted: N issues / M files — reason`
+   in `.credo.exs`. Never mass-tune `excluded_paths` to fake a green — an enabled
+   check that skips 70 files is worse than an honest `false`.
+5. **Fix all sites or none.** A check with one remaining issue is exactly as
+   deferred as one with fifty.
+6. **Commit fixes first, the config enable last** — every commit green in isolation.
+
+## Stock Credo checks worth enabling
+
+Several house conventions are already covered by checks that ship with Credo but
+are **off by default**. Enable them instead of writing (or asking for) a new check:
+
+| Convention | Enable |
+|---|---|
+| Never `alias X.Y.Z, as: Name` | `Credo.Check.Readability.AliasAs` |
+| Never pipe into `case`/`if`/`with` | `Credo.Check.Readability.BlockPipe` |
+| Pipe chains start with a raw value | `Credo.Check.Refactor.PipeChainStart` |
+| A single-op pipe is a direct call | `Credo.Check.Readability.SinglePipe` |
+| Parentheses on one-arity functions in pipes | `Credo.Check.Readability.OneArityFunctionInPipe` |
+| Module layout order | `Credo.Check.Readability.StrictModuleLayout` with `order: [:moduledoc, :behaviour, :use, :import, :require, :alias, :module_attribute, :defstruct, :type, :callback, :macrocallback, :optional_callbacks, :public_macro, :public_guard, :public_fun, :private_fun]` |
+| Never `String.to_atom/1` on input | `Credo.Check.Warning.UnsafeToAtom` |
+| `not is_nil(x)` reads better as `!is_nil` | `Credo.Check.Refactor.NegatedIsNil` |
+| `async:` declared on every test case; `async: false` needs a comment | `Credo.Check.Refactor.PassAsyncInTestCases` with `force_comment_on_explicit_false: true` |
+| A skipped test needs a comment | `Credo.Check.Design.SkipTestWithoutComment` |
+| `@spec` on public functions | `Credo.Check.Readability.Specs` |
+| Ban a module outright (alias-blind) | `Credo.Check.Warning.ForbiddenModule` — `NoDirectHttpClient` / `NoRawEts` exist because they add alias resolution, path exemptions and a fix pointer |
+
+Two conventions are enforced by the compiler under `--warnings-as-errors` and need
+no check: rebinding a variable inside an `if`/`case` block (unused-variable
+warning) and `@doc` on a `defp`.
+
+If [`blitz_credo_checks`](https://hex.pm/packages/blitz_credo_checks) is already a
+dependency, `DocsBeforeSpecs`, `NoRampantRepos` (lib-side `Repo` calls — the
+complement of `NoRepoWritesInTests`), `NoAsyncFalse` and `SetWarningsAsErrorsInTest`
+cover their conventions; keep them.
+
 ## License
 
 MIT
