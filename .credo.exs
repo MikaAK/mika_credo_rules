@@ -30,6 +30,7 @@
         {MikaCredoRules.NoProcessSleepInTests, []},
         {MikaCredoRules.NoReimplementedHelper, []},
         {MikaCredoRules.NoSingleLetterVariables, []},
+        {MikaCredoRules.NoStaticNotLoadedDropList, []},
         {MikaCredoRules.RefuteOverAssertNot, []},
         {MikaCredoRules.SingleModulePerFile, []},
         {MikaCredoRules.StrictEquality, []},

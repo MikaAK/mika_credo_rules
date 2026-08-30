@@ -69,6 +69,7 @@ checks: %{
 | [`NoProcessSleepInTests`](#noprocesssleepintests) | `:warning` | `Process.sleep/1` and `:timer.sleep/1` in test files |
 | [`NoReimplementedHelper`](#noreimplementedhelper) | `:design` | Local re-implementations of shared library helpers |
 | [`NoSingleLetterVariables`](#nosinglelettervariables) | `:readability` | Single-letter variable bindings |
+| [`NoStaticNotLoadedDropList`](#nostaticnotloadeddroplist) | `:design` | `Map.drop(map, [:__meta__, ...])` — a static drop-list scrubbing `%Ecto.Association.NotLoaded{}` |
 | [`RefuteOverAssertNot`](#refuteoverassertnot) | `:readability` | `assert !expr` / `assert not expr` — use `refute` |
 | [`SingleModulePerFile`](#singlemoduleperfile) | `:design` | More than one top-level `defmodule` per file (nested modules allowed) |
 | [`StrictEquality`](#strictequality) | `:warning` | `==`/`!=` — use `===`/`!==` (Ecto query DSL exempt) |
@@ -536,6 +537,36 @@ Enum.map(users, fn user -> user.name end)
 | Param | Default | Meaning |
 |---|---|---|
 | `allowed_names` | `[]` | Single-letter names allowed anyway — atoms or strings |
+
+### `NoStaticNotLoadedDropList`
+
+A static drop-list must not be used to scrub `%Ecto.Association.NotLoaded{}`
+values before serializing a schema. The list has no way to know about an
+association added next sprint — the new field silently slips through and crashes
+`Jason.encode!/1` at runtime. Reject unloaded associations by type instead.
+
+```elixir
+# BAD
+@association_keys [:__meta__, :workspace, :sessions]
+struct |> Map.from_struct() |> Map.drop(@association_keys)
+
+# GOOD
+struct
+|> Map.from_struct()
+|> Map.reject(fn {_key, value} -> match?(%Ecto.Association.NotLoaded{}, value) end)
+|> Map.delete(:__meta__)
+```
+
+The `:__meta__` marker is what makes the trigger unambiguous — a list containing
+`:__meta__` plus at least one other atom is a drop-list by construction.
+`Map.drop(map, [:__meta__])` alone is fine. Both a literal list argument and a
+module attribute holding one are caught, standalone and piped, and `Map` is
+matched alias-aware.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `marker_key` | `:__meta__` | The atom that marks a drop-list as an association-scrubbing list |
+| `excluded_paths` | `[]` | Path fragments (segment-boundary match) exempt from the check |
 
 ### `RefuteOverAssertNot`
 
