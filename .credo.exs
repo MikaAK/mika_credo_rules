@@ -24,6 +24,7 @@
         {MikaCredoRules.NoMixEnvAtRuntime, []},
         {MikaCredoRules.NoMockingLibraries, []},
         {MikaCredoRules.NoNilComparison, []},
+        {MikaCredoRules.NoObanInsertBang, []},
         {MikaCredoRules.NoProcessSleepInTests, []},
         {MikaCredoRules.NoReimplementedHelper, []},
         {MikaCredoRules.NoSingleLetterVariables, []},

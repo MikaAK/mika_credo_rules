@@ -63,6 +63,7 @@ checks: %{
 | [`NoMixEnvAtRuntime`](#nomixenvatruntime) | `:warning` | `Mix.env()`/`Mix.target()` in compiled code — crashes in releases |
 | [`NoMockingLibraries`](#nomockinglibraries) | `:design` | Any reference to Mox, Hammox, Mock, Mimic, Patch or `:meck` |
 | [`NoNilComparison`](#nonilcomparison) | `:readability` | `x == nil` / `x != nil` — use `is_nil/1` |
+| [`NoObanInsertBang`](#nobaninsertbang) | `:warning` | `Oban.insert!`/`Oban.insert_all!` in application code — prefer the non-bang form and handle `{:error, _}` |
 | [`NoProcessSleepInTests`](#noprocesssleepintests) | `:warning` | `Process.sleep/1` and `:timer.sleep/1` in test files |
 | [`NoReimplementedHelper`](#noreimplementedhelper) | `:design` | Local re-implementations of shared library helpers |
 | [`NoSingleLetterVariables`](#nosinglelettervariables) | `:readability` | Single-letter variable bindings |
@@ -378,6 +379,33 @@ def fallback(value) when is_nil(value), do: :default
 | Param | Default | Meaning |
 |---|---|---|
 | `operators` | `[:==, :!=, :===, :!==]` | Operators that count as a nil comparison when either operand is the `nil` literal |
+
+### `NoObanInsertBang`
+
+`Oban.insert!/1,2,3` and `Oban.insert_all!/1,2,3` must not be used in application
+code. `Oban.insert!` raises on failure — a changeset error, a database blip — taking
+down the calling process. `Oban.insert/1` returns `{:ok, job} | {:error, reason}`,
+which lets the caller decide how to respond instead of crashing.
+
+```elixir
+# BAD — a changeset error crashes the caller
+def enqueue(id), do: Oban.insert!(MyApp.Workers.Sync.new(%{id: id}))
+
+# GOOD — the caller decides how to respond
+def enqueue(id) do
+  with {:ok, _job} <- Oban.insert(MyApp.Workers.Sync.new(%{id: id})), do: :ok
+end
+```
+
+Every spelling of the module is caught, including `alias Oban, as: MyOban` and the
+fully-qualified `Elixir.Oban.insert!(...)`. `Oban.insert_all!/1,2,3` is not part of
+Oban's public API as of Oban 2.19–2.22 — it is kept in the default `:functions`
+list defensively and currently never matches real Oban.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `functions` | `[:insert!, :insert_all!]` | `Oban` functions that count as a raising insert |
+| `excluded_paths` | `["_test.exs", "test/", "seeds"]` | Path fragments exempt from the check — a bang insert is legitimate test/seed setup |
 
 ### `NoProcessSleepInTests`
 
