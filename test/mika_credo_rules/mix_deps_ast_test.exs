@@ -92,6 +92,7 @@ defmodule MikaCredoRules.MixDepsAstTest do
     test "returns the AST line when already known" do
       source =
         Credo.SourceFile.parse("defp deps, do: [{:credo, \"~> 1.7\", runtime: false}]", "mix.exs")
+
       [dep] = MixDepsAst.deps(source)
 
       assert MixDepsAst.line_no(dep, source) === dep.line_no

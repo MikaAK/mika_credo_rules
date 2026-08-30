@@ -14,6 +14,7 @@
       checks: [
         {MikaCredoRules.ErrorMessageRequired, []},
         {MikaCredoRules.GenServerRequiresHandleContinue, []},
+        {MikaCredoRules.InUmbrellaDepsNoVersion, []},
         {MikaCredoRules.LoggerModulePrefixAndInspect, []},
         {MikaCredoRules.NoApplicationEnvOutsideConfig, []},
         {MikaCredoRules.NoAtomStringKeyFallback, []},

@@ -53,6 +53,7 @@ checks: %{
 |---|---|---|
 | [`ErrorMessageRequired`](#errormessagerequired) | `:design` | `{:error, "string literal"}` tuples — use `%ErrorMessage{}` |
 | [`GenServerRequiresHandleContinue`](#genserverrequireshandlecontinue) | `:refactor` | Real work in `init/1` instead of `handle_continue/2` |
+| [`InUmbrellaDepsNoVersion`](#inumbrelladepsnoversion) | `:readability` | `{:app, "~> x", in_umbrella: true}` — a version requirement on an in_umbrella dep |
 | [`LoggerModulePrefixAndInspect`](#loggermoduleprefixandinspect) | `:warning` | Logger messages missing the `#{__MODULE__}: ` prefix or interpolating values without `inspect/1` |
 | [`NoApplicationEnvOutsideConfig`](#noapplicationenvoutsideconfig) | `:design` | Any read or write of application env outside a config module |
 | [`NoAtomStringKeyFallback`](#noatomstringkeyfallback) | `:warning` | `m["key"] \|\| m[:key]` mixed-key fallback reads — normalize keys at the boundary |
@@ -113,6 +114,37 @@ def handle_continue(:load, _state), do: {:noreply, MyApp.Repo.all(Job)}
 | Param | Default | Meaning |
 |---|---|---|
 | `allowed_modules` | `[Access, Enum, Keyword, Kernel, List, Logger, Map, NimbleOptions, String, {Process, :flag}, {Process, :monitor}, {Process, :send_after}]` | Callable from `init/1` without deferring. A bare module allows every function on it; a `{module, function}` tuple grants one function surgically — the defaults allow `Process.flag/2` while a blocking `Process.sleep/1` in `init/1` stays flagged. The list replaces the default. Erlang modules are plain atoms (`:ets` or `{:ets, :new}`). |
+
+### `InUmbrellaDepsNoVersion`
+
+An `in_umbrella: true` dependency must not also pin a version requirement. An
+in-umbrella dependency is resolved from the sibling app's own `mix.exs`, never
+from Hex — a version requirement on it is dead weight that can drift from the
+sibling's actual version and never gets enforced.
+
+```elixir
+# BAD — the version requirement is never checked against anything
+defp deps do
+  [
+    {:shared_utils, "~> 0.1", in_umbrella: true}
+  ]
+end
+
+# GOOD — the sibling app's own mix.exs is the only source of truth
+defp deps do
+  [
+    {:shared_utils, in_umbrella: true}
+  ]
+end
+```
+
+Only the 3-tuple form can trigger this — a 2-tuple `{:app, in_umbrella: true}`
+has no version slot to remove. `mix.exs` is matched by **basename**, not path
+suffix, so `lib/remix.exs` is never mistaken for a project file.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `mix_files` | `["mix.exs"]` | Filenames (matched by basename) treated as mix.exs files |
 
 ### `LoggerModulePrefixAndInspect`
 
