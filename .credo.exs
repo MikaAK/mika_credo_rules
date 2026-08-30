@@ -12,6 +12,7 @@
       },
       strict: true,
       checks: [
+        {MikaCredoRules.CacheRequiresSandboxOption, []},
         {MikaCredoRules.ErrorMessageRequired, []},
         {MikaCredoRules.GenServerRequiresHandleContinue, []},
         {MikaCredoRules.LoggerModulePrefixAndInspect, []},

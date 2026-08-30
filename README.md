@@ -51,6 +51,7 @@ checks: %{
 
 | Check | Category | What it catches |
 |---|---|---|
+| [`CacheRequiresSandboxOption`](#cacherequiressandboxoption) | `:warning` | `use Cache, ...` without `sandbox?: Mix.env() === :test` |
 | [`ErrorMessageRequired`](#errormessagerequired) | `:design` | `{:error, "string literal"}` tuples — use `%ErrorMessage{}` |
 | [`GenServerRequiresHandleContinue`](#genserverrequireshandlecontinue) | `:refactor` | Real work in `init/1` instead of `handle_continue/2` |
 | [`LoggerModulePrefixAndInspect`](#loggermoduleprefixandinspect) | `:warning` | Logger messages missing the `#{__MODULE__}: ` prefix or interpolating values without `inspect/1` |
@@ -74,6 +75,41 @@ checks: %{
 | [`TodosNeedTickets`](#todosneedtickets) | `:design` | TODO/FIXME comments without an adjacent ticket URL |
 
 ---
+
+### `CacheRequiresSandboxOption`
+
+A `use Cache, ...` module definition must set `sandbox?: Mix.env() === :test` —
+without it, tests hit the real backend (Redis, ETS) and break async safety.
+
+```elixir
+# BAD — tests hit the real Redis backend
+defmodule MyApp.UserCache do
+  use Cache, adapter: Cache.Redis, name: :my_app_user_cache, opts: :my_app
+end
+
+# GOOD
+defmodule MyApp.UserCache do
+  use Cache,
+    adapter: Cache.Redis,
+    name: :my_app_user_cache,
+    sandbox?: Mix.env() === :test,
+    opts: :my_app
+end
+```
+
+Only a literal `use Cache, ...` keyword list is inspected — `use Cache, @opts`
+is left alone, since the check cannot reason about what an attribute holds.
+`Cache` is alias-aware: a project module shadowing the bare name
+(`alias MyApp.Cache`) is correctly not treated as `elixir_cache`'s `Cache`.
+`NoMixEnvAtRuntime` only flags `Mix.env()`/`Mix.target()` inside a `def`/`defp`
+body, so the module-body `sandbox?: Mix.env() === :test` this fix requires
+never conflicts with that check.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `cache_modules` | `[Cache]` | Modules that count as `elixir_cache`'s `Cache` in a `use` expression (alias-aware) |
+| `required_keys` | `[:sandbox?]` | Keys that must be present in the `use Cache, ...` literal keyword list |
+| `excluded_paths` | `[]` | Path fragments exempt from the check (segment-boundary matched) |
 
 ### `ErrorMessageRequired`
 
