@@ -51,6 +51,7 @@ checks: %{
 
 | Check | Category | What it catches |
 |---|---|---|
+| [`CacheOptsNoHardcodedUri`](#cacheoptsnohardcodeduri) | `:warning` | A literal `uri`/`host`/`port`/`password` inside `use Cache, ..., opts: [...]` |
 | [`CacheRequiresSandboxOption`](#cacherequiressandboxoption) | `:warning` | `use Cache, ...` without `sandbox?: Mix.env() === :test` |
 | [`ErrorMessageRequired`](#errormessagerequired) | `:design` | `{:error, "string literal"}` tuples — use `%ErrorMessage{}` |
 | [`GenServerRequiresHandleContinue`](#genserverrequireshandlecontinue) | `:refactor` | Real work in `init/1` instead of `handle_continue/2` |
@@ -75,6 +76,41 @@ checks: %{
 | [`TodosNeedTickets`](#todosneedtickets) | `:design` | TODO/FIXME comments without an adjacent ticket URL |
 
 ---
+
+### `CacheOptsNoHardcodedUri`
+
+A `use Cache, ..., opts: [...]` definition must not hardcode a connection
+secret or address — use runtime config instead. A literal `uri:`, `host:`,
+`port:` or `password:` in `opts:` bakes the connection target (and often a
+credential) into compiled code, shared by every environment the release
+ships to.
+
+```elixir
+# BAD — hardcoded in every environment, including the compiled release
+use Cache,
+  adapter: Cache.Redis,
+  name: :c,
+  sandbox?: Mix.env() === :test,
+  opts: [uri: "redis://localhost:6379"]
+
+# GOOD — resolved at runtime
+use Cache,
+  adapter: Cache.Redis,
+  name: :c,
+  sandbox?: Mix.env() === :test,
+  opts: {MyApp.Config, :redis_opts, []}
+```
+
+Only a literal `opts:` keyword list is inspected — an MFA tuple, an
+`{app, key}` tuple, an application-env atom, a zero-arity function reference,
+or a variable are all `elixir_cache`'s documented runtime-config forms and are
+never flagged. `Cache` is alias-aware, the same way as `CacheRequiresSandboxOption`.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `cache_modules` | `[Cache]` | Modules that count as `elixir_cache`'s `Cache` in a `use` expression (alias-aware) |
+| `literal_keys` | `[:uri, :host, :port, :password]` | `opts:` keys that must not carry a string or integer literal |
+| `excluded_paths` | `["elixir_cache/"]` | Path fragments exempt from the check (segment-boundary matched) — the library's own tests and adapters legitimately construct literal connection opts |
 
 ### `CacheRequiresSandboxOption`
 

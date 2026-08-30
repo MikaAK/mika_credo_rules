@@ -12,6 +12,7 @@
       },
       strict: true,
       checks: [
+        {MikaCredoRules.CacheOptsNoHardcodedUri, []},
         {MikaCredoRules.CacheRequiresSandboxOption, []},
         {MikaCredoRules.ErrorMessageRequired, []},
         {MikaCredoRules.GenServerRequiresHandleContinue, []},
