@@ -53,18 +53,22 @@ checks: %{
 |---|---|---|
 | [`ErrorMessageRequired`](#errormessagerequired) | `:design` | `{:error, "string literal"}` tuples — use `%ErrorMessage{}` |
 | [`GenServerRequiresHandleContinue`](#genserverrequireshandlecontinue) | `:refactor` | Real work in `init/1` instead of `handle_continue/2` |
+| [`HologramCookieKeysMustBeStrings`](#hologramcookiekeysmustbestrings) | `:warning` | An atom key literal passed to `get_cookie`/`put_cookie`/`delete_cookie` — cookie keys must be strings |
 | [`LoggerModulePrefixAndInspect`](#loggermoduleprefixandinspect) | `:warning` | Logger messages missing the `#{__MODULE__}: ` prefix or interpolating values without `inspect/1` |
 | [`NoApplicationEnvOutsideConfig`](#noapplicationenvoutsideconfig) | `:design` | Any read or write of application env outside a config module |
 | [`NoAtomStringKeyFallback`](#noatomstringkeyfallback) | `:warning` | `m["key"] \|\| m[:key]` mixed-key fallback reads — normalize keys at the boundary |
 | [`NoBlanketRescue`](#noblanketrescue) | `:warning` | Catch-all rescue clauses that swallow exceptions |
 | [`NoCastAllKeys`](#nocastallkeys) | `:warning` | `cast(data, params, Map.keys(params))` — a mass-assignment hole |
+| [`NoHeexSigilInHologramModule`](#noheexsigilinhologrammodule) | `:warning` | `~H` sigils or `use Phoenix.LiveView`/`use Phoenix.Component` inside a Hologram module |
 | [`NoIdentityRewrap`](#noidentityrewrap) | `:refactor` | `case` expressions whose every clause returns its pattern unchanged |
 | [`NoJasonDeriveOnEctoSchema`](#nojasonderiveonectoschema) | `:design` | `@derive Jason.Encoder` inside Ecto schema modules |
 | [`NoMixEnvAtRuntime`](#nomixenvatruntime) | `:warning` | `Mix.env()`/`Mix.target()` in compiled code — crashes in releases |
 | [`NoMockingLibraries`](#nomockinglibraries) | `:design` | Any reference to Mox, Hammox, Mock, Mimic, Patch or `:meck` |
 | [`NoNilComparison`](#nonilcomparison) | `:readability` | `x == nil` / `x != nil` — use `is_nil/1` |
+| [`NoPhxBindingsInHoloTemplate`](#nophxbindingsinholotemplate) | `:warning` | `phx-*` attributes or EEx tags inside a `~HOLO` template |
 | [`NoProcessSleepInTests`](#noprocesssleepintests) | `:warning` | `Process.sleep/1` and `:timer.sleep/1` in test files |
 | [`NoReimplementedHelper`](#noreimplementedhelper) | `:design` | Local re-implementations of shared library helpers |
+| [`NoServerCodeInHologramAction`](#noservercodeinhologramaction) | `:warning` | DB/IO/server calls, session/cookie access, or unimplemented client forms inside a Hologram action |
 | [`NoSingleLetterVariables`](#nosinglelettervariables) | `:readability` | Single-letter variable bindings |
 | [`RefuteOverAssertNot`](#refuteoverassertnot) | `:readability` | `assert !expr` / `assert not expr` — use `refute` |
 | [`SingleModulePerFile`](#singlemoduleperfile) | `:design` | More than one top-level `defmodule` per file (nested modules allowed) |
@@ -113,6 +117,30 @@ def handle_continue(:load, _state), do: {:noreply, MyApp.Repo.all(Job)}
 | Param | Default | Meaning |
 |---|---|---|
 | `allowed_modules` | `[Access, Enum, Keyword, Kernel, List, Logger, Map, NimbleOptions, String, {Process, :flag}, {Process, :monitor}, {Process, :send_after}]` | Callable from `init/1` without deferring. A bare module allows every function on it; a `{module, function}` tuple grants one function surgically — the defaults allow `Process.flag/2` while a blocking `Process.sleep/1` in `init/1` stays flagged. The list replaces the default. Erlang modules are plain atoms (`:ets` or `{:ets, :new}`). |
+
+### `HologramCookieKeysMustBeStrings`
+
+A Hologram cookie key must be a string — an atom key errors at runtime. Session
+keys accept either atoms or strings, but cookie keys accept strings only, and
+passing an atom compiles fine and fails only when the call actually runs.
+
+```elixir
+# BAD — runtime error, cookie keys must be strings
+put_cookie(server, :theme, "dark")
+
+# GOOD
+put_cookie(server, "theme", "dark")
+```
+
+Scoped per module, not per file — only a `defmodule` whose own body contains
+`use Hologram.Page`/`use Hologram.Component` is inspected. Only a literal atom
+in the key position (always the 2nd positional argument) is flagged; a
+variable is left alone since its runtime value is unknown to a static check.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `hologram_modules` | `[Hologram.Page, Hologram.Component]` | Modules whose `use` marks a `defmodule` as a Hologram module |
+| `functions` | `[:get_cookie, :put_cookie, :delete_cookie]` | Local cookie function names to check |
 
 ### `LoggerModulePrefixAndInspect`
 
@@ -255,6 +283,42 @@ Indirection through a variable (`fields = Map.keys(attrs)` then
 `cast(user, attrs, fields)`) is invisible to the check — literal lists, module
 attributes and variables are all left alone.
 
+### `NoHeexSigilInHologramModule`
+
+A Hologram module must not use `~H` (HEEx) sigils or `use Phoenix.LiveView`/
+`use Phoenix.Component` — Hologram and Phoenix.LiveView are different
+frameworks with incompatible compilers. Hologram compiles its own templates
+(`~HOLO`) to JavaScript for the client runtime; a `~H` sigil is LiveView's
+HEEx template, which Hologram's compiler cannot process.
+
+```elixir
+# BAD — mixes LiveView's template engine into a Hologram page
+defmodule MyApp.ProductPage do
+  use Hologram.Page
+
+  def template, do: ~H"<div/>"
+end
+
+# GOOD — Hologram's own template sigil
+defmodule MyApp.ProductPage do
+  use Hologram.Page
+
+  def template, do: ~HOLO"<div/>"
+end
+```
+
+Scoped per module, not per file — only a `defmodule` whose own body contains
+`use Hologram.Page`/`use Hologram.Component` is inspected, the same
+per-defmodule pattern `NoJasonDeriveOnEctoSchema` uses for `use Ecto.Schema`.
+A nested `defmodule` without its own Hologram `use` is a separate scope and is
+left alone.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `hologram_modules` | `[Hologram.Page, Hologram.Component]` | Modules whose `use` marks a `defmodule` as a Hologram module |
+| `banned_sigils` | `[:sigil_H]` | Sigil node names banned inside a Hologram module |
+| `banned_uses` | `[Phoenix.LiveView, Phoenix.Component]` | Modules that must not be `use`d inside a Hologram module |
+
 ### `NoIdentityRewrap`
 
 A `case` whose every clause returns its pattern unchanged is a no-op re-wrap —
@@ -379,6 +443,35 @@ def fallback(value) when is_nil(value), do: :default
 |---|---|---|
 | `operators` | `[:==, :!=, :===, :!==]` | Operators that count as a nil comparison when either operand is the `nil` literal |
 
+### `NoPhxBindingsInHoloTemplate`
+
+A `~HOLO` template must not use Phoenix's `phx-*` bindings or EEx tags —
+Hologram has its own template syntax. Hologram templates bind events with
+`$click`/`$change`/`$submit` and interpolate with `{@var}`; both `phx-*`
+attributes and `<%= %>`/`<% %>` EEx tags are Phoenix.LiveView/HEEx syntax that
+Hologram's compiler does not understand — they render as literal text rather
+than doing anything.
+
+```elixir
+# BAD
+~HOLO"<button phx-click="save"><%= @label %></button>"
+
+# GOOD
+~HOLO"<button $click="save">{@label}</button>"
+```
+
+Scoped per module, not per file — only a `defmodule` whose own body contains
+`use Hologram.Page`/`use Hologram.Component` is inspected, and within it only
+`~HOLO` sigil bodies; a `~H` (HEEx) sigil living side-by-side is left alone
+(see `NoHeexSigilInHologramModule`, which bans the sigil itself). One issue is
+reported per offending match, at the line inside the template where it
+occurs — not the line of the `~HOLO` sigil itself.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `hologram_modules` | `[Hologram.Page, Hologram.Component]` | Modules whose `use` marks a `defmodule` as a Hologram module |
+| `excluded_paths` | `[]` | Path fragments to exempt from the check (segment-boundary matched) |
+
 ### `NoProcessSleepInTests`
 
 Tests must not sleep — sleeping is the number one source of flaky, slow suites. A
@@ -422,6 +515,51 @@ def process(map), do: SharedUtils.Enum.atomize_keys(map)
 |---|---|---|
 | `functions` | `%{atomize_keys: "SharedUtils.Enum.atomize_keys/1", deep_merge: "SharedUtils.Map.merge_deep_left/2", deep_struct_to_map: "SharedUtils.Map.deep_struct_to_map/1", pluck: "SharedUtils.Collection.pluck/2", random_string: "SharedUtils.String.generate_random/1", reject_nil_values: "SharedUtils.Enum.reject_nil_values/1", stringify_keys: "SharedUtils.Enum.stringify_keys/1", valid_email?: "SharedUtils.String.valid_email?/1"}` | Banned local function names → the shared helper to use instead. Overriding replaces the whole map. |
 | `excluded_paths` | `["shared_utils"]` | Path fragments exempt from the check (segment-boundary matched) — the shared library itself defines the canonical implementations |
+
+### `NoServerCodeInHologramAction`
+
+A Hologram action must not call the server, touch sessions/cookies, or use a
+form the client compiler doesn't implement yet — actions run entirely in the
+browser. Work that needs any of those belongs in a command, dispatched via
+`put_command/2,3` and returned to the client through `put_action/2,3`.
+
+```elixir
+# BAD — hits the database from the client
+def action(:save, params, component) do
+  MyApp.Repo.insert(%Product{name: params.name})
+end
+
+# GOOD — defers the write to a command
+def action(:save, params, component) do
+  put_command(component, :save_product, name: params.name)
+end
+
+def command(:save_product, params, server) do
+  MyApp.Repo.insert(%Product{name: params.name})
+  server
+end
+```
+
+Three independent things are flagged inside a `def action(...)` clause of
+arity 3 (one issue per offending node): a call on a banned module (actions run
+client-side only), a local call to a session/cookie function (only available
+in `init/3` and `command/3`), and a `with`/`try`/`receive` form (not
+implemented in Hologram's client compiler as of version 0.8.3). Scoped per
+module and per callback — `command/3` and `init/3` run on the server and are
+exempt; a plain context function called from an action is not itself flagged.
+
+`:banned_forms` covers the explicit `try do ... end` block only, not the
+implicit `def action(...) do ... rescue ... end` form — Hologram's
+unsupported-forms list is expected to change across versions, so every entry
+is a param.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `hologram_modules` | `[Hologram.Page, Hologram.Component]` | Modules whose `use` marks a `defmodule` as a Hologram module |
+| `action_callbacks` | `[:action]` | Function names treated as client-side action callbacks (arity 3 only) |
+| `banned_modules` | `[Repo, Ecto, Ecto.Query, Oban, File, IO, Port, Process, System, Node, SharedUtils.HTTP, Finch, Req, HTTPoison]` | Modules banned from an action. `Repo` matches by its LAST segment (so `MyApp.Repo.insert/1` is caught without listing every app's repo module); `Ecto` matches BY PREFIX (so `Ecto.Changeset`, `Ecto.Multi`, and every other `Ecto.*` submodule are caught); every other entry matches its exact, alias-resolved path |
+| `banned_functions` | `[:get_session, :put_session, :delete_session, :get_cookie, :put_cookie, :delete_cookie]` | Local session/cookie function names banned from an action |
+| `banned_forms` | `[:with, :try, :receive]` | Special forms not usable inside an action because Hologram's client compiler does not implement them yet |
 
 ### `NoSingleLetterVariables`
 
