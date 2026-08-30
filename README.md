@@ -65,6 +65,7 @@ checks: %{
 | [`NoNilComparison`](#nonilcomparison) | `:readability` | `x == nil` / `x != nil` — use `is_nil/1` |
 | [`NoProcessSleepInTests`](#noprocesssleepintests) | `:warning` | `Process.sleep/1` and `:timer.sleep/1` in test files |
 | [`NoReimplementedHelper`](#noreimplementedhelper) | `:design` | Local re-implementations of shared library helpers |
+| [`NoSelfSendZeroDelay`](#noselfsendzerodelay) | `:refactor` | `Process.send_after(self(), _, 0)` and `send(self(), _)` in `init/1` — use `{:continue, term}` instead |
 | [`NoSingleLetterVariables`](#nosinglelettervariables) | `:readability` | Single-letter variable bindings |
 | [`NoTaskAsyncInGenServer`](#notaskasyncingenserver) | `:warning` | `Task.async`/`Task.Supervisor.async` inside a GenServer/GenStage callback — a crashing task takes the server down |
 | [`RefuteOverAssertNot`](#refuteoverassertnot) | `:readability` | `assert !expr` / `assert not expr` — use `refute` |
@@ -423,6 +424,35 @@ def process(map), do: SharedUtils.Enum.atomize_keys(map)
 |---|---|---|
 | `functions` | `%{atomize_keys: "SharedUtils.Enum.atomize_keys/1", deep_merge: "SharedUtils.Map.merge_deep_left/2", deep_struct_to_map: "SharedUtils.Map.deep_struct_to_map/1", pluck: "SharedUtils.Collection.pluck/2", random_string: "SharedUtils.String.generate_random/1", reject_nil_values: "SharedUtils.Enum.reject_nil_values/1", stringify_keys: "SharedUtils.Enum.stringify_keys/1", valid_email?: "SharedUtils.String.valid_email?/1"}` | Banned local function names → the shared helper to use instead. Overriding replaces the whole map. |
 | `excluded_paths` | `["shared_utils"]` | Path fragments exempt from the check (segment-boundary matched) — the shared library itself defines the canonical implementations |
+
+### `NoSelfSendZeroDelay`
+
+`Process.send_after(self(), _, 0)` and `send(self(), _)` in `init/1` schedule a
+message to yourself with no delay so a later callback can do the real work — that
+is exactly what `{:continue, term}` is for. `GenServerRequiresHandleContinue`
+allow-lists `Process.send_after` in `init/1` because a *nonzero* delay is a
+genuine timer; this check closes the zero-delay gap that allowance leaves open.
+
+```elixir
+# BAD — indirection for exactly what a continue does directly
+def init(opts) do
+  Process.send_after(self(), :load, 0)
+  {:ok, opts}
+end
+
+# GOOD
+def init(opts), do: {:ok, opts, {:continue, :load}}
+def handle_continue(:load, state), do: {:noreply, do_load(state)}
+```
+
+`Process.send_after(self(), _, 0)` is flagged everywhere it appears, regardless
+of whether the file uses GenServer. `send(self(), _)` in `init/1` is scoped to
+`use GenServer` modules and gated behind `:also_flag_send_self_in_init`.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `also_flag_send_self_in_init` | `true` | Also flag `send(self(), _)` inside `init/1` of a `use GenServer` module |
+| `excluded_paths` | `[]` | Path fragments naming files to skip entirely (segment-boundary matched) |
 
 ### `NoSingleLetterVariables`
 
