@@ -1,0 +1,142 @@
+defmodule MikaCredoRules.ExceptionNamesEndInError do
+  use Credo.Check,
+    base_priority: :high,
+    category: :readability,
+    param_defaults: [
+      suffix: "Error",
+      excluded_paths: []
+    ],
+    explanations: [
+      params: [
+        suffix: """
+        The suffix an exception module's last name segment must end with.
+
+        Defaults to `"Error"`.
+        """,
+        excluded_paths: """
+        A list of path fragments naming files this check skips. A fragment
+        matches when the source file's path starts with it, ends with it, or
+        contains it after a directory separator.
+
+        Defaults to `[]`.
+        """
+      ]
+    ]
+
+  alias MikaCredoRules.SourceFilter
+
+  @moduledoc """
+  A module defining an exception must end its name with `Error`.
+
+  `raise BadHTTPCode` reads like raising a value, not an error, until the
+  reader already knows it is an exception. Naming every exception module with
+  a shared suffix makes that fact visible at every call site, without opening
+  the module.
+
+      # BAD
+      defmodule BadHTTPCode do
+        defexception [:message]
+      end
+
+      # GOOD
+      defmodule BadHTTPCodeError do
+        defexception [:message]
+      end
+
+  The check is scoped per module, not per file: only a `defmodule` whose own
+  body (nested `defmodule`s excluded) contains `defexception` is inspected, so
+  a plain module sharing a file with an exception is left alone, and a nested
+  exception module inside a plain outer module is still caught. Only the last
+  segment of the module name is checked, so `MyApp.Errors.BadHTTPCode` is
+  flagged the same as a top-level `BadHTTPCode`.
+
+  A `defexception` generated inside a `quote` block (for example inside a
+  `defmacro __using__/1`) is not flagged — the name it will eventually take is
+  not known statically.
+
+  Stock Credo ships `Consistency.ExceptionNames`, which only infers the
+  *dominant* suffix used across the codebase — a repo that consistently uses
+  `…Exception`, or that has a single exception module of any name, passes it
+  clean. This check enforces a specific, fixed suffix regardless of what else
+  is in the codebase.
+  """
+  @explanation [check: @moduledoc]
+
+  @doc false
+  @impl Credo.Check
+  def run(source_file, params \\ []) do
+    if excluded_path?(source_file.filename, excluded_paths(params)) do
+      []
+    else
+      issue_meta = IssueMeta.for(source_file, params)
+      suffix = Params.get(params, :suffix, __MODULE__)
+
+      source_file
+      |> Credo.Code.prewalk(&traverse(&1, &2, suffix))
+      |> Enum.map(&issue_for(&1, issue_meta, suffix))
+    end
+  end
+
+  defp excluded_paths(params), do: Params.get(params, :excluded_paths, __MODULE__)
+
+  defp excluded_path?(filename, excluded_paths) do
+    SourceFilter.matches_fragment?(filename, excluded_paths)
+  end
+
+  # Each defmodule is its own scope: only its own body (nested defmodules
+  # excluded) decides whether it defines an exception. Nested defmodules are
+  # still visited by the outer prewalk, so each gets its own independent scope.
+  defp traverse(
+         {:defmodule, _, [{:__aliases__, _, module}, [{:do, body} | _]]} = ast,
+         issues,
+         suffix
+       ) do
+    case find_defexception(body) do
+      nil ->
+        {ast, issues}
+
+      line_no ->
+        if named_with_suffix?(module, suffix) do
+          {ast, issues}
+        else
+          {ast, [%{module: module, line_no: line_no} | issues]}
+        end
+    end
+  end
+
+  defp traverse(ast, issues, _suffix), do: {ast, issues}
+
+  defp find_defexception(body) do
+    scan_own_body(body, nil, fn
+      {:defexception, meta, _fields}, _found -> meta[:line]
+      _node, found -> found
+    end)
+  end
+
+  # Walks a module body, pruning nested defmodule and quote subtrees — an
+  # inner module has its own scope, and a defexception generated inside a
+  # quote does not have a name known statically.
+  defp scan_own_body(body, initial, fun) do
+    body
+    |> Macro.prewalk(initial, fn
+      {:defmodule, _, _}, acc -> {nil, acc}
+      {:quote, _, _}, acc -> {nil, acc}
+      node, acc -> {node, fun.(node, acc)}
+    end)
+    |> elem(1)
+  end
+
+  defp named_with_suffix?(module, suffix) do
+    module |> List.last() |> Atom.to_string() |> String.ends_with?(suffix)
+  end
+
+  defp issue_for(exception, issue_meta, suffix) do
+    trigger = Enum.join(exception.module, ".")
+
+    format_issue(issue_meta,
+      message: "#{trigger} found — exception module names must end in \"#{suffix}\"",
+      trigger: trigger,
+      line_no: exception.line_no
+    )
+  end
+end

@@ -52,6 +52,7 @@ checks: %{
 | Check | Category | What it catches |
 |---|---|---|
 | [`ErrorMessageRequired`](#errormessagerequired) | `:design` | `{:error, "string literal"}` tuples — use `%ErrorMessage{}` |
+| [`ExceptionNamesEndInError`](#exceptionnamesendinerror) | `:readability` | An exception module whose name does not end in `Error` |
 | [`GenServerRequiresHandleContinue`](#genserverrequireshandlecontinue) | `:refactor` | Real work in `init/1` instead of `handle_continue/2` |
 | [`LoggerModulePrefixAndInspect`](#loggermoduleprefixandinspect) | `:warning` | Logger messages missing the `#{__MODULE__}: ` prefix or interpolating values without `inspect/1` |
 | [`NoApplicationEnvOutsideConfig`](#noapplicationenvoutsideconfig) | `:design` | Any read or write of application env outside a config module |
@@ -95,6 +96,39 @@ Variables, atoms and structs pass — only string literals are flagged.
 |---|---|---|
 | `excluded_paths` | `["_test.exs", "test/"]` | Path fragments naming files to skip (matched on segment boundaries) — `{:error, "..."}` literals are legitimate fixture data in tests |
 | `also_flag_atoms` | `false` | When `true`, atom reasons like `{:error, :timeout}` are flagged too |
+
+### `ExceptionNamesEndInError`
+
+A module defining an exception must end its name with `Error`. `raise BadHTTPCode`
+reads like raising a value, not an error, until the reader already knows it is an
+exception — a shared suffix makes that visible at every call site.
+
+```elixir
+# BAD
+defmodule BadHTTPCode do
+  defexception [:message]
+end
+
+# GOOD
+defmodule BadHTTPCodeError do
+  defexception [:message]
+end
+```
+
+Scoped per module, not per file — only a `defmodule` whose own body (nested
+`defmodule`s excluded) contains `defexception` is inspected. Only the last
+segment of the module name is checked, so `MyApp.Errors.BadHTTPCode` is flagged
+the same as a top-level `BadHTTPCode`. A `defexception` generated inside a
+`quote` block is not flagged.
+
+Stock Credo's `Consistency.ExceptionNames` only infers the dominant suffix used
+across the codebase, so a repo with a single, differently-named exception module
+passes it clean — this check enforces a specific, fixed suffix instead.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `suffix` | `"Error"` | The suffix an exception module's last name segment must end with |
+| `excluded_paths` | `[]` | Path fragments naming files this check skips |
 
 ### `GenServerRequiresHandleContinue`
 

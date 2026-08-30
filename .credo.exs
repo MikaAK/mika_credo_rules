@@ -13,6 +13,7 @@
       strict: true,
       checks: [
         {MikaCredoRules.ErrorMessageRequired, []},
+        {MikaCredoRules.ExceptionNamesEndInError, []},
         {MikaCredoRules.GenServerRequiresHandleContinue, []},
         {MikaCredoRules.LoggerModulePrefixAndInspect, []},
         {MikaCredoRules.NoApplicationEnvOutsideConfig, []},
