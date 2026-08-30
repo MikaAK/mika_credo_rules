@@ -76,6 +76,21 @@ defmodule MikaCredoRules.NoPhxBindingsInHoloTemplateTest do
   end
 
   describe "&run/2 reports one issue per offending match" do
+    test "reports the moduledoc BAD example" do
+      """
+      defmodule MyApp.ProductPage do
+        use Hologram.Page
+
+        def template, do: ~HOLO"<button phx-click=\\"save\\"><%= @label %></button>"
+      end
+      """
+      |> to_source_file(@page_file)
+      |> run_check(NoPhxBindingsInHoloTemplate)
+      |> assert_issues(fn issues ->
+        assert issues |> Enum.map(& &1.trigger) |> Enum.sort() === ["<%=", "phx-click="]
+      end)
+    end
+
     test "reports both a phx-click and an EEx tag in the same template" do
       """
       defmodule MyApp.ProductPage do

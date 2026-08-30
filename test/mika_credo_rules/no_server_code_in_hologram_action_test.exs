@@ -26,6 +26,21 @@ defmodule MikaCredoRules.NoServerCodeInHologramActionTest do
       end)
     end
 
+    test "reports the moduledoc BAD example" do
+      """
+      defmodule MyApp.ProductPage do
+        use Hologram.Page
+
+        def action(:save, params, component) do
+          MyApp.Repo.insert(%Product{name: params.name})
+        end
+      end
+      """
+      |> to_source_file(@page_file)
+      |> run_check(NoServerCodeInHologramAction)
+      |> assert_issue(fn issue -> assert issue.trigger === "MyApp.Repo.insert" end)
+    end
+
     test "reports a bare Repo call" do
       """
       defmodule MyApp.ProductPage do
