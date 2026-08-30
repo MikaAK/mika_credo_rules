@@ -170,6 +170,89 @@ defmodule MikaCredoRules.NoMockingLibrariesTest do
     end
   end
 
+  describe "&run/2 treats a locally defined module as shadowing" do
+    test "does not report a defmodule whose name is a banned single-segment name" do
+      """
+      defmodule MyApp.WorkerTest do
+        defmodule Mock do
+          def build(response), do: response
+        end
+
+        test "builds a response" do
+          assert Mock.build(:ok) === :ok
+        end
+      end
+      """
+      |> to_source_file(@test_file)
+      |> run_check(NoMockingLibraries)
+      |> refute_issues()
+    end
+
+    test "does not report bare references to a name defined at the top level" do
+      """
+      defmodule Mock do
+        def build(response), do: response
+      end
+
+      defmodule MyApp.WorkerTest do
+        test "builds a response" do
+          assert Mock.build(:ok) === :ok
+        end
+      end
+      """
+      |> to_source_file(@test_file)
+      |> run_check(NoMockingLibraries)
+      |> refute_issues()
+    end
+
+    test "still reports the fully qualified spelling of a shadowed name" do
+      """
+      defmodule MyApp.WorkerTest do
+        defmodule Mock do
+          def build(response), do: response
+        end
+
+        test "builds a response" do
+          assert Elixir.Mock.build(:ok) === :ok
+        end
+      end
+      """
+      |> to_source_file(@test_file)
+      |> run_check(NoMockingLibraries)
+      |> assert_issue(fn issue -> assert issue.message =~ "Elixir.Mock found" end)
+    end
+
+    test "still reports a real reference to the banned name alongside an unrelated defmodule" do
+      """
+      defmodule MyApp.WorkerTest do
+        defmodule MockingBird do
+          def sing, do: :ok
+        end
+
+        def stub, do: Mock.build(:ok)
+      end
+      """
+      |> to_source_file(@test_file)
+      |> run_check(NoMockingLibraries)
+      |> assert_issue(fn issue -> assert issue.message =~ "Mock found" end)
+    end
+
+    test "still reports use of a different banned library referenced inside the shadowing module" do
+      """
+      defmodule MyApp.WorkerTest do
+        defmodule Mock do
+          import Mox
+
+          def build(response), do: response
+        end
+      end
+      """
+      |> to_source_file(@test_file)
+      |> run_check(NoMockingLibraries)
+      |> assert_issue(fn issue -> assert issue.message =~ "Mox found" end)
+    end
+  end
+
   describe "&run/2 resolves aliases of banned modules" do
     test "reports uses through a renamed mocking library alias" do
       """

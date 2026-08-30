@@ -352,7 +352,11 @@ end
 
 Module names are matched on exact segments with full alias resolution — a project
 module that merely contains a banned name (`MyApp.MockingBird`, `MyApp.Mock`) is
-never flagged, while `alias Mox, as: M` still is.
+never flagged, while `alias Mox, as: M` still is. A locally defined module also
+shadows a banned bare name — `defmodule Mock do ... end` and bare references to
+it are never flagged, since `Mock` is now a project module for the rest of the
+file. Only the bare spelling is shadowed — the fully-qualified `Elixir.Mock`
+spelling still reports.
 
 | Param | Default | Meaning |
 |---|---|---|

@@ -74,9 +74,56 @@ defmodule MikaCredoRules.AstHelpersTest do
     end
   end
 
+  describe "defined_module_names/1" do
+    test "returns the name of a top-level defmodule" do
+      assert [:Sample] in defined_names("defmodule Sample, do: :ok")
+    end
+
+    test "returns the name of a defmodule nested inside another module" do
+      names =
+        defined_names("""
+        defmodule Sample do
+          defmodule Mock do
+            def build, do: :ok
+          end
+        end
+        """)
+
+      assert [:Sample] in names
+      assert [:Mock] in names
+    end
+
+    test "returns the literal AST segments, not the fully qualified name" do
+      names =
+        defined_names("""
+        defmodule Sample do
+          defmodule Sample.Nested do
+            def build, do: :ok
+          end
+        end
+        """)
+
+      assert [:Sample] in names
+      assert [:Sample, :Nested] in names
+      refute [:Nested] in names
+    end
+
+    test "returns each name once even when defined only once" do
+      names = defined_names("defmodule Sample, do: :ok")
+
+      assert names === [[:Sample]]
+    end
+  end
+
   defp resolve(code, modules) do
     code
     |> Credo.SourceFile.parse("lib/sample.ex")
     |> AstHelpers.resolve_aliases(modules)
+  end
+
+  defp defined_names(code) do
+    code
+    |> Credo.SourceFile.parse("lib/sample.ex")
+    |> AstHelpers.defined_module_names()
   end
 end

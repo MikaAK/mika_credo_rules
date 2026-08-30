@@ -15,7 +15,9 @@ defmodule MikaCredoRules.NoMockingLibraries do
 
         Module names are matched on their exact segments, so a project module that
         merely contains a banned name (`MyApp.MockingBird`, `MyApp.Mock`) is never
-        flagged.
+        flagged. A locally defined `defmodule Mock do ... end` also shadows the
+        bare name for the rest of the file — only the fully-qualified
+        `Elixir.Mock` spelling stays flagged.
         """,
         erlang_modules: """
         A list of erlang mocking module atoms to ban. Any remote call on one of
@@ -50,6 +52,23 @@ defmodule MikaCredoRules.NoMockingLibraries do
 
   Banned modules are matched on their exact segments — `MyApp.MockingBird` and
   `MyApp.Mock` are project modules, not mocking libraries, and are never flagged.
+
+  A locally defined module also shadows a banned bare name — a test helper named
+  `Mock` is a project module, not a reference to the `Mock` library:
+
+      # GOOD — a local `Mock` helper module, not a reference to the Mock library
+      defmodule MyApp.WorkerTest do
+        defmodule Mock do
+          def build(response), do: response
+        end
+
+        test "builds a response" do
+          assert Mock.build(:ok) === :ok
+        end
+      end
+
+  Only the bare spelling is shadowed — writing out the fully-qualified
+  `Elixir.Mock` still reports, since that spelling is unambiguous.
   """
   @explanation [check: @moduledoc]
 
@@ -66,11 +85,24 @@ defmodule MikaCredoRules.NoMockingLibraries do
 
   defp build_context(source_file, params) do
     banned = Params.get(params, :modules, __MODULE__)
+    module_segments = AstHelpers.resolve_aliases(source_file, banned)
 
     %{
-      module_segments: AstHelpers.resolve_aliases(source_file, banned),
+      module_segments: module_segments,
+      shadowed_names: shadowed_names(source_file, module_segments),
       erlang_modules: Params.get(params, :erlang_modules, __MODULE__)
     }
+  end
+
+  # A locally defined `defmodule Mock do ... end` is a third shadowing source that
+  # alias resolution does not cover — it emits the same bare `[:Mock]` AST as a
+  # reference to the banned name. Only the bare spelling is deregistered; the
+  # fully-qualified `Elixir.Mock` spelling is unambiguous and stays flagged.
+  defp shadowed_names(source_file, module_segments) do
+    source_file
+    |> AstHelpers.defined_module_names()
+    |> Enum.map(&[List.last(&1)])
+    |> Enum.filter(&(&1 in module_segments))
   end
 
   # `alias MyApp.{Mock, Foo}` — the inner aliases are relative to the base, so
@@ -118,12 +150,22 @@ defmodule MikaCredoRules.NoMockingLibraries do
   defp traverse(ast, references, _context), do: {ast, references}
 
   defp maybe_reference(module_segments, meta, references, context) do
-    if strip_elixir_prefix(module_segments) in context.module_segments do
-      [reference(Enum.join(module_segments, "."), meta) | references]
-    else
-      references
+    stripped = strip_elixir_prefix(module_segments)
+
+    cond do
+      not elixir_prefixed?(module_segments) and stripped in context.shadowed_names ->
+        references
+
+      stripped in context.module_segments ->
+        [reference(Enum.join(module_segments, "."), meta) | references]
+
+      true ->
+        references
     end
   end
+
+  defp elixir_prefixed?([Elixir | _rest]), do: true
+  defp elixir_prefixed?(_module_segments), do: false
 
   defp strip_elixir_prefix([Elixir | module_segments]), do: module_segments
   defp strip_elixir_prefix(module_segments), do: module_segments

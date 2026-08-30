@@ -104,6 +104,35 @@ defmodule MikaCredoRules.AstHelpers do
     end
   end
 
+  @doc """
+  Every module name defined via `defmodule` in `source_file`, at any nesting depth.
+
+  Returns the literal AST segments as written, not the fully qualified name —
+  `defmodule Mock` nested inside `defmodule Sample` still returns `[:Mock]`, since
+  Elixir's `defmodule` macro only qualifies the name against its enclosing module at
+  expansion time, not in the raw AST.
+
+  This is a third source of shadowing that `resolve_aliases/2` does not cover: a
+  locally defined `defmodule Mock do ... end` emits the same `{:__aliases__, _,
+  [:Mock]}` node as a reference to a banned single-segment name, so a caller that
+  bans bare names needs this to tell "defines" apart from "references".
+  """
+  @spec defined_module_names(Credo.SourceFile.t()) :: [module_path()]
+  def defined_module_names(source_file) do
+    source_file
+    |> Credo.Code.prewalk(&collect_defmodule_names/2)
+    |> Enum.uniq()
+  end
+
+  defp collect_defmodule_names(
+         {:defmodule, _meta, [{:__aliases__, _name_meta, name_segments}, _body]} = ast,
+         names
+       ) do
+    {ast, [name_segments | names]}
+  end
+
+  defp collect_defmodule_names(ast, names), do: {ast, names}
+
   defp apply_alias({name, target}, paths) do
     target = strip_elixir_prefix(target)
 
