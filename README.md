@@ -51,6 +51,7 @@ checks: %{
 
 | Check | Category | What it catches |
 |---|---|---|
+| [`DistributionRequiresBuckets`](#distributionrequiresbuckets) | `:warning` | `distribution/2` whose literal opts omit `:reporter_options` |
 | [`ErrorMessageRequired`](#errormessagerequired) | `:design` | `{:error, "string literal"}` tuples — use `%ErrorMessage{}` |
 | [`GenServerRequiresHandleContinue`](#genserverrequireshandlecontinue) | `:refactor` | Real work in `init/1` instead of `handle_continue/2` |
 | [`LoggerModulePrefixAndInspect`](#loggermoduleprefixandinspect) | `:warning` | Logger messages missing the `#{__MODULE__}: ` prefix or interpolating values without `inspect/1` |
@@ -74,6 +75,38 @@ checks: %{
 | [`TodosNeedTickets`](#todosneedtickets) | `:design` | TODO/FIXME comments without an adjacent ticket URL |
 
 ---
+
+### `DistributionRequiresBuckets`
+
+`Telemetry.Metrics.distribution/2` must set `:reporter_options` with `:buckets`.
+A Prometheus histogram with no configured buckets has nothing to sort observations
+into — the reporter emits no usable data for the metric.
+
+```elixir
+# BAD
+distribution("my_app.job.duration.microseconds", event_name: @stop, measurement: :duration)
+
+# GOOD
+distribution("my_app.job.duration.microseconds",
+  event_name: @stop,
+  measurement: :duration,
+  reporter_options: [buckets: @buckets]
+)
+```
+
+Both the imported local call (behind `import Telemetry.Metrics` in the same file)
+and the qualified `Telemetry.Metrics.distribution(...)` are caught, including
+aliases of the module. A bare local `distribution/2` call with no
+`import Telemetry.Metrics` in the file is left alone — a local function that
+happens to share the name is not this library's `distribution/2`. Only a literal
+opts keyword list is inspected; opts built by a helper or held in a variable are
+silently skipped.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `functions` | `[:distribution]` | `Telemetry.Metrics` functions checked |
+| `required_keys` | `[:reporter_options]` | Options that must be present in the literal opts |
+| `excluded_paths` | `[]` | Path fragments exempt from the check |
 
 ### `ErrorMessageRequired`
 
