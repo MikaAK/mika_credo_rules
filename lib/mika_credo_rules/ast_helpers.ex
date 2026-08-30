@@ -116,4 +116,57 @@ defmodule MikaCredoRules.AstHelpers do
 
   defp strip_elixir_prefix([Elixir | segments]), do: segments
   defp strip_elixir_prefix(segments), do: segments
+
+  @doc """
+  True when `source_file` has a literal `use <module>` for any of `modules`.
+
+  Alias-aware via `resolve_aliases/2` — an alias that shadows one of `modules` (or
+  renames another module onto its bare name) is honoured the same way a remote-call
+  matcher honours it. In the common case (no aliasing) this matches the literal
+  name.
+  """
+  @spec uses_module?(Credo.SourceFile.t(), [module()]) :: boolean()
+  def uses_module?(source_file, modules) do
+    resolved = resolve_aliases(source_file, modules)
+
+    Credo.Code.prewalk(source_file, &detect_use(&1, &2, resolved), false)
+  end
+
+  defp detect_use({:use, _, [{:__aliases__, _, path} | _]} = ast, found, resolved) do
+    {ast, found or path in resolved}
+  end
+
+  defp detect_use(ast, found, _resolved), do: {ast, found}
+
+  @doc """
+  Every `def name(...)` clause in `source_file` whose name is in `names`.
+
+  Matches by name only — any arity, any `when` guard. Callers own a fixed set of
+  callback names (a GenServer's `init/1`, `handle_call/3`, ... each have one real
+  arity in practice), so this does not attempt to enforce arity itself; a stray
+  same-named local helper of a different arity is matched too, which is the safe
+  direction for a check guarding callback bodies.
+  """
+  @spec callback_clauses(Credo.SourceFile.t(), [atom()]) :: [Macro.t()]
+  def callback_clauses(source_file, names) do
+    Credo.Code.prewalk(source_file, &collect_callback_clause(&1, &2, names))
+  end
+
+  defp collect_callback_clause({:def, _, [head, _body]} = ast, clauses, names) do
+    if callback_head?(head, names) do
+      {ast, [ast | clauses]}
+    else
+      {ast, clauses}
+    end
+  end
+
+  defp collect_callback_clause(ast, clauses, _names), do: {ast, clauses}
+
+  defp callback_head?({:when, _, [head | _guards]}, names), do: callback_head?(head, names)
+
+  defp callback_head?({name, _, args}, names) when is_atom(name) and is_list(args) do
+    name in names
+  end
+
+  defp callback_head?(_head, _names), do: false
 end
