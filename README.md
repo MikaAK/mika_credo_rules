@@ -66,6 +66,7 @@ checks: %{
 | [`NoProcessSleepInTests`](#noprocesssleepintests) | `:warning` | `Process.sleep/1` and `:timer.sleep/1` in test files |
 | [`NoReimplementedHelper`](#noreimplementedhelper) | `:design` | Local re-implementations of shared library helpers |
 | [`NoSingleLetterVariables`](#nosinglelettervariables) | `:readability` | Single-letter variable bindings |
+| [`PrometheusExporterMustBeGated`](#prometheusexportermustbegated) | `:warning` | `exporter: [enabled?: true]` — the metrics endpoint must be gated to prod |
 | [`RefuteOverAssertNot`](#refuteoverassertnot) | `:readability` | `assert !expr` / `assert not expr` — use `refute` |
 | [`SingleModulePerFile`](#singlemoduleperfile) | `:design` | More than one top-level `defmodule` per file (nested modules allowed) |
 | [`StrictEquality`](#strictequality) | `:warning` | `==`/`!=` — use `===`/`!==` (Ecto query DSL exempt) |
@@ -444,6 +445,31 @@ Enum.map(users, fn user -> user.name end)
 | Param | Default | Meaning |
 |---|---|---|
 | `allowed_names` | `[]` | Single-letter names allowed anyway — atoms or strings |
+
+### `PrometheusExporterMustBeGated`
+
+The Prometheus exporter must not be hardcoded to `enabled?: true` — gate it to
+production. An always-on exporter opens an HTTP endpoint in every environment
+including dev and test; the idiomatic gate is a compile-time flag derived from
+`Application.compile_env/3`.
+
+```elixir
+# BAD — exposed in every environment
+@is_prod Application.compile_env(:my_app, :env) === :prod
+{PrometheusTelemetry, exporter: [enabled?: true], metrics: [...]}
+
+# GOOD
+{PrometheusTelemetry, exporter: [enabled?: @is_prod], metrics: [...]}
+```
+
+Only a literal `enabled?: true` is flagged — a computed value
+(`enabled?: @is_prod`) always passes. `.exs` files are always exempt, since
+`config/prod.exs` may legitimately hardcode the flag for a single environment.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `keys` | `[:exporter]` | Outer keyword-list keys inspected for a hardcoded `enabled?: true` |
+| `excluded_paths` | `[]` | Path fragments exempt from the check (segment-boundary matched), in addition to the always-exempt `.exs` files |
 
 ### `RefuteOverAssertNot`
 

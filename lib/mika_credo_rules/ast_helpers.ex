@@ -116,4 +116,44 @@ defmodule MikaCredoRules.AstHelpers do
 
   defp strip_elixir_prefix([Elixir | segments]), do: segments
   defp strip_elixir_prefix(segments), do: segments
+
+  @doc """
+  The literal keyword-list options of a `use module, opts` call, when `module`
+  resolves to one of `module_paths` (see `resolve_aliases/2`) and `opts` is a
+  literal keyword list.
+
+  Returns `nil` when the call is for a different module, carries no options, or
+  the options are not a literal list — a variable or module-attribute splat
+  (`use Cache, @cache_opts`) cannot be inspected statically and is left alone by
+  every caller.
+
+      iex> {:use, [], [{:__aliases__, [], [:Cache]}, [adapter: Cache.ETS]]}
+      ...> |> MikaCredoRules.AstHelpers.use_options([[:Cache], [Elixir, :Cache]])
+      [adapter: Cache.ETS]
+
+      iex> {:use, [], [{:__aliases__, [], [:Cache]}, {:@, [], [{:cache_opts, [], nil}]}]}
+      ...> |> MikaCredoRules.AstHelpers.use_options([[:Cache], [Elixir, :Cache]])
+      nil
+  """
+  @spec use_options(Macro.t(), [module_path()]) :: keyword() | nil
+  def use_options({:use, _, [module, opts]}, module_paths) when is_list(opts) do
+    if use_module?(module, module_paths), do: opts
+  end
+
+  def use_options(_ast, _module_paths), do: nil
+
+  defp use_module?({:__aliases__, _, segments}, module_paths),
+    do: strip_elixir_prefix(segments) in module_paths
+
+  defp use_module?(module, module_paths) when is_atom(module) do
+    case Atom.to_string(module) do
+      "Elixir." <> _rest ->
+        [Elixir | module |> Module.split() |> Enum.map(&String.to_atom/1)] in module_paths
+
+      _erlang_name ->
+        false
+    end
+  end
+
+  defp use_module?(_other, _module_paths), do: false
 end

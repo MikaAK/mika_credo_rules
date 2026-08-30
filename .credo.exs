@@ -27,6 +27,7 @@
         {MikaCredoRules.NoProcessSleepInTests, []},
         {MikaCredoRules.NoReimplementedHelper, []},
         {MikaCredoRules.NoSingleLetterVariables, []},
+        {MikaCredoRules.PrometheusExporterMustBeGated, []},
         {MikaCredoRules.RefuteOverAssertNot, []},
         {MikaCredoRules.SingleModulePerFile, []},
         {MikaCredoRules.StrictEquality, []},
