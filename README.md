@@ -65,6 +65,7 @@ checks: %{
 | [`NoNilComparison`](#nonilcomparison) | `:readability` | `x == nil` / `x != nil` — use `is_nil/1` |
 | [`NoProcessSleepInTests`](#noprocesssleepintests) | `:warning` | `Process.sleep/1` and `:timer.sleep/1` in test files |
 | [`NoReimplementedHelper`](#noreimplementedhelper) | `:design` | Local re-implementations of shared library helpers |
+| [`NoRepoWritesInTests`](#norepowritesintests) | `:design` | Write-side `Repo` calls (`insert!`, `update!`, `delete!`, ...) in test files — use `FactoryEx` |
 | [`NoSingleLetterVariables`](#nosinglelettervariables) | `:readability` | Single-letter variable bindings |
 | [`RefuteOverAssertNot`](#refuteoverassertnot) | `:readability` | `assert !expr` / `assert not expr` — use `refute` |
 | [`SingleModulePerFile`](#singlemoduleperfile) | `:design` | More than one top-level `defmodule` per file (nested modules allowed) |
@@ -422,6 +423,44 @@ def process(map), do: SharedUtils.Enum.atomize_keys(map)
 |---|---|---|
 | `functions` | `%{atomize_keys: "SharedUtils.Enum.atomize_keys/1", deep_merge: "SharedUtils.Map.merge_deep_left/2", deep_struct_to_map: "SharedUtils.Map.deep_struct_to_map/1", pluck: "SharedUtils.Collection.pluck/2", random_string: "SharedUtils.String.generate_random/1", reject_nil_values: "SharedUtils.Enum.reject_nil_values/1", stringify_keys: "SharedUtils.Enum.stringify_keys/1", valid_email?: "SharedUtils.String.valid_email?/1"}` | Banned local function names → the shared helper to use instead. Overriding replaces the whole map. |
 | `excluded_paths` | `["shared_utils"]` | Path fragments exempt from the check (segment-boundary matched) — the shared library itself defines the canonical implementations |
+
+### `NoRepoWritesInTests`
+
+Tests must not write to the database directly — use `FactoryEx` for test data. A
+raw `Repo.insert!/1` in a test hardcodes every required association and default
+inline, so it silently drifts from the schema's real constraints. `FactoryEx`
+centralizes that shape in one factory module every test shares.
+
+```elixir
+# BAD
+{:ok, user} = Repo.insert(%User{email: "a@b.c"})
+Repo.insert_all(Order, rows)
+%User{email: "a@b.c"} |> Repo.insert!()
+
+# GOOD
+user = FactoryEx.insert!(MyApp.Support.Factory.User)
+```
+
+Reads are left alone — asserting on persisted state is the correct way to pin a
+behavioural test (`Repo.get/2`, `Repo.all/1`, `Repo.one/1`, `Repo.preload/2` never
+fire). A repo is identified two ways: any `__aliases__` path whose last segment is
+`:Repo` (`MyApp.Repo`, `Repo`, `Schemas.Repo`) — no alias tracking needed, since
+Elixir's own aliasing preserves the last segment — plus any module named in
+`:repo_modules`, alias-resolved for repos that are not named `Repo` at all.
+
+This is the complement of blitz `NoRampantRepos`, which excludes every `.exs` file
+and so never sees a single one of these — run both.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `functions` | `[:insert, :insert!, :insert_all, :update, :update!, :update_all, :delete, :delete!, :delete_all, :insert_or_update, :insert_or_update!]` | Write-side `Ecto.Repo` functions to flag |
+| `repo_modules` | `[]` | Additional repo modules to treat as write targets, for repos not named `Repo`. Alias-resolved via `AstHelpers.resolve_aliases/2` |
+| `test_files` | `["_test.exs"]` | Path suffixes the check runs on — everything else is skipped |
+| `excluded_paths` | `["test/support/"]` | Path fragments exempt from the check (segment-boundary matched) — factories and `DataCase` helpers legitimately write |
+
+**Limitation:** a repo with no `FactoryEx` setup at all will fail every one of
+these issues with no path forward — ship this opt-in rather than in a
+recommended-default bundle until `FactoryEx` is wired up.
 
 ### `NoSingleLetterVariables`
 
