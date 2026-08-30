@@ -19,6 +19,7 @@
         {MikaCredoRules.NoApplicationEnvOutsideConfig, []},
         {MikaCredoRules.NoAtomStringKeyFallback, []},
         {MikaCredoRules.NoBlanketRescue, []},
+        {MikaCredoRules.NoBooleanLiteralComparison, []},
         {MikaCredoRules.NoCastAllKeys, []},
         {MikaCredoRules.NoIdentityRewrap, []},
         {MikaCredoRules.NoJasonDeriveOnEctoSchema, []},

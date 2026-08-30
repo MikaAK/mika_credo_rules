@@ -58,6 +58,7 @@ checks: %{
 | [`NoApplicationEnvOutsideConfig`](#noapplicationenvoutsideconfig) | `:design` | Any read or write of application env outside a config module |
 | [`NoAtomStringKeyFallback`](#noatomstringkeyfallback) | `:warning` | `m["key"] \|\| m[:key]` mixed-key fallback reads — normalize keys at the boundary |
 | [`NoBlanketRescue`](#noblanketrescue) | `:warning` | Catch-all rescue clauses that swallow exceptions |
+| [`NoBooleanLiteralComparison`](#nobooleanliteralcomparison) | `:readability` | `x == true` / `x != false` — use the value directly (Ecto query DSL exempt) |
 | [`NoCastAllKeys`](#nocastallkeys) | `:warning` | `cast(data, params, Map.keys(params))` — a mass-assignment hole |
 | [`NoIdentityRewrap`](#noidentityrewrap) | `:refactor` | `case` expressions whose every clause returns its pattern unchanged |
 | [`NoJasonDeriveOnEctoSchema`](#nojasonderiveonectoschema) | `:design` | `@derive Jason.Encoder` inside Ecto schema modules |
@@ -257,6 +258,33 @@ pass. Both explicit `try/rescue` and the implicit `def ... rescue` form are chec
 | Param | Default | Meaning |
 |---|---|---|
 | `allowed_recovery_calls` | `[:reraise, :raise, Logger]` | Calls that count as handling — module entries allow any call on the module, atom entries allow local/imported calls. Replaces the default when supplied. |
+
+### `NoBooleanLiteralComparison`
+
+Comparing a value to `true`/`false` must use the value directly, not an equality
+operator. The comparison itself already evaluates to a boolean, so comparing it to
+a boolean literal is redundant and invites `==`/`===` inconsistency.
+
+```elixir
+# BAD
+def admin?(user), do: user.admin === true
+Enum.filter(users, &(&1.active === true))
+
+# GOOD
+def admin?(user), do: user.admin
+Enum.filter(users, & &1.active)
+Enum.reject(users, & &1.archived)
+```
+
+Ecto queries are exempt because the query DSL only compiles `==`/`!=`
+(`where(query, [u], u.active == true)` is allowed). A boolean literal on either
+side is caught, including the mirrored `true == x` form.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `operators` | `[:==, :===, :!=, :!==]` | Operators that count as a boolean literal comparison when either operand is `true`/`false` |
+| `ignored_functions` | `[:dynamic, :from, :where, :or_where, :having, :or_having, :select, :select_merge, :on, :join, :query, :subquery, :in]` | Calls whose arguments are exempt — defaults to the Ecto query DSL |
+| `excluded_paths` | `[]` | Path fragments exempt from the check (segment-boundary matched) |
 
 ### `NoCastAllKeys`
 
