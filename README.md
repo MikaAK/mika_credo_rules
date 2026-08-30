@@ -163,10 +163,12 @@ end
 ```
 
 Config modules are identified **by filename**, so this works the same in an umbrella
-(`apps/my_app/lib/my_app/config.ex`) and a single app (`lib/my_app/config.ex`).
-There are no other exemptions by default — test files and `application.ex` are
-checked too; a test reaching for `Application.put_env/3` is exactly the case this
-rule exists to catch. Env access is caught through every spelling, including
+(`apps/my_app/lib/my_app/config.ex`) and a single app (`lib/my_app/config.ex`). The
+one other exemption is `test_helper.exs` — env access there is boot-time
+configuration that runs before any test, not the scattered runtime access this rule
+exists to catch. Ordinary test files and `application.ex` are still checked; a test
+reaching for `Application.put_env/3` in its own body is exactly the case this rule
+exists to catch. Env access is caught through every spelling, including
 `alias Application, as: App` and `:application.get_env/2`.
 
 | Param | Default | Meaning |
@@ -174,6 +176,7 @@ rule exists to catch. Env access is caught through every spelling, including
 | `config_files` | `["config.ex"]` | Path suffixes treated as config modules |
 | `functions` | every `Application` env function | Which `Application` functions count as env access |
 | `erlang_functions` | `[:get_env, :get_all_env, :set_env, :unset_env]` | Which `:application` functions count as env access |
+| `excluded_paths` | `["/test_helper.exs"]` | Path fragments exempt from the check (segment-boundary matched). The leading `/` matters — it exempts a file named exactly `test_helper.exs`, never a lookalike such as `my_test_helper.exs`. |
 
 ### `NoAtomStringKeyFallback`
 
