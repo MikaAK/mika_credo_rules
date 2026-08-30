@@ -55,6 +55,25 @@ defmodule MikaCredoRules.SourceFilterTest do
     end
   end
 
+  describe "matches_basename?/2" do
+    test "matches a file whose basename equals a name" do
+      assert SourceFilter.matches_basename?("apps/my_app/mix.exs", ["mix.exs"])
+      assert SourceFilter.matches_basename?("mix.exs", ["mix.exs"])
+    end
+
+    test "does not match a filename that merely ends with the name" do
+      refute SourceFilter.matches_basename?("lib/remix.exs", ["mix.exs"])
+    end
+
+    test "matches any of several names" do
+      assert SourceFilter.matches_basename?("config/config.exs", ["mix.exs", "config.exs"])
+    end
+
+    test "empty name list matches nothing" do
+      refute SourceFilter.matches_basename?("mix.exs", [])
+    end
+  end
+
   describe "script_file?/1" do
     test "true for .exs files" do
       assert SourceFilter.script_file?("mix.exs")
