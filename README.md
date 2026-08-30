@@ -67,6 +67,7 @@ checks: %{
 | [`NoProcessSleepInTests`](#noprocesssleepintests) | `:warning` | `Process.sleep/1` and `:timer.sleep/1` in test files |
 | [`NoReimplementedHelper`](#noreimplementedhelper) | `:design` | Local re-implementations of shared library helpers |
 | [`NoSingleLetterVariables`](#nosinglelettervariables) | `:readability` | Single-letter variable bindings |
+| [`ObanWorkerRequiresMaxAttempts`](#obanworkerrequiresmaxattempts) | `:design` | `use Oban.Worker` whose literal opts omit `:max_attempts` |
 | [`RefuteOverAssertNot`](#refuteoverassertnot) | `:readability` | `assert !expr` / `assert not expr` — use `refute` |
 | [`SingleModulePerFile`](#singlemoduleperfile) | `:design` | More than one top-level `defmodule` per file (nested modules allowed) |
 | [`StrictEquality`](#strictequality) | `:warning` | `==`/`!=` — use `===`/`!==` (Ecto query DSL exempt) |
@@ -472,6 +473,37 @@ Enum.map(users, fn user -> user.name end)
 | Param | Default | Meaning |
 |---|---|---|
 | `allowed_names` | `[]` | Single-letter names allowed anyway — atoms or strings |
+
+### `ObanWorkerRequiresMaxAttempts`
+
+`use Oban.Worker` must set `:max_attempts` explicitly. Oban silently falls back to
+its own retry default when `:max_attempts` is omitted, but different job shapes
+need different attempt counts — a worker that never states its count is a worker
+nobody has actually thought about.
+
+```elixir
+# BAD — relies on whatever Oban currently defaults to
+defmodule MyApp.Workers.SyncOrder do
+  use Oban.Worker, queue: :orders
+end
+
+# GOOD — the attempt count is a deliberate part of the worker's contract
+defmodule MyApp.Workers.SyncOrder do
+  use Oban.Worker, queue: :orders, max_attempts: 3
+end
+```
+
+Every spelling of the module is caught, including `alias Oban.Worker` and the
+fully-qualified `Elixir.Oban.Worker`. `:unique` is deliberately not required by
+default — pick it per worker, not by blanket rule. Only a literal keyword list in
+the `use` clause is inspected; a non-literal option list (a module attribute or a
+call that builds the options) is invisible to a static check and is silently
+skipped rather than guessed at.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `required_keys` | `[:max_attempts]` | `use Oban.Worker` options that must be present |
+| `excluded_paths` | `["test/"]` | Path fragments exempt from the check — throwaway fixture workers under test/ |
 
 ### `RefuteOverAssertNot`
 
