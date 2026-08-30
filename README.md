@@ -59,6 +59,7 @@ checks: %{
 | [`NoAtomStringKeyFallback`](#noatomstringkeyfallback) | `:warning` | `m["key"] \|\| m[:key]` mixed-key fallback reads — normalize keys at the boundary |
 | [`NoBlanketRescue`](#noblanketrescue) | `:warning` | Catch-all rescue clauses that swallow exceptions |
 | [`NoCastAllKeys`](#nocastallkeys) | `:warning` | `cast(data, params, Map.keys(params))` — a mass-assignment hole |
+| [`NoClickHandlerOnNonInteractiveElement`](#noclickhandleronnoninteractiveelement) | `:design` | A click binding on `<span>`/`<div>`/... with no `role`/`tabindex` escape hatch |
 | [`NoIdentityRewrap`](#noidentityrewrap) | `:refactor` | `case` expressions whose every clause returns its pattern unchanged |
 | [`NoJasonDeriveOnEctoSchema`](#nojasonderiveonectoschema) | `:design` | `@derive Jason.Encoder` inside Ecto schema modules |
 | [`NoMixEnvAtRuntime`](#nomixenvatruntime) | `:warning` | `Mix.env()`/`Mix.target()` in compiled code — crashes in releases |
@@ -295,6 +296,46 @@ qualified `Ecto.Changeset.cast(...)` and `Changeset.cast(...)` under an alias.
 Indirection through a variable (`fields = Map.keys(attrs)` then
 `cast(user, attrs, fields)`) is invisible to the check — literal lists, module
 attributes and variables are all left alone.
+
+### `NoClickHandlerOnNonInteractiveElement`
+
+A click binding on a non-interactive element (`<span>`, `<div>`, ...) must use a
+native interactive element instead, unless it also carries the ARIA attributes
+that make it keyboard- and screen-reader-accessible. A `<span phx-click="...">`
+is invisible to keyboard navigation and assistive tech — it never receives
+focus, has no default role, and `Tab`/`Enter` do nothing.
+
+```elixir
+# BAD
+~H"""
+<span class="pill" phx-click="show_findings">click</span>
+"""
+
+# GOOD
+~H"""
+<button type="button" aria-label="Show findings" phx-click="show_findings">click</button>
+"""
+```
+
+An element that legitimately needs the click binding (a full-card click target,
+a modal backdrop) is not flagged once it carries BOTH `role=` and `tabindex=` —
+the escape hatch is a conjunction, not a flat ban. An opening tag may span
+multiple lines; the check scans from `<tag` to its matching `>` regardless of
+how many lines that spans.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `non_interactive_tags` | `["span", "div", "p", "li", "td", "th", "h1", "h2", "h3", "h4", "h5", "h6"]` | Tag names with no native click semantics |
+| `bindings` | `["phx-click", "$click"]` | Attribute names that count as a click handler |
+| `escape_attributes` | `["role", "tabindex"]` | Attributes that, when ALL present, exempt the tag |
+| `sigils` | `[:sigil_H, :sigil_F]` | Which sigil names count as template bodies |
+| `excluded_paths` | `[]` | Path fragments whose files are skipped entirely |
+
+**Limitations.** Same as `NoRawMarkupInTemplates` — only `~H`/`~F` sigils
+colocated inside a `.ex`/`.exs` module are covered; a `.html.heex` file is never
+read by Credo. A `>` character inside a quoted attribute value (e.g.
+`title="a > b"`) would incorrectly end the tag scan early — accepted as a rare
+edge case rather than handled with a full attribute parser.
 
 ### `NoIdentityRewrap`
 
