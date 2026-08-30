@@ -31,6 +31,21 @@
         {MikaCredoRules.RefuteOverAssertNot, []},
         {MikaCredoRules.SingleModulePerFile, []},
         {MikaCredoRules.StrictEquality, []},
+        # :credo is dropped from :test_only_packages for this repo only: this
+        # package's own modules `use Credo.Check`, so :credo must compile in
+        # every env this package itself is compiled in (not test-only like a
+        # normal consumer's dependency) — `runtime: false` alone is correct.
+        {MikaCredoRules.TestOnlyDepsScoped,
+         [
+           test_only_packages: [
+             :wallaby,
+             :dialyxir,
+             :mix_test_watch,
+             :excoveralls,
+             :ex_doc,
+             :mika_credo_rules
+           ]
+         ]},
         {MikaCredoRules.TodosNeedTickets, []}
       ]
     }

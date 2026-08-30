@@ -70,6 +70,7 @@ checks: %{
 | [`RefuteOverAssertNot`](#refuteoverassertnot) | `:readability` | `assert !expr` / `assert not expr` — use `refute` |
 | [`SingleModulePerFile`](#singlemoduleperfile) | `:design` | More than one top-level `defmodule` per file (nested modules allowed) |
 | [`StrictEquality`](#strictequality) | `:warning` | `==`/`!=` — use `===`/`!==` (Ecto query DSL exempt) |
+| [`TestOnlyDepsScoped`](#testonlydepsscoped) | `:warning` | A dev/test-only mix.exs dep missing `only:` or `runtime: false` |
 | [`TodosNeedTickets`](#todosneedtickets) | `:design` | TODO/FIXME comments without an adjacent ticket URL |
 
 ---
@@ -557,6 +558,49 @@ caught. `start_permanent: Mix.env() == :prod` in mix.exs is also exempt.
 | Param | Default | Meaning |
 |---|---|---|
 | `ignored_functions` | `[:dynamic, :from, :where, :or_where, :having, :or_having, :select, :select_merge, :on, :join, :query, :subquery, :in]` | Calls whose arguments are exempt (the Ecto query DSL) |
+
+### `TestOnlyDepsScoped`
+
+A dev/test-only dependency must be scoped so it never ships to a release. A
+tool like `:credo` or `:ex_doc` has no business running in production —
+omitting `only:` pulls it (and its own transitive deps) into every
+environment, and omitting `runtime: false` on a compile-time-only tool lets
+it try to start an application that was never meant to run.
+
+```elixir
+# BAD — no only:, ships to every environment
+defp deps do
+  [
+    {:credo, "~> 1.7"}
+  ]
+end
+
+# GOOD — scoped to the environments it's actually needed in
+defp deps do
+  [
+    {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+    {:ex_doc, "~> 0.34", only: [:dev, :test], runtime: false}
+  ]
+end
+```
+
+`:test_only_packages` and `:require_runtime_false` are checked
+independently — a package on both lists (e.g. `:wallaby`) missing both
+options is reported twice, once per missing option. `only: :test` and
+`only: [:dev, :test]` both satisfy the first check, and every dep shape is
+recognised: 2-tuple with a version, 3-tuple with a version and opts, and the
+opts-only 2-tuple git/path form.
+
+This package's own `.credo.exs` drops `:credo` from `:test_only_packages`:
+`mika_credo_rules`'s modules `use Credo.Check`, so `:credo` must compile in
+every environment this package itself compiles in — `runtime: false` alone
+is the correct scoping here, unlike for a normal consumer.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `mix_files` | `["mix.exs"]` | Filenames (matched by basename) treated as mix.exs files |
+| `test_only_packages` | `[:wallaby, :credo, :dialyxir, :mix_test_watch, :excoveralls, :ex_doc, :mika_credo_rules]` | Packages that must carry an `only:` option |
+| `require_runtime_false` | `[:wallaby, :credo, :dialyxir, :ex_doc, :mika_credo_rules]` | Packages that must carry `runtime: false` |
 
 ### `TodosNeedTickets`
 
