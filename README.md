@@ -53,6 +53,7 @@ checks: %{
 |---|---|---|
 | [`ErrorMessageRequired`](#errormessagerequired) | `:design` | `{:error, "string literal"}` tuples — use `%ErrorMessage{}` |
 | [`GenServerRequiresHandleContinue`](#genserverrequireshandlecontinue) | `:refactor` | Real work in `init/1` instead of `handle_continue/2` |
+| [`LiveViewSubscribeRequiresConnected`](#liveviewsubscriberequiresconnected) | `:warning` | A PubSub subscribe in `mount/3` not guarded by `connected?/1` |
 | [`LoggerModulePrefixAndInspect`](#loggermoduleprefixandinspect) | `:warning` | Logger messages missing the `#{__MODULE__}: ` prefix or interpolating values without `inspect/1` |
 | [`NoApplicationEnvOutsideConfig`](#noapplicationenvoutsideconfig) | `:design` | Any read or write of application env outside a config module |
 | [`NoAtomStringKeyFallback`](#noatomstringkeyfallback) | `:warning` | `m["key"] \|\| m[:key]` mixed-key fallback reads — normalize keys at the boundary |
@@ -113,6 +114,39 @@ def handle_continue(:load, _state), do: {:noreply, MyApp.Repo.all(Job)}
 | Param | Default | Meaning |
 |---|---|---|
 | `allowed_modules` | `[Access, Enum, Keyword, Kernel, List, Logger, Map, NimbleOptions, String, {Process, :flag}, {Process, :monitor}, {Process, :send_after}]` | Callable from `init/1` without deferring. A bare module allows every function on it; a `{module, function}` tuple grants one function surgically — the defaults allow `Process.flag/2` while a blocking `Process.sleep/1` in `init/1` stays flagged. The list replaces the default. Erlang modules are plain atoms (`:ets` or `{:ets, :new}`). |
+
+### `LiveViewSubscribeRequiresConnected`
+
+A PubSub subscribe inside `mount/3` must be guarded by `connected?/1`. LiveView
+calls `mount/3` twice per navigation — once for the static render, once for the
+live render after the socket upgrades — so an unguarded subscribe leaks a
+subscription from the discarded static render.
+
+```elixir
+# BAD — subscribes on the static render too
+def mount(_params, _session, socket) do
+  MyApp.PubSub.subscribe("topic")
+  {:ok, socket}
+end
+
+# GOOD — only the live render subscribes
+def mount(_params, _session, socket) do
+  if connected?(socket), do: MyApp.PubSub.subscribe("topic")
+  {:ok, socket}
+end
+```
+
+Only presence of the guard call is checked, not its polarity — `if`, `unless`,
+`case`, `cond`, `&&` and `and` are all recognised as guards as long as their
+condition (or left side) calls a `guard_functions` entry somewhere in it. Only
+`def mount/3` clauses are inspected; `mount/2` is not a LiveView callback and is
+left alone.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `subscribe_functions` | `[:subscribe]` | Function names that count as a PubSub subscribe (local or any-module remote) |
+| `guard_functions` | `[:connected?]` | Function names that count as guarding the subscribe when called in the condition |
+| `excluded_paths` | `[]` | Path fragments naming files this check skips |
 
 ### `LoggerModulePrefixAndInspect`
 
