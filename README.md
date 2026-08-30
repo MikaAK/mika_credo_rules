@@ -64,6 +64,7 @@ checks: %{
 | [`NoMockingLibraries`](#nomockinglibraries) | `:design` | Any reference to Mox, Hammox, Mock, Mimic, Patch or `:meck` |
 | [`NoNilComparison`](#nonilcomparison) | `:readability` | `x == nil` / `x != nil` — use `is_nil/1` |
 | [`NoProcessSleepInTests`](#noprocesssleepintests) | `:warning` | `Process.sleep/1` and `:timer.sleep/1` in test files |
+| [`NoRawMarkupInTemplates`](#norawmarkupintemplates) | `:design` | Literal `style="..."`, hardcoded hex colors, inline `<svg>`, and banned raw tags inside `~H`/`~F` bodies |
 | [`NoReimplementedHelper`](#noreimplementedhelper) | `:design` | Local re-implementations of shared library helpers |
 | [`NoSingleLetterVariables`](#nosinglelettervariables) | `:readability` | Single-letter variable bindings |
 | [`RefuteOverAssertNot`](#refuteoverassertnot) | `:readability` | `assert !expr` / `assert not expr` — use `refute` |
@@ -400,6 +401,58 @@ assert_receive {:order_updated, _}, 500
 |---|---|---|
 | `test_files` | `["_test.exs"]` | Path suffixes the check runs on — everything else is skipped |
 | `functions` | `[{Process, :sleep}, {:timer, :sleep}]` | Sleep functions to flag |
+
+### `NoRawMarkupInTemplates`
+
+Raw HTML primitives inside a `~H`/`~F` template body must go through the project's
+design system instead of being hand-rolled. A literal `style="..."` attribute, a
+hardcoded hex color, or an inline `<svg>` bypasses the Tailwind theme / design
+tokens / icon component the rest of the app relies on.
+
+```elixir
+# BAD
+~H"""
+<div style="width: 30%">
+  <svg viewBox="0 0 24 24"><path d="M0 0"/></svg>
+  <span class="bg-[#1d4ed8]">badge</span>
+</div>
+"""
+
+# GOOD
+~H"""
+<div class="w-1/3">
+  <.icon name="check" />
+  <.badge tone="info">badge</.badge>
+</div>
+"""
+```
+
+Four independent rules toggle via `:rules`: `:inline_style` (a literal
+`style="..."` — a dynamic `style={...}` expression is allowed by default),
+`:hex_color` (a 6-digit hex color — 3-digit is deliberately not matched, since
+`href="#abc"` anchor fragments are indistinguishable from it), `:inline_svg` (a
+literal `<svg` tag), and `:raw_tag` (any tag name in `:banned_tags`, empty by
+default so it is a no-op until a repo opts specific tags in).
+
+| Param | Default | Meaning |
+|---|---|---|
+| `rules` | `[:inline_style, :hex_color, :inline_svg, :raw_tag]` | Which markup rules run |
+| `banned_tags` | `[]` | Raw tag names flagged by `:raw_tag` (e.g. `["button"]`) |
+| `allow_dynamic_style` | `true` | When `true`, a dynamic `style={...}` expression is allowed |
+| `sigils` | `[:sigil_H, :sigil_F]` | Which sigil names count as template bodies |
+| `excluded_paths` | `["_icons/", "icons/"]` | Path fragments whose files are skipped entirely |
+
+**Limitations.** Credo only lints `.ex`/`.exs` files — **a `.html.heex` template
+file is never read by Credo** (`Credo.Sources.@default_sources_glob` is
+`~w(** *.{ex,exs})`), so this check is blind to every `.html.heex` file. Only
+`~H`/`~F` sigils colocated inside a `.ex`/`.exs` module are covered. Suppression
+works inside a template exactly like anywhere else, via a HEEx comment wrapping
+the disable pragma:
+
+```heex
+<%!-- # credo:disable-for-next-line MikaCredoRules.NoRawMarkupInTemplates --%>
+<svg viewBox="0 0 24 24">...</svg>
+```
 
 ### `NoReimplementedHelper`
 

@@ -25,6 +25,7 @@
         {MikaCredoRules.NoMockingLibraries, []},
         {MikaCredoRules.NoNilComparison, []},
         {MikaCredoRules.NoProcessSleepInTests, []},
+        {MikaCredoRules.NoRawMarkupInTemplates, []},
         {MikaCredoRules.NoReimplementedHelper, []},
         {MikaCredoRules.NoSingleLetterVariables, []},
         {MikaCredoRules.RefuteOverAssertNot, []},

@@ -138,32 +138,63 @@ defmodule MikaCredoRules.TemplateSigilsTest do
   end
 
   describe "column_at/2" do
-    test "resolves the 1-based column of a byte offset inside a single-line body" do
-      source_file =
-        """
-        defmodule MyAppWeb.Comp do
-          def render(assigns), do: ~H(<div style="x">hi</div>)
-        end
-        """
-        |> to_source_file(@filename)
+    test "resolves the real file column of a byte offset inside a single-line body" do
+      source = """
+      defmodule MyAppWeb.Comp do
+        def render(assigns), do: ~H(<div style="x">hi</div>)
+      end
+      """
+
+      source_file = to_source_file(source, @filename)
 
       assert [sigil] = TemplateSigils.collect(source_file, [:sigil_H])
       {offset, _length} = :binary.match(sigil.body, "style=")
 
-      assert TemplateSigils.column_at(sigil, offset) === 6
+      raw_line = source |> String.split("\n") |> Enum.at(1)
+      {expected_offset, _length} = :binary.match(raw_line, "style=")
+
+      assert TemplateSigils.column_at(sigil, offset) === expected_offset + 1
     end
 
-    test "resolves column 1 for the very first byte of the body" do
-      source_file =
-        """
-        defmodule MyAppWeb.Comp do
-          def render(assigns), do: ~H"<div/>"
-        end
-        """
-        |> to_source_file(@filename)
+    test "resolves the real file column of the very first byte of a single-line body" do
+      source = """
+      defmodule MyAppWeb.Comp do
+        def render(assigns), do: ~H"<div/>"
+      end
+      """
+
+      source_file = to_source_file(source, @filename)
 
       assert [sigil] = TemplateSigils.collect(source_file, [:sigil_H])
-      assert TemplateSigils.column_at(sigil, 0) === 1
+
+      raw_line = source |> String.split("\n") |> Enum.at(1)
+      {expected_offset, _length} = :binary.match(raw_line, "<div/>")
+
+      assert TemplateSigils.column_at(sigil, 0) === expected_offset + 1
+    end
+
+    test "adds back the indentation stripped from a heredoc body" do
+      source = """
+      defmodule MyAppWeb.Comp do
+        def render(assigns) do
+          ~H\"\"\"
+          <div>
+            <span class="a">hi</span>
+          </div>
+          \"\"\"
+        end
+      end
+      """
+
+      source_file = to_source_file(source, @filename)
+
+      assert [sigil] = TemplateSigils.collect(source_file, [:sigil_H])
+      {offset, _length} = :binary.match(sigil.body, "class=")
+
+      raw_line = source |> String.split("\n") |> Enum.at(4)
+      {expected_offset, _length} = :binary.match(raw_line, "class=")
+
+      assert TemplateSigils.column_at(sigil, offset) === expected_offset + 1
     end
   end
 
