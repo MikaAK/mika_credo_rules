@@ -27,6 +27,7 @@
         {MikaCredoRules.NoProcessSleepInTests, []},
         {MikaCredoRules.NoReimplementedHelper, []},
         {MikaCredoRules.NoSingleLetterVariables, []},
+        {MikaCredoRules.NoTaskAsyncInGenServer, []},
         {MikaCredoRules.RefuteOverAssertNot, []},
         {MikaCredoRules.SingleModulePerFile, []},
         {MikaCredoRules.StrictEquality, []},

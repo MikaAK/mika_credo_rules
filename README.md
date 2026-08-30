@@ -66,6 +66,7 @@ checks: %{
 | [`NoProcessSleepInTests`](#noprocesssleepintests) | `:warning` | `Process.sleep/1` and `:timer.sleep/1` in test files |
 | [`NoReimplementedHelper`](#noreimplementedhelper) | `:design` | Local re-implementations of shared library helpers |
 | [`NoSingleLetterVariables`](#nosinglelettervariables) | `:readability` | Single-letter variable bindings |
+| [`NoTaskAsyncInGenServer`](#notaskasyncingenserver) | `:warning` | `Task.async`/`Task.Supervisor.async` inside a GenServer/GenStage callback — a crashing task takes the server down |
 | [`RefuteOverAssertNot`](#refuteoverassertnot) | `:readability` | `assert !expr` / `assert not expr` — use `refute` |
 | [`SingleModulePerFile`](#singlemoduleperfile) | `:design` | More than one top-level `defmodule` per file (nested modules allowed) |
 | [`StrictEquality`](#strictequality) | `:warning` | `==`/`!=` — use `===`/`!==` (Ecto query DSL exempt) |
@@ -444,6 +445,48 @@ Enum.map(users, fn user -> user.name end)
 | Param | Default | Meaning |
 |---|---|---|
 | `allowed_names` | `[]` | Single-letter names allowed anyway — atoms or strings |
+
+### `NoTaskAsyncInGenServer`
+
+`Task.async` and `Task.Supervisor.async` must not be called from inside a
+GenServer or GenStage callback. `Task.async/1,3` links the new task to the process
+that calls it — inside a callback, that process IS the server, so a crashing task
+takes the whole server down with it.
+
+```elixir
+# BAD — a crashing task takes the GenServer down with it
+def handle_continue(:init_work, state) do
+  task = Task.async(fn -> expensive_fetch(state.config) end)
+  {:noreply, %{state | task_ref: task.ref}}
+end
+
+# GOOD — isolate the crash, handle it explicitly
+def handle_continue(:init_work, state) do
+  task = Task.Supervisor.async_nolink(MyApp.TaskSupervisor, fn -> expensive_fetch(state.config) end)
+  {:noreply, %{state | task_ref: task.ref}}
+end
+
+def handle_info({ref, result}, %{task_ref: ref} = state) do
+  Process.demonitor(ref, [:flush])
+  {:noreply, %{state | task_ref: nil, data: result}}
+end
+```
+
+There is no bare `Task.async_nolink/1,2` — only the supervised
+`Task.Supervisor.async_nolink/2,3,4` exists, which needs a `Task.Supervisor`
+already running in the app's supervision tree.
+
+Only the bodies of callbacks are inspected — a public client-side function
+defined in the same module runs in the caller's process, not the server's, and
+may legitimately want the link `Task.async` provides, so it is never scanned.
+`async` is matched by exact function name, never a prefix — `Task.async_stream/2`
+is a different, unlinked API and is never flagged here.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `banned` | `[{Task, :async}, {Task.Supervisor, :async}]` | `{module, function}` pairs banned inside a callback body |
+| `callbacks` | `[:init, :handle_call, :handle_cast, :handle_info, :handle_continue, :handle_events, :handle_demand, :terminate]` | Function names whose bodies are inspected |
+| `behaviour_modules` | `[GenServer, GenStage]` | Modules whose `use` marks a file as worth scanning at all (alias-aware) |
 
 ### `RefuteOverAssertNot`
 
