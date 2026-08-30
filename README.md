@@ -60,6 +60,7 @@ checks: %{
 | [`NoBlanketRescue`](#noblanketrescue) | `:warning` | Catch-all rescue clauses that swallow exceptions |
 | [`NoCastAllKeys`](#nocastallkeys) | `:warning` | `cast(data, params, Map.keys(params))` — a mass-assignment hole |
 | [`NoCondElseAtom`](#nocondelseatom) | `:readability` | A `cond`'s last clause falling through on `:else` instead of `true` |
+| [`NoForWithDiscardedResult`](#noforwithdiscardedresult) | `:warning` | A `for` comprehension in statement position whose built result is thrown away |
 | [`NoIdentityRewrap`](#noidentityrewrap) | `:refactor` | `case` expressions whose every clause returns its pattern unchanged |
 | [`NoJasonDeriveOnEctoSchema`](#nojasonderiveonectoschema) | `:design` | `@derive Jason.Encoder` inside Ecto schema modules |
 | [`NoMixEnvAtRuntime`](#nomixenvatruntime) | `:warning` | `Mix.env()`/`Mix.target()` in compiled code — crashes in releases |
@@ -324,6 +325,45 @@ head is a different pattern this check does not cover.
 | Param | Default | Meaning |
 |---|---|---|
 | `disallowed_atoms` | `[:else]` | Atoms that must not be used as the last `cond` clause's head. |
+
+### `NoForWithDiscardedResult`
+
+A `for` comprehension in statement position throws its result away — use
+`Enum.each/2` for side-effect-only iteration instead. `for` always builds and
+returns a list (or whatever `:into`/`:reduce` accumulates into); written as a
+standalone statement, that value is built and immediately discarded, with no
+compiler warning to catch it.
+
+```elixir
+# BAD — the built list is thrown away
+def sync(items) do
+  for item <- items do
+    Cache.put(item)
+  end
+
+  :ok
+end
+
+# GOOD — no throwaway list
+def sync(items) do
+  Enum.each(items, fn item ->
+    Cache.put(item)
+  end)
+
+  :ok
+end
+```
+
+A `for` is only flagged when it sits in statement position — an element of a
+block that is not the block's last expression. A `for` that IS the last
+expression of a block, the right-hand side of `=`, a call argument, or a pipe
+stage is consumed elsewhere and is never flagged. `for ... into: ...` and
+`for ... reduce: ...` are flagged the same as a plain `for` when they sit in
+statement position — the accumulated value is still built and discarded.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `excluded_paths` | `[]` | Path fragments exempt from the check, matched at a path-segment boundary. |
 
 ### `NoIdentityRewrap`
 

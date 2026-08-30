@@ -21,6 +21,7 @@
         {MikaCredoRules.NoBlanketRescue, []},
         {MikaCredoRules.NoCastAllKeys, []},
         {MikaCredoRules.NoCondElseAtom, []},
+        {MikaCredoRules.NoForWithDiscardedResult, []},
         {MikaCredoRules.NoIdentityRewrap, []},
         {MikaCredoRules.NoJasonDeriveOnEctoSchema, []},
         {MikaCredoRules.NoMixEnvAtRuntime, []},
