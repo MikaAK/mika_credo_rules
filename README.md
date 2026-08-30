@@ -47,10 +47,17 @@ checks: %{
 }
 ```
 
+Three checks scope themselves to `mix.exs` and `.credo.exs`, not `lib/`/`test/`:
+`InUmbrellaDepsNoVersion`, `TestOnlyDepsScoped`, and `CredoConfigNamedDefault`. Most
+of Mika's per-project configs narrow `files.included` down to `["lib/", "test/"]` —
+add `"mix.exs"` and `".credo.exs"` to that list (as this package's own `.credo.exs`
+does) or these three checks will never see a file to run against.
+
 ## Checks
 
 | Check | Category | What it catches |
 |---|---|---|
+| [`CredoConfigNamedDefault`](#credoconfignameddefault) | `:warning` | A `.credo.exs` with no config named `"default"` — Credo silently falls back to its own stock checks |
 | [`ErrorMessageRequired`](#errormessagerequired) | `:design` | `{:error, "string literal"}` tuples — use `%ErrorMessage{}` |
 | [`GenServerRequiresHandleContinue`](#genserverrequireshandlecontinue) | `:refactor` | Real work in `init/1` instead of `handle_continue/2` |
 | [`InUmbrellaDepsNoVersion`](#inumbrelladepsnoversion) | `:readability` | `{:app, "~> x", in_umbrella: true}` — a version requirement on an in_umbrella dep |
@@ -74,6 +81,45 @@ checks: %{
 | [`TodosNeedTickets`](#todosneedtickets) | `:design` | TODO/FIXME comments without an adjacent ticket URL |
 
 ---
+
+### `CredoConfigNamedDefault`
+
+A `.credo.exs` must have a config named `"default"` (or one of
+`:allowed_names`). `mix credo` selects the config named `"default"` unless
+`--config-name` is passed. If no config in the file has that name, Credo
+silently falls back to its own stock checks — printing a green run that
+executed none of the checks this file defines.
+
+```elixir
+# BAD — no config is named "default"; Credo silently runs its own defaults
+%{
+  configs: [
+    %{
+      name: "mika",
+      checks: []
+    }
+  ]
+}
+
+# GOOD — a config named "default" exists
+%{
+  configs: [
+    %{
+      name: "default",
+      checks: []
+    }
+  ]
+}
+```
+
+Only the literal `%{configs: [...]}` shape is inspected. A `.credo.exs` that
+builds its config dynamically (e.g. `Code.eval_file/1`, a function call) is
+skipped — this check can only verify what it can parse statically.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `config_files` | `[".credo.exs"]` | Path suffixes treated as Credo config files |
+| `allowed_names` | `["default"]` | Config names Credo will actually select without `--config-name` |
 
 ### `ErrorMessageRequired`
 

@@ -7,11 +7,12 @@
       # run that never executed a single check below.
       name: "default",
       files: %{
-        included: ["lib/", "test/", "mix.exs"],
+        included: ["lib/", "test/", "mix.exs", ".credo.exs"],
         excluded: []
       },
       strict: true,
       checks: [
+        {MikaCredoRules.CredoConfigNamedDefault, []},
         {MikaCredoRules.ErrorMessageRequired, []},
         {MikaCredoRules.GenServerRequiresHandleContinue, []},
         {MikaCredoRules.InUmbrellaDepsNoVersion, []},
