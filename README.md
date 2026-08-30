@@ -65,6 +65,7 @@ checks: %{
 | [`NoMockingLibraries`](#nomockinglibraries) | `:design` | Any reference to Mox, Hammox, Mock, Mimic, Patch or `:meck` |
 | [`NoNilComparison`](#nonilcomparison) | `:readability` | `x == nil` / `x != nil` — use `is_nil/1` |
 | [`NoProcessSleepInTests`](#noprocesssleepintests) | `:warning` | `Process.sleep/1` and `:timer.sleep/1` in test files |
+| [`NoRawEts`](#norawets) | `:design` | Raw `:ets` calls — wrap in `Cache.ETS` from elixir_cache |
 | [`NoReimplementedHelper`](#noreimplementedhelper) | `:design` | Local re-implementations of shared library helpers |
 | [`NoSingleLetterVariables`](#nosinglelettervariables) | `:readability` | Single-letter variable bindings |
 | [`RefuteOverAssertNot`](#refuteoverassertnot) | `:readability` | `assert !expr` / `assert not expr` — use `refute` |
@@ -428,6 +429,42 @@ assert_receive {:order_updated, _}, 500
 |---|---|---|
 | `test_files` | `["_test.exs"]` | Path suffixes the check runs on — everything else is skipped |
 | `functions` | `[{Process, :sleep}, {:timer, :sleep}]` | Sleep functions to flag |
+
+### `NoRawEts`
+
+Raw `:ets` must not be used for caching — wrap it in `Cache.ETS` from
+[`elixir_cache`](https://github.com/MikaAK/elixir_cache) instead. `:ets.new/2`,
+`:ets.insert/2`, and `:ets.lookup/2` reimplement what `elixir_cache` already
+provides with TTL, sandboxing, and a consistent API.
+
+```elixir
+# BAD
+table = :ets.new(:price_cache, [:set, :named_table, read_concurrency: true])
+:ets.insert(table, {"AAPL", 150.25})
+
+# GOOD
+defmodule MyApp.PriceCache do
+  use Cache, adapter: Cache.ETS, name: :price_cache, sandbox?: Mix.env() === :test
+end
+```
+
+This check scans test files as well as `lib/` — a raw `:ets` table in a test
+fixture breaks the same async-safety guarantees a `Cache` sandbox provides.
+Diagnostic-only functions (`:ets.info/1,2`, `:ets.whereis/1`, `:ets.all/0`) are
+always allowed.
+
+**Limitations.** This check is architectural, not universal — the
+`elixir-distributed` feed-server pattern legitimately builds its whole design
+on raw `:ets` for lock-free, high-read shared state. Adopters running feed
+servers should add those paths to `excluded_paths` before enabling this
+check — treat it as opt-in, not default-on, in any repo that owns a feed
+server.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `erlang_modules` | `[:ets]` | Erlang modules banned as raw in-memory stores — add `:dets` or `:persistent_term` to widen the ban |
+| `allowed_functions` | `[:info, :whereis, :all]` | Functions on a banned module that are never flagged |
+| `excluded_paths` | `["elixir_cache/"]` | Path fragments naming files exempt from the check (matched on segment boundaries) |
 
 ### `NoReimplementedHelper`
 
