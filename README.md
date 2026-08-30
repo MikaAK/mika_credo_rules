@@ -58,6 +58,7 @@ checks: %{
 | [`NoAtomStringKeyFallback`](#noatomstringkeyfallback) | `:warning` | `m["key"] \|\| m[:key]` mixed-key fallback reads — normalize keys at the boundary |
 | [`NoBlanketRescue`](#noblanketrescue) | `:warning` | Catch-all rescue clauses that swallow exceptions |
 | [`NoCastAllKeys`](#nocastallkeys) | `:warning` | `cast(data, params, Map.keys(params))` — a mass-assignment hole |
+| [`NoDirectErlangRpc`](#nodirecterlangrpc) | `:design` | Direct `:rpc`/`:erpc` calls and `Node.spawn*` — route through your app's RPC wrapper |
 | [`NoIdentityRewrap`](#noidentityrewrap) | `:refactor` | `case` expressions whose every clause returns its pattern unchanged |
 | [`NoJasonDeriveOnEctoSchema`](#nojasonderiveonectoschema) | `:design` | `@derive Jason.Encoder` inside Ecto schema modules |
 | [`NoMixEnvAtRuntime`](#nomixenvatruntime) | `:warning` | `Mix.env()`/`Mix.target()` in compiled code — crashes in releases |
@@ -254,6 +255,33 @@ qualified `Ecto.Changeset.cast(...)` and `Changeset.cast(...)` under an alias.
 Indirection through a variable (`fields = Map.keys(attrs)` then
 `cast(user, attrs, fields)`) is invisible to the check — literal lists, module
 attributes and variables are all left alone.
+
+### `NoDirectErlangRpc`
+
+Remote nodes must be called through the app's RPC wrapper, never directly.
+Direct `:rpc`/`:erpc` calls and `Node.spawn*` scatter node selection, error
+handling, and telemetry across the codebase. Each umbrella defines a thin
+app-level module wrapping [`RpcLoadBalancer`](https://github.com/MikaAK/rpc_load_balancer)
+instead, so every remote call gets consistent load-balancing, error handling,
+and a `call_directly?` escape hatch for dev/test.
+
+```elixir
+# BAD — direct erlang RPC
+:rpc.call(node, SharedFeedUtils.FeedServer, :get_state, [adapter, id])
+
+# GOOD — routed through the app's RPC wrapper
+MyApp.RPC.call_on_random_node("options_feed", SharedFeedUtils.FeedServer, :get_state, [adapter, id])
+```
+
+`Node.spawn/1..3`, `Node.spawn_link/1..3`, and `Node.spawn_monitor/1..3` are
+banned the same way — spawning a process directly on a remote node bypasses the
+same wrapper.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `erlang_modules` | `[:rpc, :erpc]` | Erlang modules banned outright — every remote call on one of these is flagged |
+| `functions` | `[{Node, :spawn}, {Node, :spawn_link}, {Node, :spawn_monitor}]` | `{module, function}` pairs to ban, alias-aware |
+| `excluded_paths` | `["rpc_load_balancer/", "elixir_cache/"]` | Path fragments naming files exempt from the check (matched on segment boundaries) — the libraries that implement the wrapper itself |
 
 ### `NoIdentityRewrap`
 
