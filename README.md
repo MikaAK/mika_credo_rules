@@ -57,6 +57,7 @@ checks: %{
 | [`NoApplicationEnvOutsideConfig`](#noapplicationenvoutsideconfig) | `:design` | Any read or write of application env outside a config module |
 | [`NoAtomStringKeyFallback`](#noatomstringkeyfallback) | `:warning` | `m["key"] \|\| m[:key]` mixed-key fallback reads — normalize keys at the boundary |
 | [`NoBarePatternMatchOnFallible`](#nobarepatternmatchonfallible) | `:warning` | `{:ok, x} = call()` — a bare match with no handling for the failure path |
+| [`NoBinaryPatternForStringPrefix`](#nobinarypatternforstringprefix) | `:readability` | `<<"GET ", rest::binary>>` instead of `"GET " <> rest` |
 | [`NoBlanketRescue`](#noblanketrescue) | `:warning` | Catch-all rescue clauses that swallow exceptions |
 | [`NoCastAllKeys`](#nocastallkeys) | `:warning` | `cast(data, params, Map.keys(params))` — a mass-assignment hole |
 | [`NoCondElseAtom`](#nocondelseatom) | `:readability` | A `cond`'s last clause falling through on `:else` instead of `true` |
@@ -244,6 +245,35 @@ pattern, not a statement, so only its body is inspected. `<-` in `with` and
 right-hand side counts as a call. A control-flow expression (`case`, `if`,
 `cond`, `for`, a `fn`) on the right-hand side is never flagged, even when it
 ultimately returns a fallible-tagged tuple.
+
+### `NoBinaryPatternForStringPrefix`
+
+Match a string prefix with concatenation, not a binary pattern.
+`<<"GET ", rest::binary>>` and `"GET " <> rest` match the same values, but the
+binary-pattern spelling reads like real byte-level parsing (sizes, bit widths,
+encodings) when nothing here needs any of that.
+
+```elixir
+# BAD
+<<"my", rest::binary>> = "my string"
+def parse(<<"GET ", path::binary>>), do: path
+
+# GOOD
+"my" <> rest = "my string"
+def parse("GET " <> path), do: path
+```
+
+Only a `<<>>` pattern whose first segment is a plain string literal, and whose
+every other segment is a bare variable or a `::binary`/`::bytes`-typed
+variable, is flagged — genuine binary parsing (`<<size::32, rest::binary>>`,
+`<<"GET", _::8, path::binary>>`) is left alone. A `<<>>` used as a constructor
+rather than a pattern is never flagged — only pattern positions are inspected:
+the left-hand side of `=`, function-clause heads, and `case`/`fn`/`with`/`for`
+pattern heads.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `excluded_paths` | `[]` | Path fragments exempt from the check, matched at a path-segment boundary. |
 
 ### `NoBlanketRescue`
 
