@@ -4,14 +4,16 @@ defmodule MikaCredoRules.NoReimplementedHelper do
     category: :design,
     param_defaults: [
       functions: %{
+        atom_if_exists: "SharedUtils.Enum.atomize_keys/1",
         atomize_keys: "SharedUtils.Enum.atomize_keys/1",
-        deep_merge: "SharedUtils.Map.merge_deep_left/2",
+        atomize_params: "SharedUtils.Enum.atomize_keys/1",
         deep_struct_to_map: "SharedUtils.Map.deep_struct_to_map/1",
-        pluck: "SharedUtils.Collection.pluck/2",
+        deep_transform: "SharedUtils.Enum.deep_transform/2",
+        drop_nil_values: "SharedUtils.Enum.reject_nil_values/1",
         random_string: "SharedUtils.String.generate_random/1",
         reject_nil_values: "SharedUtils.Enum.reject_nil_values/1",
         stringify_keys: "SharedUtils.Enum.stringify_keys/1",
-        valid_email?: "SharedUtils.String.valid_email?/1"
+        title_case: "SharedUtils.String.title_case/1"
       },
       excluded_paths: ["shared_utils"]
     ],
@@ -38,9 +40,10 @@ defmodule MikaCredoRules.NoReimplementedHelper do
   @moduledoc """
   Helpers that already exist in a shared library must not be reimplemented locally.
 
-  Generic data helpers (`atomize_keys/1`, `deep_merge/2`, `pluck/2`, ...) get
-  re-inlined as private functions over and over, and each copy drifts from the
-  tested shared implementation. Call the shared helper instead of redefining it.
+  Generic data helpers (`atomize_keys/1`, `deep_transform/2`, `drop_nil_values/1`,
+  ...) get re-inlined as private functions over and over, and each copy drifts
+  from the tested shared implementation. Call the shared helper instead of
+  redefining it.
 
       # BAD — local copy of a shared helper
       defmodule MyApp.Worker do
