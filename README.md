@@ -61,6 +61,7 @@ checks: %{
 | [`NoBlanketRescue`](#noblanketrescue) | `:warning` | Catch-all rescue clauses that swallow exceptions |
 | [`NoCastAllKeys`](#nocastallkeys) | `:warning` | `cast(data, params, Map.keys(params))` — a mass-assignment hole |
 | [`NoIdentityRewrap`](#noidentityrewrap) | `:refactor` | `case` expressions whose every clause returns its pattern unchanged |
+| [`NoInspectModuleInMigrationSql`](#noinspectmoduleinmigrationsql) | `:warning` | `inspect/1` or string interpolation of a module alias in a migration |
 | [`NoJasonDeriveOnEctoSchema`](#nojasonderiveonectoschema) | `:design` | `@derive Jason.Encoder` inside Ecto schema modules |
 | [`NoMixEnvAtRuntime`](#nomixenvatruntime) | `:warning` | `Mix.env()`/`Mix.target()` in compiled code — crashes in releases |
 | [`NoMockingLibraries`](#nomockinglibraries) | `:design` | Any reference to Mox, Hammox, Mock, Mimic, Patch or `:meck` |
@@ -340,6 +341,33 @@ clause, a guard, or a multi-expression body means the `case` does real work and
 it passes. If the `case` exists purely to assert the value's shape, prefer an
 explicit pattern match (`{:ok, user} = fetch_user(id)`) — an identity `case`
 hides that intent.
+
+### `NoInspectModuleInMigrationSql`
+
+A module alias must not be rendered with `inspect/1` or string interpolation
+inside a migration. Oban's `worker` column (and any similar SQL allow-list of
+module names) stores names WITHOUT the `Elixir.` prefix, so `inspect(MyApp.Worker)`
+and `"\#{MyApp.Worker}"` both render `"Elixir.MyApp.Worker"` — a `WHERE worker IN
+(...)` built from either never matches a row.
+
+```elixir
+# BAD
+worker_list = Enum.map([DeveloperAi.Workers.TicketScanner], &inspect/1) |> Enum.join("','")
+execute "UPDATE oban_jobs SET queue = 'scanner' WHERE worker IN ('#{worker_list}')"
+
+# GOOD
+workers = ~w(DeveloperAi.Workers.TicketScanner) |> Enum.join("','")
+execute "UPDATE oban_jobs SET queue = 'scanner' WHERE worker IN ('#{workers}')"
+```
+
+Both spellings are caught anywhere in a migration file. Only the literal-argument
+form is detected — an `inspect/1` capture applied indirectly to a list
+(`Enum.map([...], &inspect/1)`) is invisible to this check.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `migration_paths` | `["migrations/"]` | Path fragments (segment-boundary match) treated as migration directories |
+| `also_flag_interpolation` | `true` | Also flag string interpolation of a module alias, not just `inspect/1` |
 
 ### `NoJasonDeriveOnEctoSchema`
 

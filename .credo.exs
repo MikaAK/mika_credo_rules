@@ -22,6 +22,7 @@
         {MikaCredoRules.NoBlanketRescue, []},
         {MikaCredoRules.NoCastAllKeys, []},
         {MikaCredoRules.NoIdentityRewrap, []},
+        {MikaCredoRules.NoInspectModuleInMigrationSql, []},
         {MikaCredoRules.NoJasonDeriveOnEctoSchema, []},
         {MikaCredoRules.NoMixEnvAtRuntime, []},
         {MikaCredoRules.NoMockingLibraries, []},
