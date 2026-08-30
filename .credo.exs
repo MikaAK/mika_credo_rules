@@ -28,6 +28,7 @@
         {MikaCredoRules.NoReimplementedHelper, []},
         {MikaCredoRules.NoRepoWritesInTests, []},
         {MikaCredoRules.NoSingleLetterVariables, []},
+        {MikaCredoRules.NoVacuousAssert, []},
         {MikaCredoRules.RefuteOverAssertNot, []},
         {MikaCredoRules.SingleModulePerFile, []},
         {MikaCredoRules.StrictEquality, []},

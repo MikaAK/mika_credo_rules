@@ -67,6 +67,7 @@ checks: %{
 | [`NoReimplementedHelper`](#noreimplementedhelper) | `:design` | Local re-implementations of shared library helpers |
 | [`NoRepoWritesInTests`](#norepowritesintests) | `:design` | Write-side `Repo` calls (`insert!`, `update!`, `delete!`, ...) in test files — use `FactoryEx` |
 | [`NoSingleLetterVariables`](#nosinglelettervariables) | `:readability` | Single-letter variable bindings |
+| [`NoVacuousAssert`](#novacuousassert) | `:warning` | `assert true` / `assert <literal>` / `refute false` / `assert x === x` — placeholder assertions that can never fail |
 | [`RefuteOverAssertNot`](#refuteoverassertnot) | `:readability` | `assert !expr` / `assert not expr` — use `refute` |
 | [`SingleModulePerFile`](#singlemoduleperfile) | `:design` | More than one top-level `defmodule` per file (nested modules allowed) |
 | [`StrictEquality`](#strictequality) | `:warning` | `==`/`!=` — use `===`/`!==` (Ecto query DSL exempt) |
@@ -483,6 +484,33 @@ Enum.map(users, fn user -> user.name end)
 | Param | Default | Meaning |
 |---|---|---|
 | `allowed_names` | `[]` | Single-letter names allowed anyway — atoms or strings |
+
+### `NoVacuousAssert`
+
+Assertions must exercise real behaviour, never a hardcoded literal. `assert true`,
+`assert :ok`, `refute false` always pass or fail regardless of what the test does
+— they are placeholders that survived past the point a real assertion should
+have replaced them. `assert x === x` is the same trap wearing an operator: it
+compares a value to itself, so it can never fail.
+
+```elixir
+# BAD
+assert true
+assert :ok
+refute false
+refute nil
+assert Orders.status(order) === Orders.status(order)
+
+# GOOD
+assert Orders.status(order) === :shipped
+```
+
+A bare variable or a function call is never flagged — `assert some_call()` and
+`assert x` are legitimate assertions on a value computed elsewhere.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `test_files` | `["_test.exs"]` | Path suffixes the check runs on — everything else is skipped |
 
 ### `RefuteOverAssertNot`
 
