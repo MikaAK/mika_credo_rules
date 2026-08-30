@@ -54,6 +54,7 @@ checks: %{
 | [`ErrorMessageRequired`](#errormessagerequired) | `:design` | `{:error, "string literal"}` tuples — use `%ErrorMessage{}` |
 | [`GenServerRequiresHandleContinue`](#genserverrequireshandlecontinue) | `:refactor` | Real work in `init/1` instead of `handle_continue/2` |
 | [`LoggerModulePrefixAndInspect`](#loggermoduleprefixandinspect) | `:warning` | Logger messages missing the `#{__MODULE__}: ` prefix or interpolating values without `inspect/1` |
+| [`MonolithicTemplateComponent`](#monolithictemplatecomponent) | `:refactor` | A `~H`/`~F` body spanning too many lines — decompose into smaller function components |
 | [`NoApplicationEnvOutsideConfig`](#noapplicationenvoutsideconfig) | `:design` | Any read or write of application env outside a config module |
 | [`NoAtomStringKeyFallback`](#noatomstringkeyfallback) | `:warning` | `m["key"] \|\| m[:key]` mixed-key fallback reads — normalize keys at the boundary |
 | [`NoBlanketRescue`](#noblanketrescue) | `:warning` | Catch-all rescue clauses that swallow exceptions |
@@ -142,6 +143,44 @@ Qualified spellings of allowed functions match on the function name, so
 | `logger_functions` | `[:debug, :info, :warning, :warn, :error, :critical]` | Logger functions whose messages are checked |
 | `enforce_prefix` | `true` | Require the `__MODULE__` interpolation as the very first segment |
 | `allowed_interpolations` | `[:__MODULE__, :inspect]` | What may appear inside an interpolation — add your own formatting helpers |
+
+### `MonolithicTemplateComponent`
+
+A `~H`/`~F` template body that spans too many lines almost certainly contains
+multiple logical phases that should be their own function components. A single
+sprawling template is harder to read top-to-bottom and hides how many distinct
+concerns it actually renders.
+
+```elixir
+# BAD — one sigil, three phases (header / groups / rows), 90 lines
+def progress(assigns), do: ~H"""
+  ...90 lines...
+"""
+
+# GOOD
+def progress(assigns) do
+  ~H"""
+  <.progress_header {assigns} />
+  <.lesson_group_card :for={g <- @groups} group={g} />
+  """
+end
+```
+
+This is a decomposition nudge, not a strict correctness rule. `max_lines`
+defaults to 60, buying headroom over a stricter "over ~40 lines with 2+ phases"
+prose guideline — only the line-count half of that is mechanically checkable.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `max_lines` | `60` | Physical lines a `~H`/`~F` body may span before it is flagged |
+| `sigils` | `[:sigil_H, :sigil_F]` | Which sigil names count as template bodies |
+| `excluded_paths` | `[]` | Path fragments whose files are skipped entirely |
+
+**Limitations.** Same as `NoRawMarkupInTemplates` — only `~H`/`~F` sigils
+colocated inside a `.ex`/`.exs` module are covered; a `.html.heex` file is never
+read by Credo (which also means a legitimately long, single-purpose whole-page
+`.html.heex` template isn't the false-positive risk it would otherwise be). The
+reported `trigger:` is always the literal string `"~H"`, even for a `~F` match.
 
 ### `NoApplicationEnvOutsideConfig`
 

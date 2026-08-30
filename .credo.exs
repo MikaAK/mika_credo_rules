@@ -15,6 +15,7 @@
         {MikaCredoRules.ErrorMessageRequired, []},
         {MikaCredoRules.GenServerRequiresHandleContinue, []},
         {MikaCredoRules.LoggerModulePrefixAndInspect, []},
+        {MikaCredoRules.MonolithicTemplateComponent, []},
         {MikaCredoRules.NoApplicationEnvOutsideConfig, []},
         {MikaCredoRules.NoAtomStringKeyFallback, []},
         {MikaCredoRules.NoBlanketRescue, []},
