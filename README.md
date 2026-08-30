@@ -55,6 +55,7 @@ checks: %{
 | [`ExceptionNamesEndInError`](#exceptionnamesendinerror) | `:readability` | An exception module whose name does not end in `Error` |
 | [`GenServerRequiresHandleContinue`](#genserverrequireshandlecontinue) | `:refactor` | Real work in `init/1` instead of `handle_continue/2` |
 | [`LoggerModulePrefixAndInspect`](#loggermoduleprefixandinspect) | `:warning` | Logger messages missing the `#{__MODULE__}: ` prefix or interpolating values without `inspect/1` |
+| [`NoAccessOnStructSubject`](#noaccessonstructsubject) | `:warning` | `changeset[:name]` — `Access` on a struct raises `UndefinedFunctionError` |
 | [`NoApplicationEnvOutsideConfig`](#noapplicationenvoutsideconfig) | `:design` | Any read or write of application env outside a config module |
 | [`NoAtomStringKeyFallback`](#noatomstringkeyfallback) | `:warning` | `m["key"] \|\| m[:key]` mixed-key fallback reads — normalize keys at the boundary |
 | [`NoBlanketRescue`](#noblanketrescue) | `:warning` | Catch-all rescue clauses that swallow exceptions |
@@ -176,6 +177,42 @@ Qualified spellings of allowed functions match on the function name, so
 | `logger_functions` | `[:debug, :info, :warning, :warn, :error, :critical]` | Logger functions whose messages are checked |
 | `enforce_prefix` | `true` | Require the `__MODULE__` interpolation as the very first segment |
 | `allowed_interpolations` | `[:__MODULE__, :inspect]` | What may appear inside an interpolation — add your own formatting helpers |
+
+### `NoAccessOnStructSubject`
+
+`Access` bracket reads must not be used on a struct. `changeset[:name]` compiles,
+but raises `UndefinedFunctionError` at runtime unless the struct's module
+implements the `Access` behaviour — most structs, including `Ecto.Changeset`,
+`Plug.Conn` and `Phoenix.LiveView.Socket`, do not. This is a runtime crash class,
+not a style preference.
+
+```elixir
+# BAD — raises UndefinedFunctionError at runtime
+changeset[:name]
+conn[:assigns]
+socket[:assigns]
+
+# GOOD
+Ecto.Changeset.get_field(changeset, :name)
+conn.assigns
+socket.assigns
+
+# GOOD — not flagged, these are maps/keywords
+params["id"]
+opts[:timeout]
+```
+
+Two shapes count as a struct subject: a struct literal (`%MyApp.User{}`), or a
+variable whose name is in the configured `:subject_names` list. Full struct-type
+inference from a single-file AST check is out of reach, so the name heuristic is
+the only tractable form. A nested access such as `opts[:a][:b]` is only ever
+checked at the inner read — the outer read's subject is the *result* of the
+inner access, not a variable or struct literal, so it is never flagged.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `subject_names` | `[:changeset, :conn, :socket]` | Variable names treated as known-struct subjects |
+| `excluded_paths` | `[]` | Path fragments naming files this check skips |
 
 ### `NoApplicationEnvOutsideConfig`
 

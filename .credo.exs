@@ -16,6 +16,7 @@
         {MikaCredoRules.ExceptionNamesEndInError, []},
         {MikaCredoRules.GenServerRequiresHandleContinue, []},
         {MikaCredoRules.LoggerModulePrefixAndInspect, []},
+        {MikaCredoRules.NoAccessOnStructSubject, []},
         {MikaCredoRules.NoApplicationEnvOutsideConfig, []},
         {MikaCredoRules.NoAtomStringKeyFallback, []},
         {MikaCredoRules.NoBlanketRescue, []},
