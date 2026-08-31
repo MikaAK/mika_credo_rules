@@ -397,17 +397,33 @@ inspect(value)
 length(list)
 ```
 
-Operator captures are exempt — `&Kernel.+/2`, `&Kernel.>=/2`, `&Kernel.!/1` are
-the only way to capture an operator, since `&+/2` is not valid syntax. A
-capture of a named function (`&Kernel.inspect/1`) is not exempt: `&inspect/1`
-already works unqualified, so it is flagged like the call form. The module
-must resolve to exactly `Kernel` — `Kernel.SpecialForms` and
+Operator captures are exempt as a readability allowance — `&Kernel.+/2`,
+`&Kernel.>=/2`, `&Kernel.!/1` read the intent more plainly than requiring a
+reader to know which operators can also be captured bare. A capture of a
+named function (`&Kernel.inspect/1`) is not exempt: `&inspect/1` already
+works unqualified, so it is flagged like the call form.
+
+An operator used in *call* form is never flagged, in any position —
+`Kernel.++(a, b)`, `list |> Kernel.<>(suffix)` are the only valid spellings
+for calling those operators outside of infix position; `++(a, b)` and
+`and(a, b)` are `SyntaxError`s, so there is no "call it directly" fix to
+suggest. `not/1` is an ordinary function, not an operator in this sense, and
+keeps being flagged. A file that locally shadows a `Kernel` function via
+`import Kernel, except: [to_string: 1]` is honored automatically — that exact
+name/arity is not flagged, because the unqualified fix would silently call
+the file's own same-named function instead.
+
+The module must resolve to exactly `Kernel` — `Kernel.SpecialForms` and
 `Kernel.ParallelCompiler` are never flagged, and aliasing/shadowing is
 resolved the same way as every other check in this package.
 
 `LoggerModulePrefixAndInspect` tolerates `Kernel.inspect(value)` inside a
 Logger call (it matches qualified spellings on the function name). This check
 tightens that outside of Logger messages.
+
+`:"Elixir.Kernel".inspect(value)` and `apply(Kernel, :inspect, [value])` call
+the same banned function but evade detection — neither matches the
+`__aliases__` shape the check keys on.
 
 | Param | Default | Meaning |
 |---|---|---|
