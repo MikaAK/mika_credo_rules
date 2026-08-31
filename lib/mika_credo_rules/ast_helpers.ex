@@ -5,8 +5,15 @@ defmodule MikaCredoRules.AstHelpers do
   Module identity is the package's most bug-prone concept — hand-rolling it
   shipped both a false negative (a wildcard module slot let `Enum.join/2` borrow
   an Ecto exemption) and a false positive (a literal path list missed
-  `alias Ecto.Query`). Every function here is total: it returns `nil`/`false`
-  rather than raising on shapes it does not recognise.
+  `alias Ecto.Query`). Every function here is total over the AST shapes it is
+  meant to recognise: it returns `nil`/`false` rather than raising on a shape
+  it does not match.
+
+  `module_paths/1` and `resolve_aliases/2` are NOT total over their `module`
+  argument — they require a genuine Elixir module atom (one `Module.split/1`
+  accepts). Passing an erlang-style atom module (e.g. `:maps` in a caller's
+  `nilable_functions: [{:maps, :get, 2}]`) raises `ArgumentError` from
+  `Module.split/1`.
 
   ## House idiom: pruning a subtree with `{nil, acc}`
 
