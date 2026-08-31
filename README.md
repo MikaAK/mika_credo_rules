@@ -51,13 +51,17 @@ checks: %{
 
 | Check | Category | What it catches |
 |---|---|---|
+| [`ChatModelRequiresReceiveTimeout`](#chatmodelrequiresreceivetimeout) | `:warning` | `ChatOpenAI.new!/1` (and siblings) called without `:receive_timeout` — long prompts hang indefinitely |
 | [`ErrorMessageRequired`](#errormessagerequired) | `:design` | `{:error, "string literal"}` tuples — use `%ErrorMessage{}` |
+| [`FunWithFlagsAtomFlagNames`](#funwithflagsatomflagnames) | `:warning` | `FunWithFlags.enabled?/1` (and siblings) called with a string flag name — silently always false |
 | [`GenServerRequiresHandleContinue`](#genserverrequireshandlecontinue) | `:refactor` | Real work in `init/1` instead of `handle_continue/2` |
 | [`LoggerModulePrefixAndInspect`](#loggermoduleprefixandinspect) | `:warning` | Logger messages missing the `#{__MODULE__}: ` prefix or interpolating values without `inspect/1` |
 | [`NoApplicationEnvOutsideConfig`](#noapplicationenvoutsideconfig) | `:design` | Any read or write of application env outside a config module |
 | [`NoAtomStringKeyFallback`](#noatomstringkeyfallback) | `:warning` | `m["key"] \|\| m[:key]` mixed-key fallback reads — normalize keys at the boundary |
+| [`NoBangMailerDeliver`](#nobangmailerdeliver) | `:warning` | `deliver!/1` on a Mailer module — crashes on SES failure instead of returning `{:error, _}` |
 | [`NoBlanketRescue`](#noblanketrescue) | `:warning` | Catch-all rescue clauses that swallow exceptions |
 | [`NoCastAllKeys`](#nocastallkeys) | `:warning` | `cast(data, params, Map.keys(params))` — a mass-assignment hole |
+| [`NoHardcodedSecretLiterals`](#nohardcodedsecretliterals) | `:warning` | String literals shaped like Stripe/AWS/Slack/GitHub/PEM/Bearer credentials |
 | [`NoIdentityRewrap`](#noidentityrewrap) | `:refactor` | `case` expressions whose every clause returns its pattern unchanged |
 | [`NoJasonDeriveOnEctoSchema`](#nojasonderiveonectoschema) | `:design` | `@derive Jason.Encoder` inside Ecto schema modules |
 | [`NoMixEnvAtRuntime`](#nomixenvatruntime) | `:warning` | `Mix.env()`/`Mix.target()` in compiled code — crashes in releases |
@@ -72,6 +76,35 @@ checks: %{
 | [`TodosNeedTickets`](#todosneedtickets) | `:design` | TODO/FIXME comments without an adjacent ticket URL |
 
 ---
+
+### `ChatModelRequiresReceiveTimeout`
+
+Chat model constructors must set `:receive_timeout` — the LangChain default
+leaves long prompts to hang indefinitely instead of failing fast.
+
+```elixir
+# BAD — no receive_timeout, long prompts hang indefinitely
+LangChain.ChatModels.ChatOpenAI.new!(%{model: "gpt-4o", stream: true})
+
+# GOOD
+LangChain.ChatModels.ChatOpenAI.new!(%{
+  model: "gpt-4o",
+  stream: true,
+  receive_timeout: 120_000
+})
+```
+
+Only a literal map argument is inspected — a config built in a variable or
+through `Map.merge/2` is invisible to this check, an accepted false negative.
+`ChatAnthropic` and `ChatGoogleAI` are checked by default alongside
+`ChatOpenAI`.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `modules` | `[LangChain.ChatModels.ChatOpenAI, LangChain.ChatModels.ChatAnthropic, LangChain.ChatModels.ChatGoogleAI]` | Chat model modules whose config map is checked. Alias-aware. |
+| `functions` | `[:new, :new!]` | Constructor functions to check. |
+| `required_keys` | `[:receive_timeout]` | Keys that must ALL appear in the literal config map. |
+| `excluded_paths` | `[]` | Path fragments naming files this check skips. |
 
 ### `ErrorMessageRequired`
 
@@ -94,6 +127,30 @@ Variables, atoms and structs pass — only string literals are flagged.
 |---|---|---|
 | `excluded_paths` | `["_test.exs", "test/"]` | Path fragments naming files to skip (matched on segment boundaries) — `{:error, "..."}` literals are legitimate fixture data in tests |
 | `also_flag_atoms` | `false` | When `true`, atom reasons like `{:error, :timeout}` are flagged too |
+
+### `FunWithFlagsAtomFlagNames`
+
+`FunWithFlags` flag names must be atoms, never string literals. `FunWithFlags`
+matches a flag by atom identity — a string flag name is a *different*,
+never-registered flag, so the call silently returns `false` rather than
+raising, hiding the bug behind "the feature is off" instead of a crash.
+
+```elixir
+# BAD — a different, unregistered flag; always returns false
+FunWithFlags.enabled?("beta_feature")
+
+# GOOD
+FunWithFlags.enabled?(:beta_feature)
+```
+
+Only string literals are flagged — a flag name built from a variable or
+interpolation is invisible to this check, an accepted false negative.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `modules` | `[FunWithFlags]` | Modules whose flag-name argument is checked. Add a wrapper module to cover a project's own facade. Alias-aware. |
+| `functions` | `[:enabled?, :enable, :disable, :clear, :lookup]` | Functions whose first argument is a flag name. |
+| `excluded_paths` | `[]` | Path fragments naming files this check skips. |
 
 ### `GenServerRequiresHandleContinue`
 
@@ -202,6 +259,35 @@ combination, including adjacent reads inside a chained fallback. Different key
 names, same-type keys, different subjects and plain lookup-or-default
 (`params["id"] || %{}`) are never flagged.
 
+### `NoBangMailerDeliver`
+
+Swoosh mailers must be delivered with `deliver/1`, never `deliver!/1`.
+`deliver!/1` raises on any adapter failure — a transient SES throttle or
+outage crashes the caller instead of returning `{:error, reason}` to retry or
+log.
+
+```elixir
+# BAD — crashes the caller on SES failure
+email |> MyApp.Mailer.deliver!()
+
+# GOOD — the caller handles the error
+case MyApp.Mailer.deliver(email) do
+  {:ok, _metadata} -> :ok
+  {:error, reason} -> {:error, reason}
+end
+```
+
+A mailer module is identified by its last alias segment *as written at the
+call site* — `MyApp.Mailer.deliver!(email)` and, under `alias MyApp.Mailer`,
+`Mailer.deliver!(email)` are both caught, piped or not. Test files are
+skipped by default.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `functions` | `[:deliver!]` | Bang delivery functions to flag. |
+| `module_suffixes` | `["Mailer"]` | Suffixes identifying a mailer module by its last alias segment. |
+| `excluded_paths` | `["_test.exs", "test/"]` | Path fragments naming files this check skips. |
+
 ### `NoBlanketRescue`
 
 A rescue clause must not catch every exception only to swallow it. A blanket
@@ -254,6 +340,44 @@ qualified `Ecto.Changeset.cast(...)` and `Changeset.cast(...)` under an alias.
 Indirection through a variable (`fields = Map.keys(attrs)` then
 `cast(user, attrs, fields)`) is invisible to the check — literal lists, module
 attributes and variables are all left alone.
+
+### `NoHardcodedSecretLiterals`
+
+String literals must not be hardcoded credentials — read secrets from
+`Application` config or an environment variable instead. A committed key is
+compromised the moment it reaches version control; rotating it afterward
+does not undo the exposure. This check matches known credential shapes
+(Stripe, AWS, Slack, GitHub, PEM private keys, long `Bearer` tokens) against
+every string literal in every file, including `config/*.exs` and `mix.exs`.
+
+```elixir
+# BAD — committed to version control the moment this file is saved
+@auth_header "Bearer xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+# GOOD — read at runtime, never committed
+def auth_header, do: "Bearer " <> Application.get_env(:my_app, :api_token)
+```
+
+The examples use the `Bearer` shape on purpose: a realistic Stripe or AWS literal
+in a doc block is itself caught by GitHub's secret scanning and blocks the push,
+so the examples here demonstrate a shape no scanner claims.
+
+The matched secret is never echoed in the issue message — only which pattern
+matched (e.g. "Stripe key"), so running this check does not itself leak the
+credential into CI logs. Heredocs and the static segments of an interpolated
+string are scanned the same as a plain literal. `@moduledoc` and `@doc`
+attribute values are skipped, since documentation legitimately shows a
+credential's *shape* without being a real one.
+
+Patterns are anchored (`^`/`$`) against the whole literal, so a credential
+concatenated from parts or built through interpolation is not detected — an
+accepted false negative, since static analysis cannot know the runtime
+value.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `patterns` | Stripe, AWS, Slack, GitHub, PEM, Bearer shapes (see source) | A list of `{label, regex}` pairs. Replaces the default when supplied. |
+| `excluded_paths` | `[]` | Path fragments naming files this check skips — the check runs on every file by default, including `config/*.exs` and `mix.exs`. |
 
 ### `NoIdentityRewrap`
 
