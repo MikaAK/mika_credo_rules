@@ -22,8 +22,9 @@ defmodule MikaCredoRules.NoProcessSleepInTests do
         Defaults to `Process.sleep/1` and erlang's `:timer.sleep/1`.
         """,
         excluded_paths: """
-        A list of path fragments exempt from the check, matched at a path-segment
-        boundary. Defaults to `[]`. Some test suites keep timing fixtures that
+        A list of path fragments exempt from the check, matched at a leading
+        path-segment boundary — end the fragment with `/` to bind the trailing
+        edge too. Defaults to `[]`. Some test suites keep timing fixtures that
         legitimately sleep (polling a real external clock, driving a fake
         scheduler) — exempt just those directories rather than disabling the whole
         check.
@@ -70,10 +71,11 @@ defmodule MikaCredoRules.NoProcessSleepInTests do
 
       {MikaCredoRules.NoProcessSleepInTests, excluded_paths: ["test/fixtures/timing/"]}
 
-  `:excluded_paths` matches at a path-segment boundary, same as every other path
-  fragment param in this package — `"test/fixtures/timing/"` does not exempt
-  `test/fixtures/timing_helpers_test.exs`, only files under the `timing/`
-  directory itself.
+  `:excluded_paths` is matched at a leading path-segment boundary — end the
+  fragment with `/` to bind the trailing edge too. `"test/fixtures/timing/"`
+  does not exempt `test/fixtures/timing_helpers_test.exs`, but the same
+  fragment without a trailing slash (`"test/fixtures/timing"`) would also
+  exempt an unrelated `test/fixtures/timingzz/` directory.
   """
   @explanation [check: @moduledoc]
 
