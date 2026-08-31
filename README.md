@@ -69,6 +69,8 @@ checks: %{
 | [`NoCastAllKeys`](#nocastallkeys) | `:warning` | `cast(data, params, Map.keys(params))` — a mass-assignment hole |
 | [`NoCondElseAtom`](#nocondelseatom) | `:readability` | A `cond`'s last clause falling through on `:else` instead of `true` |
 | [`NoForWithDiscardedResult`](#noforwithdiscardedresult) | `:warning` | A `for` comprehension in statement position whose built result is thrown away |
+| [`NoDirectErlangRpc`](#nodirecterlangrpc) | `:design` | Direct `:rpc`/`:erpc` calls and `Node.spawn*` — route through your app's RPC wrapper |
+| [`NoDirectHttpClient`](#nodirecthttpclient) | `:design` | Direct `Finch`/`HTTPoison`/`Tesla`/`Req` calls — route through your app's HTTP wrapper |
 | [`NoIdentityRewrap`](#noidentityrewrap) | `:refactor` | `case` expressions whose every clause returns its pattern unchanged |
 | [`NoJasonDeriveOnEctoSchema`](#nojasonderiveonectoschema) | `:design` | `@derive Jason.Encoder` inside Ecto schema modules |
 | [`NoKernelPrefix`](#nokernelprefix) | `:readability` | `Kernel.inspect(value)` — `Kernel` is auto-imported, drop the prefix |
@@ -76,6 +78,7 @@ checks: %{
 | [`NoMockingLibraries`](#nomockinglibraries) | `:design` | Any reference to Mox, Hammox, Mock, Mimic, Patch or `:meck` |
 | [`NoNilComparison`](#nonilcomparison) | `:readability` | `x == nil` / `x != nil` — use `is_nil/1` |
 | [`NoProcessSleepInTests`](#noprocesssleepintests) | `:warning` | `Process.sleep/1` and `:timer.sleep/1` in test files |
+| [`NoRawEts`](#norawets) | `:design` | Raw `:ets` calls — wrap in `Cache.ETS` from elixir_cache |
 | [`NoReimplementedHelper`](#noreimplementedhelper) | `:design` | Local re-implementations of shared library helpers |
 | [`NoRepoWritesInTests`](#norepowritesintests) | `:design` | Write-side `Repo` calls (`insert!`, `update!`, `delete!`, ...) in test files — use `FactoryEx` |
 | [`NoSingleLetterVariables`](#nosinglelettervariables) | `:readability` | Single-letter variable bindings |
@@ -583,6 +586,107 @@ for those.
 **Limitations.** A `for` inside a `quote do ... end` body is flagged even
 though it is macro-generated AST, not a runtime comprehension.
 
+### `NoDirectErlangRpc`
+
+Remote nodes must be called through the app's RPC wrapper, never directly.
+Direct `:rpc`/`:erpc` calls and `Node.spawn*` scatter node selection, error
+handling, and telemetry across the codebase. Each umbrella defines a thin
+app-level module wrapping [`RpcLoadBalancer`](https://github.com/MikaAK/rpc_load_balancer)
+instead, so every remote call gets consistent load-balancing, error handling,
+and a `call_directly?` escape hatch for dev/test.
+
+```elixir
+# BAD — direct erlang RPC
+:rpc.call(node, SharedFeedUtils.FeedServer, :get_state, [adapter, id])
+
+# GOOD — routed through the app's RPC wrapper
+MyApp.RPC.call_on_random_node("options_feed", SharedFeedUtils.FeedServer, :get_state, [adapter, id])
+```
+
+`Node.spawn/1..3`, `Node.spawn_link/1..3`, and `Node.spawn_monitor/1..3` are
+banned the same way — spawning a process directly on a remote node bypasses the
+same wrapper.
+
+The erlang primitives underneath are banned with arity awareness:
+`:erlang.spawn/2` and `/4` take a remote node as their first argument (the
+remote forms) and are banned; `/1` and `/3` spawn locally and are left alone.
+`erlang_modules` cannot express this distinction, since it bans every arity of
+a module outright — hence the separate `erlang_functions` param.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `erlang_modules` | `[:rpc, :erpc]` | Erlang modules banned outright — every remote call on one of these is flagged |
+| `functions` | `[{Node, :spawn}, {Node, :spawn_link}, {Node, :spawn_monitor}]` | `{module, function}` pairs to ban, alias-aware |
+| `erlang_functions` | `[{:erlang, :spawn, [2, 4]}, {:erlang, :spawn_link, [2, 4]}]` | `{module, function, arities}` triples to ban with arity awareness |
+| `excluded_paths` | `["rpc_load_balancer/", "elixir_cache/"]` | Path fragments naming files exempt from the check (matched on segment boundaries) — the libraries that implement the wrapper itself |
+
+**Limitations.** Test files are in scope — a test reaching for `:rpc`/`:erpc`
+directly is exactly the case this rule exists to catch.
+`apply(:rpc, :call, [node, mod, fun, args])` and `mod = :rpc; mod.call(...)`
+are both undetected — only a literal `module.function(...)` dot-call is
+matched. A locally nested `defmodule Node do ... end` is not treated as
+shadowing — `Node.spawn(node, fun)` still fires inside such a module.
+
+### `NoDirectHttpClient`
+
+Direct HTTP client libraries must not be used to make requests — call the
+app's HTTP wrapper instead. Scattered `Finch`, `HTTPoison`, `Tesla`, or `Req`
+request calls duplicate pooling, header, and error-mapping logic that
+`SharedUtils.HTTP` already provides.
+
+```elixir
+# BAD — in a context module
+Finch.build(:get, url) |> Finch.request(MyFinch)
+
+# GOOD
+SharedUtils.HTTP.get(url, headers)
+```
+
+Building a client with `use Tesla`, `use HTTPoison.Base`, or
+`use Tesla.Builder` is caught the same way as a request call — the documented
+client-building idiom of each library, not just a low-level function call.
+
+Only the functions that actually make a request are banned (see the
+`functions` param for the full default list per module). A bare reference to
+the module elsewhere is left alone, since it is either required to reach the
+wrapper or has no wrapper equivalent at all — a supervision child spec that
+merely names the client module (`{Finch, name: MyApp.Finch}`), or a Tesla
+middleware's own continuation call (`Tesla.run(env, next)`, inside a module
+implementing `@behaviour Tesla.Middleware`). `@spec`/`@type`/`@callback`
+bodies are pruned entirely too, so a typespec referencing a banned module is
+never flagged.
+
+Aliases are still resolved for the calls that remain banned — alias-free
+calls (`Finch.build/3` with no prior `alias`) and `alias Req, as: R` followed
+by `R.get(url)` are both caught.
+
+Files under `excluded_paths` (default `["shared_utils/"]`) are exempt on a
+fragment basis. Files whose app directory ends with one of
+`excluded_app_suffixes` (default `["_api"]`) are exempt too — matching a
+whole app directory name (`tiingo_api/`), never a fragment in the middle of a
+segment (`rest_api_notes/`).
+
+**Why not the stock `Credo.Check.Warning.ForbiddenModule`?** It bans the same
+modules by name but is alias-blind (`alias Req, as: R; R.get(url)` evades it)
+and has no path-exemption mechanism, so it can't distinguish the wrapper layer
+from its callers.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `functions` | `[{Finch, [:build, :request, :request!, :stream]}, ...]` | `{module, functions}` pairs naming the request-making functions banned on each client, alias-aware |
+| `use_modules` | `[Tesla, HTTPoison.Base, Tesla.Builder]` | Modules whose `use` idiom builds an HTTP client outright, alias-aware |
+| `erlang_modules` | `[:httpc, :hackney]` | Erlang HTTP client modules to ban |
+| `excluded_paths` | `["shared_utils/"]` | Path fragments naming files exempt from the check (matched on segment boundaries) |
+| `excluded_app_suffixes` | `["_api"]` | App-directory-name suffixes exempt from the check (matched on the segment's own suffix) |
+
+**Limitations.** `alias Finch.{Request, Response}` then
+`Request.build(:get, url)` is undetected — the multi-alias clause resolves
+inner names against the base module's own alias table, which only ever gains
+single-segment entries for `Finch` itself, never for a two-segment submodule
+spelling. Same gap for `alias HTTPoison.Base`. A locally nested
+`defmodule Req do ... end` is not treated as shadowing, so `Req.get(url)`
+inside such a module can still fire.
+
 ### `NoIdentityRewrap`
 
 A `case` whose every clause returns its pattern unchanged is a no-op re-wrap —
@@ -789,6 +893,44 @@ with `:excluded_paths` instead of disabling the whole check.
 | `test_files` | `["_test.exs"]` | Path suffixes the check runs on — everything else is skipped |
 | `functions` | `[{Process, :sleep}, {:timer, :sleep}]` | Sleep functions to flag |
 | `excluded_paths` | `[]` | Path fragments exempt from the check (segment-boundary matched) |
+
+### `NoRawEts`
+
+Raw `:ets` must not be used for caching — wrap it in `Cache.ETS` from
+[`elixir_cache`](https://github.com/MikaAK/elixir_cache) instead. `:ets.new/2`,
+`:ets.insert/2`, and `:ets.lookup/2` reimplement what `elixir_cache` already
+provides with TTL, sandboxing, and a consistent API.
+
+```elixir
+# BAD
+table = :ets.new(:price_cache, [:set, :named_table, read_concurrency: true])
+:ets.insert(table, {"AAPL", 150.25})
+
+# GOOD
+defmodule MyApp.PriceCache do
+  use Cache, adapter: Cache.ETS, name: :price_cache, sandbox?: Mix.env() === :test
+end
+```
+
+This check scans test files as well as `lib/` — a raw `:ets` table in a test
+fixture breaks the same async-safety guarantees a `Cache` sandbox provides.
+Diagnostic-only functions (`:ets.info/1,2`, `:ets.whereis/1`, `:ets.all/0`) are
+always allowed.
+
+**Limitations.** This check is architectural, not universal — the
+`elixir-distributed` feed-server pattern legitimately builds its whole design
+on raw `:ets` for lock-free, high-read shared state. Adopters running feed
+servers should add those paths to `excluded_paths` before enabling this
+check — treat it as opt-in, not default-on, in any repo that owns a feed
+server. `apply(:ets, :insert, [table, entry])` and `mod = :ets;
+mod.insert(...)` are both undetected — only a literal `:ets.function(...)`
+dot-call is matched.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `erlang_modules` | `[:ets]` | Erlang modules banned as raw in-memory stores — add `:dets` or `:persistent_term` to widen the ban |
+| `allowed_functions` | `[:info, :whereis, :all]` | Functions on a banned module that are never flagged |
+| `excluded_paths` | `["elixir_cache/"]` | Path fragments naming files exempt from the check (matched on segment boundaries) |
 
 ### `NoReimplementedHelper`
 
