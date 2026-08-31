@@ -65,6 +65,7 @@ defmodule MikaCredoRules.MigrationFlushBetweenExecuteAndQuery do
   """
   @explanation [check: @moduledoc]
 
+  alias MikaCredoRules.AstHelpers
   alias MikaCredoRules.SourceFilter
 
   @doc false
@@ -107,12 +108,9 @@ defmodule MikaCredoRules.MigrationFlushBetweenExecuteAndQuery do
 
   defp violations_in_clause(body, context) do
     body
-    |> block_statements()
+    |> AstHelpers.block_statements()
     |> scan_statements(context)
   end
-
-  defp block_statements({:__block__, _, statements}), do: statements
-  defp block_statements(statement), do: [statement]
 
   defp scan_statements(statements, context) do
     {violations, _pending_execute?} =

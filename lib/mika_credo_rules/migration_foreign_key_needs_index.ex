@@ -23,6 +23,7 @@ defmodule MikaCredoRules.MigrationForeignKeyNeedsIndex do
       ]
     ]
 
+  alias MikaCredoRules.AstHelpers
   alias MikaCredoRules.SourceFilter
 
   @moduledoc """
@@ -111,7 +112,7 @@ defmodule MikaCredoRules.MigrationForeignKeyNeedsIndex do
 
   defp foreign_keys_in_table(table, body) do
     body
-    |> block_statements()
+    |> AstHelpers.block_statements()
     |> Enum.flat_map(&foreign_key_from_add(table, &1))
   end
 
@@ -160,9 +161,6 @@ defmodule MikaCredoRules.MigrationForeignKeyNeedsIndex do
   defp columns_from_index_args([columns | _opts]) when is_list(columns), do: columns
   defp columns_from_index_args([column | _opts]) when is_atom(column), do: [column]
   defp columns_from_index_args(_args), do: nil
-
-  defp block_statements({:__block__, _, statements}), do: statements
-  defp block_statements(statement), do: [statement]
 
   defp covered?(foreign_key, indexed_columns) do
     Enum.any?(indexed_columns, fn index ->
