@@ -49,6 +49,13 @@ defmodule MikaCredoRules.MigrationExecuteInChange do
   Migration files are identified by path via the `:migration_paths` param, so
   this works the same in an umbrella (`apps/my_app/priv/repo/migrations/...`)
   and a single app (`priv/repo/migrations/...`).
+
+  ## Limitations
+
+    * Only the bare, unqualified `execute("...")` call is detected. A qualified
+      `Ecto.Migration.execute("...")` call, and a piped `sql() |> execute()`
+      call (the pipe's `execute/0` node carries no arguments until macro
+      expansion merges the piped value in), are NOT caught.
   """
   @explanation [check: @moduledoc]
 
