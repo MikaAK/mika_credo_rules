@@ -504,15 +504,15 @@ def double(number), do: number * 2
 Enum.map(users, fn user -> user.name end)
 ```
 
-Names longer than a single letter that still carry no meaning — two-letter
-acronyms such as `cs` or `sf` — can be banned the same way through
+Names longer than a single letter that still carry no meaning — acronyms such as
+`cs` or `sf` rather than words — can be banned the same way through
 `:banned_names`, reported at the same binding sites and with the same
 underscore-prefix exemption.
 
 | Param | Default | Meaning |
 |---|---|---|
 | `allowed_names` | `[]` | Single-letter names allowed anyway — atoms or strings |
-| `banned_names` | `[]` | Additional variable names flagged at binding sites, whatever their length — atoms or strings. Suggested opt-in: `[:cs, :sf, :pg, :cb, :fp, :kv, :ac, :ev]` |
+| `banned_names` | `[]` | Additional variable names flagged at binding sites, whatever their length — atoms or strings, e.g. project-specific abbreviations you have banned. A name in both `:banned_names` and `:allowed_names` is still flagged — `:banned_names` wins. A single-letter name in `:banned_names` is reported as a single-letter violation, not a banned name, since that check runs first. |
 
 ### `RefuteOverAssertNot`
 

@@ -435,6 +435,31 @@ defmodule MikaCredoRules.NoSingleLetterVariablesTest do
       |> run_check(NoSingleLetterVariables, banned_names: [:cs])
       |> assert_issue(fn issue -> assert issue.trigger === "x" end)
     end
+
+    test "reports a single-letter name in banned_names as a single-letter violation" do
+      """
+      defmodule MyApp.Worker do
+        def double(x), do: x * 2
+      end
+      """
+      |> to_source_file()
+      |> run_check(NoSingleLetterVariables, banned_names: [:x])
+      |> assert_issue(fn issue ->
+        assert issue.trigger === "x"
+        assert issue.message =~ ~s("x" found — single-letter variables)
+      end)
+    end
+
+    test "flags a name that is in both banned_names and allowed_names — banned_names wins" do
+      """
+      defmodule MyApp.Worker do
+        def double(x), do: x * 2
+      end
+      """
+      |> to_source_file()
+      |> run_check(NoSingleLetterVariables, allowed_names: [:x], banned_names: [:x])
+      |> assert_issue(fn issue -> assert issue.trigger === "x" end)
+    end
   end
 
   describe "&run/2 reports each binding site once" do

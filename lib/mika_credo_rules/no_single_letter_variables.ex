@@ -16,9 +16,11 @@ defmodule MikaCredoRules.NoSingleLetterVariables do
         their length. Entries may be given as atoms or strings — `[:cs]` and
         `["cs"]` are equivalent.
 
-        Defaults to `[]`. A suggested opt-in list for names that read as
-        two-letter acronyms rather than words: `[:cs, :sf, :pg, :cb, :fp, :kv,
-        :ac, :ev]`.
+        Defaults to `[]`, e.g. project-specific abbreviations you have banned.
+        A name listed in both `:banned_names` and `:allowed_names` is still
+        flagged — `:banned_names` wins. A single-letter name listed in
+        `:banned_names` is reported as a single-letter violation, not a banned
+        name, since that check runs first.
         """
       ]
     ]
@@ -57,10 +59,15 @@ defmodule MikaCredoRules.NoSingleLetterVariables do
   Names that must stay single-letter (for example in mathematical code) can be
   exempted through the `:allowed_names` param.
 
-  Names longer than a single letter that still carry no meaning — two-letter
-  acronyms such as `cs` or `sf` — can be banned the same way through the
+  Names longer than a single letter that still carry no meaning — acronyms such
+  as `cs` or `sf` rather than words — can be banned the same way through the
   `:banned_names` param, reported at the same binding sites and with the same
   underscore-prefix exemption as single-letter names.
+
+  A name in both `:banned_names` and `:allowed_names` is still flagged —
+  `:banned_names` wins. A single-letter name that is also in `:banned_names` is
+  reported as a single-letter violation rather than a banned name, since the
+  single-letter check runs first.
 
       # BAD — with banned_names: [:cs]
       def summarize(cs), do: cs.total
