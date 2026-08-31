@@ -189,6 +189,62 @@ defmodule MikaCredoRules.NoApplicationEnvOutsideConfigTest do
     end
   end
 
+  describe "&run/2 honours the :excluded_paths param" do
+    test "does not report env access in test_helper.exs by default" do
+      """
+      SharedUtils.Support.HTTPSandbox.start_link()
+      Application.put_env(:my_app, :provider, :stub)
+      ExUnit.start()
+      """
+      |> to_source_file("apps/my_app/test/test_helper.exs")
+      |> run_check(NoApplicationEnvOutsideConfig)
+      |> refute_issues()
+    end
+
+    test "does not report env access in a top-level app's test_helper.exs" do
+      """
+      Application.put_env(:my_app, :provider, :stub)
+      ExUnit.start()
+      """
+      |> to_source_file("test/test_helper.exs")
+      |> run_check(NoApplicationEnvOutsideConfig)
+      |> refute_issues()
+    end
+
+    test "still reports env access in a file that merely looks like test_helper.exs" do
+      """
+      defmodule MyApp.MyTestHelper do
+        def stub, do: Application.put_env(:my_app, :provider, :stub)
+      end
+      """
+      |> to_source_file("apps/my_app/test/my_test_helper.exs")
+      |> run_check(NoApplicationEnvOutsideConfig)
+      |> assert_issue(fn issue -> assert issue.message =~ "Application.put_env/3" end)
+    end
+
+    test "still reports env access in ordinary test files" do
+      """
+      defmodule MyApp.WorkerTest do
+        test "it works" do
+          Application.put_env(:my_app, :provider, :stub)
+        end
+      end
+      """
+      |> to_source_file("apps/my_app/test/my_app/worker_test.exs")
+      |> run_check(NoApplicationEnvOutsideConfig)
+      |> assert_issue()
+    end
+
+    test "honours a custom :excluded_paths list" do
+      """
+      Application.put_env(:my_app, :provider, :stub)
+      """
+      |> to_source_file("apps/my_app/test/support/boot.exs")
+      |> run_check(NoApplicationEnvOutsideConfig, excluded_paths: ["/boot.exs"])
+      |> refute_issues()
+    end
+  end
+
   describe "&run/2 honours the :functions param" do
     test "flags only the configured functions" do
       """

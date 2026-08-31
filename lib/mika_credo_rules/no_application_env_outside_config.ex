@@ -15,7 +15,8 @@ defmodule MikaCredoRules.NoApplicationEnvOutsideConfig do
         :put_all_env,
         :delete_env
       ],
-      erlang_functions: [:get_env, :get_all_env, :set_env, :unset_env]
+      erlang_functions: [:get_env, :get_all_env, :set_env, :unset_env],
+      excluded_paths: ["/test_helper.exs"]
     ],
     explanations: [
       params: [
@@ -35,6 +36,17 @@ defmodule MikaCredoRules.NoApplicationEnvOutsideConfig do
         environment access. Erlang names its writes differently from Elixir
         (`set_env`/`unset_env` rather than `put_env`/`delete_env`), so this is a
         separate list from `:functions`.
+        """,
+        excluded_paths: """
+        A list of path fragments. A source file is exempt when its path starts or
+        ends with a fragment, or contains one after a `/` — matching happens on
+        path-segment boundaries.
+
+        Defaults to `["/test_helper.exs"]`, exempting `test_helper.exs` — env
+        access there is boot-time configuration that runs before any test, not the
+        scattered runtime access this check exists to catch. The leading `/`
+        matters: it exempts a file whose basename is exactly `test_helper.exs`,
+        never a lookalike such as `my_test_helper.exs`.
         """
       ]
     ]
@@ -67,8 +79,11 @@ defmodule MikaCredoRules.NoApplicationEnvOutsideConfig do
   works the same in an umbrella (`apps/my_app/lib/my_app/config.ex`) and a single app
   (`lib/my_app/config.ex`).
 
-  There are no other exemptions. Test files and `application.ex` are checked too — a
-  test reaching for `Application.put_env/3` is exactly the case this rule exists to
+  The one other exemption is `test_helper.exs`, via `:excluded_paths` (default
+  `["/test_helper.exs"]`) — env access there is boot-time configuration that runs
+  before any test, not the scattered runtime access this check exists to catch.
+  Ordinary test files and `application.ex` are still checked — a test reaching for
+  `Application.put_env/3` in its own body is exactly the case this rule exists to
   catch.
 
   Env access is caught through every spelling of the module:
@@ -93,7 +108,7 @@ defmodule MikaCredoRules.NoApplicationEnvOutsideConfig do
   @doc false
   @impl Credo.Check
   def run(source_file, params \\ []) do
-    if config_module?(source_file.filename, config_files(params)) do
+    if exempt?(source_file.filename, params) do
       []
     else
       issue_meta = IssueMeta.for(source_file, params)
@@ -105,10 +120,21 @@ defmodule MikaCredoRules.NoApplicationEnvOutsideConfig do
     end
   end
 
+  defp exempt?(filename, params) do
+    config_module?(filename, config_files(params)) or
+      excluded_path?(filename, excluded_paths(params))
+  end
+
   defp config_files(params), do: Params.get(params, :config_files, __MODULE__)
 
   defp config_module?(filename, config_files) do
     SourceFilter.matches_suffix?(filename, config_files)
+  end
+
+  defp excluded_paths(params), do: Params.get(params, :excluded_paths, __MODULE__)
+
+  defp excluded_path?(filename, excluded_paths) do
+    SourceFilter.matches_fragment?(filename, excluded_paths)
   end
 
   defp build_context(source_file, params) do

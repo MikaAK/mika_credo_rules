@@ -165,10 +165,12 @@ end
 ```
 
 Config modules are identified **by filename**, so this works the same in an umbrella
-(`apps/my_app/lib/my_app/config.ex`) and a single app (`lib/my_app/config.ex`).
-There are no other exemptions by default — test files and `application.ex` are
-checked too; a test reaching for `Application.put_env/3` is exactly the case this
-rule exists to catch. Env access is caught through every spelling, including
+(`apps/my_app/lib/my_app/config.ex`) and a single app (`lib/my_app/config.ex`). The
+one other exemption is `test_helper.exs` — env access there is boot-time
+configuration that runs before any test, not the scattered runtime access this rule
+exists to catch. Ordinary test files and `application.ex` are still checked; a test
+reaching for `Application.put_env/3` in its own body is exactly the case this rule
+exists to catch. Env access is caught through every spelling, including
 `alias Application, as: App` and `:application.get_env/2`.
 
 | Param | Default | Meaning |
@@ -176,6 +178,7 @@ rule exists to catch. Env access is caught through every spelling, including
 | `config_files` | `["config.ex"]` | Path suffixes treated as config modules |
 | `functions` | every `Application` env function | Which `Application` functions count as env access |
 | `erlang_functions` | `[:get_env, :get_all_env, :set_env, :unset_env]` | Which `:application` functions count as env access |
+| `excluded_paths` | `["/test_helper.exs"]` | Path fragments exempt from the check (segment-boundary matched). The leading `/` matters — it exempts a file named exactly `test_helper.exs`, never a lookalike such as `my_test_helper.exs`. |
 
 ### `NoAtomStringKeyFallback`
 
@@ -420,10 +423,70 @@ end
 def process(map), do: SharedUtils.Enum.atomize_keys(map)
 ```
 
+The shared workspace has **three divergent `SharedUtils` libraries** (one per
+umbrella app), not one. The `:functions` default targets their common core — every
+pointer is ground-truthed against all three trees, and a pointer only needs to
+resolve in at least two of them to make the default. A repo whose `SharedUtils`
+carries extra helpers, or lacks one of the defaults, should override `:functions`
+with its own pointer map; the suggested override below adds the tree-specific
+extras this package verified as real but didn't judge common enough to default on.
+
+```elixir
+functions: %{
+  # ...defaults, plus:
+  apply_defaults: "SharedUtils.Map.apply_defaults/2",
+  keys_to_strings: "SharedUtils.Map.keys_to_strings/1",
+  deep_reject_nil_values: "SharedUtils.Enum.deep_reject_nil_values/1",
+  reject_empty_values: "SharedUtils.Enum.reject_empty_values/1",
+  ensure_map: "SharedUtils.Enum.ensure_map/1",
+  intersection: "SharedUtils.Enum.intersection/2",
+  difference: "SharedUtils.Enum.difference/2",
+  map_values: "SharedUtils.Enum.map_values/2",
+  to_serializable_map: "SharedUtils.Enum.to_serializable_map/2",
+  nilify_keys: "SharedUtils.Enum.nilify_keys/2",
+  sort_by_date: "SharedUtils.Collection.sort_by_date/3",
+  from_deep_struct: "SharedUtils.Collection.from_deep_struct/1",
+  remove_spaces: "SharedUtils.String.remove_spaces/2",
+  to_lower_kebab_case: "SharedUtils.String.to_lower_kebab_case/1",
+  to_bool: "SharedUtils.String.to_bool/1",
+  to_number: "SharedUtils.String.to_number/1",
+  slugify: "SharedUtils.String.slugify/1",
+  maybe_add_port: "SharedUtils.String.maybe_add_port/2",
+  days_between: "SharedUtils.DateTime.days_between/2",
+  start_of_day: "SharedUtils.DateTime.start_of_day/1",
+  start_of_year: "SharedUtils.DateTime.start_of_year/1",
+  same_day?: "SharedUtils.DateTime.same_day?/2",
+  equal_till_second?: "SharedUtils.DateTime.equal_till_second?/2",
+  humanize: "SharedUtils.DateTime.humanize/1",
+  beginning_of_next_month: "SharedUtils.Date.beginning_of_next_month/1",
+  end_of_next_month: "SharedUtils.Date.end_of_next_month/1",
+  next_month: "SharedUtils.Date.next_month/1",
+  add_months: "SharedUtils.Date.add_months/2",
+  deep_ls: "SharedUtils.File.deep_ls/1",
+  deep_relative_ls: "SharedUtils.File.deep_relative_ls/1",
+  url_safe_encode64: "SharedUtils.Base.url_safe_encode64/1",
+  url_safe_decode64: "SharedUtils.Base.url_safe_decode64/1",
+  humanize_ms: "SharedUtils.TimeConversion.humanize_ms/1",
+  payload_keys_to_strings: "SharedUtils.Enum.stringify_keys/1"
+}
+```
+
+These extras were verified present in `trader_fira_umbrella` and
+`notification_platform_umbrella`, absent from `cheddar_flow_ex_umbrella`.
+`wrap` was deliberately left out of this list — it measured as a false positive
+against a `SharedUtils.Collection.wrap/2` in `trader_fira_umbrella` that is a
+domain-specific pivot helper, not a generic "wrap in a list" utility, so banning
+a local `wrap/N` would misdirect on unrelated code.
+
 | Param | Default | Meaning |
 |---|---|---|
-| `functions` | `%{atomize_keys: "SharedUtils.Enum.atomize_keys/1", deep_merge: "SharedUtils.Map.merge_deep_left/2", deep_struct_to_map: "SharedUtils.Map.deep_struct_to_map/1", pluck: "SharedUtils.Collection.pluck/2", random_string: "SharedUtils.String.generate_random/1", reject_nil_values: "SharedUtils.Enum.reject_nil_values/1", stringify_keys: "SharedUtils.Enum.stringify_keys/1", valid_email?: "SharedUtils.String.valid_email?/1"}` | Banned local function names → the shared helper to use instead. Overriding replaces the whole map. |
-| `excluded_paths` | `["shared_utils"]` | Path fragments exempt from the check (segment-boundary matched) — the shared library itself defines the canonical implementations |
+| `functions` | `%{atom_if_exists: "String.to_existing_atom/1", atomize_keys: "SharedUtils.Enum.atomize_keys/1", atomize_params: "SharedUtils.Enum.atomize_keys/1", deep_merge: "SharedUtils.Map.merge_deep_left/2", deep_struct_to_map: "SharedUtils.Map.deep_struct_to_map/1", deep_transform: "SharedUtils.Enum.deep_transform/2", drop_nil_values: "SharedUtils.Enum.reject_nil_values/1", pluck: "SharedUtils.Collection.pluck/2", random_string: "SharedUtils.String.generate_random/1", reject_nil_values: "SharedUtils.Enum.reject_nil_values/1", stringify_keys: "SharedUtils.Enum.stringify_keys/1", title_case: "SharedUtils.String.title_case/1", valid_email?: "SharedUtils.String.valid_email?/1"}` | Banned local function names → the shared helper to use instead. Overriding replaces the whole map. `atom_if_exists` points at `String.to_existing_atom/1` (what `atomize_keys/1` calls internally for one key), not `atomize_keys/1` itself, which takes an enumerable. |
+| `excluded_paths` | `["shared_utils/"]` | Path fragments exempt from the check (segment-boundary matched) — the shared library itself defines the canonical implementations. The trailing `/` keeps a lookalike file, such as `apps/my_app/lib/my_app/shared_utils.ex`, covered by the check. |
+
+Only `def`/`defp` are matched — `defmacro`/`defmacrop` are not. `drop_nil_values`
+and `reject_nil_values` both point at `SharedUtils.Enum.reject_nil_values/1`, which
+is map-only in `cheddar_flow_ex_umbrella` but also accepts a list in the other two
+trees — passing a list on the map-only tree raises `FunctionClauseError`.
 
 ### `NoRepoWritesInTests`
 
@@ -490,9 +553,15 @@ def double(number), do: number * 2
 Enum.map(users, fn user -> user.name end)
 ```
 
+Names longer than a single letter that still carry no meaning — acronyms such as
+`cs` or `sf` rather than words — can be banned the same way through
+`:banned_names`, reported at the same binding sites and with the same
+underscore-prefix exemption.
+
 | Param | Default | Meaning |
 |---|---|---|
 | `allowed_names` | `[]` | Single-letter names allowed anyway — atoms or strings |
+| `banned_names` | `[]` | Additional variable names flagged at binding sites, whatever their length — atoms or strings, e.g. project-specific abbreviations you have banned. A name in both `:banned_names` and `:allowed_names` is still flagged — `:banned_names` wins. A single-letter name in `:banned_names` is reported as a single-letter violation, not a banned name, since that check runs first. |
 
 ### `NoVacuousAssert`
 
