@@ -148,7 +148,7 @@ defmodule MikaCredoRules.NoRepoWritesInTests do
 
   defp issue_for(repo_write, issue_meta) do
     format_issue(issue_meta,
-      message: "#{repo_write.trigger} found in a test — use FactoryEx for test data",
+      message: "#{repo_write.trigger} found — use FactoryEx for test data",
       trigger: repo_write.trigger,
       line_no: repo_write.line_no
     )

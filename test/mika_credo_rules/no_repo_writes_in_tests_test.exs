@@ -22,8 +22,7 @@ defmodule MikaCredoRules.NoRepoWritesInTestsTest do
       |> run_check(NoRepoWritesInTests)
       |> assert_issue(fn issue ->
         assert issue.line_no === 3
-        assert issue.message =~ "Repo.insert!"
-        assert issue.message =~ "use FactoryEx for test data"
+        assert issue.message === "Repo.insert! found — use FactoryEx for test data"
       end)
     end
 
