@@ -17,7 +17,7 @@ defmodule MikaCredoRules.NoKernelPrefixTest do
       |> assert_issue(fn issue ->
         assert issue.line_no === 2
         assert issue.trigger === "Kernel.inspect"
-        assert issue.message =~ "Kernel.inspect/1 found"
+        assert issue.message =~ "Kernel.inspect found"
         assert issue.message =~ "Kernel is auto-imported"
       end)
     end
@@ -90,6 +90,139 @@ defmodule MikaCredoRules.NoKernelPrefixTest do
       |> to_source_file(@lib_file)
       |> run_check(NoKernelPrefix)
       |> assert_issue(fn issue -> assert issue.trigger === "Kernel.inspect" end)
+    end
+  end
+
+  describe "&run/2 exempts operator CALLS — call syntax has no valid unqualified spelling" do
+    test "does not report a piped Kernel.++ call" do
+      """
+      defmodule MyApp.Worker do
+        def combine(list, extra), do: list |> Kernel.++(extra)
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoKernelPrefix)
+      |> refute_issues()
+    end
+
+    test "does not report a piped Kernel.<> call" do
+      """
+      defmodule MyApp.Worker do
+        def join(left, right), do: left |> Kernel.<>(right)
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoKernelPrefix)
+      |> refute_issues()
+    end
+
+    test "does not report a piped Kernel.|| call" do
+      """
+      defmodule MyApp.Worker do
+        def first(value, fallback), do: value |> Kernel.||(fallback)
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoKernelPrefix)
+      |> refute_issues()
+    end
+
+    test "does not report a standalone Kernel.++ call" do
+      """
+      defmodule MyApp.Worker do
+        def combine(a, b), do: Kernel.++(a, b)
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoKernelPrefix)
+      |> refute_issues()
+    end
+
+    test "still reports Kernel.inspect(x) as a bare call" do
+      """
+      defmodule MyApp.Worker do
+        def show(value), do: Kernel.inspect(value)
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoKernelPrefix)
+      |> assert_issue(fn issue -> assert issue.trigger === "Kernel.inspect" end)
+    end
+
+    test "still reports a piped Kernel.inspect call exactly once" do
+      """
+      defmodule MyApp.Worker do
+        def show(value), do: value |> Kernel.inspect()
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoKernelPrefix)
+      |> assert_issue(fn issue -> assert issue.trigger === "Kernel.inspect" end)
+    end
+
+    test "still reports a piped Kernel.not call — not/1 has a valid unqualified call form" do
+      """
+      defmodule MyApp.Worker do
+        def negate(value), do: value |> Kernel.not()
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoKernelPrefix)
+      |> assert_issue(fn issue -> assert issue.trigger === "Kernel.not" end)
+    end
+  end
+
+  describe "&run/2 honors import Kernel, except:" do
+    test "does not report a call whose name/arity is excepted" do
+      """
+      defmodule MyApp.Worker do
+        import Kernel, except: [to_string: 1]
+
+        def show(worker), do: worker |> Kernel.to_string()
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoKernelPrefix)
+      |> refute_issues()
+    end
+
+    test "still reports a different function not covered by the except list" do
+      """
+      defmodule MyApp.Worker do
+        import Kernel, except: [to_string: 1]
+
+        def show(value), do: Kernel.inspect(value)
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoKernelPrefix)
+      |> assert_issue(fn issue -> assert issue.trigger === "Kernel.inspect" end)
+    end
+
+    test "still reports the same name at an arity the except list does not cover" do
+      """
+      defmodule MyApp.Worker do
+        import Kernel, except: [to_string: 2]
+
+        def show(worker), do: worker |> Kernel.to_string()
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoKernelPrefix)
+      |> assert_issue(fn issue -> assert issue.trigger === "Kernel.to_string" end)
+    end
+  end
+
+  describe "&run/2 leaves alias statements alone" do
+    test "does not report a Kernel.{} multi-alias as a call" do
+      """
+      defmodule MyApp.Worker do
+        alias Kernel.{SpecialForms}
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoKernelPrefix)
+      |> refute_issues()
     end
   end
 
