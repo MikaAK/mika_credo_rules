@@ -23,7 +23,7 @@ defmodule MikaCredoRules.NoPhxBindingsInHoloTemplateTest do
       |> to_source_file(@page_file)
       |> run_check(NoPhxBindingsInHoloTemplate)
       |> assert_issue(fn issue ->
-        assert issue.line_no === 6
+        assert issue.line_no === 7
         assert issue.trigger === "phx-click="
         assert issue.message =~ "phx-click="
         assert issue.message =~ "$click"

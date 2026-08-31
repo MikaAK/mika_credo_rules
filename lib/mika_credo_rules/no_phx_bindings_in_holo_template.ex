@@ -75,7 +75,7 @@ defmodule MikaCredoRules.NoPhxBindingsInHoloTemplate do
 
   defp collect_sigil_violations({:sigil_HOLO, meta, [{:<<>>, _, parts}, _modifiers]}, violations) do
     content = sigil_content(parts)
-    base_line = meta[:line]
+    base_line = meta[:line] + heredoc_offset(meta[:delimiter])
 
     violations
     |> collect_matches(content, base_line, @phx_binding_regex, :phx_binding)
@@ -89,6 +89,12 @@ defmodule MikaCredoRules.NoPhxBindingsInHoloTemplate do
     |> Enum.filter(&is_binary/1)
     |> Enum.join()
   end
+
+  # `meta[:line]` points at the `~HOLO"""` line itself for a heredoc sigil —
+  # the content starts on the NEXT line. A single-line sigil (`~HOLO"..."`)
+  # has its content on the same line as the sigil, so no offset is needed.
+  defp heredoc_offset(delimiter) when byte_size(delimiter) === 3, do: 1
+  defp heredoc_offset(_delimiter), do: 0
 
   defp collect_matches(violations, content, base_line, regex, kind) do
     regex
