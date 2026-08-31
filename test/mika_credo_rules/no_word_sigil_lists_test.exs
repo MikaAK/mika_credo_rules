@@ -117,6 +117,38 @@ defmodule MikaCredoRules.NoWordSigilListsTest do
     end
   end
 
+  describe "&run/2 requires the real sigil argument shape" do
+    test "does not report a user-defined sigil_w/2 function call" do
+      """
+      defmodule MyApp.Worker do
+        import Kernel, except: [sigil_w: 2]
+
+        def sigil_w(term, _mods), do: term
+
+        def keys, do: sigil_w("id type", [])
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoWordSigilLists)
+      |> refute_issues()
+    end
+
+    test "still reports a real ~w sigil in the same file" do
+      """
+      defmodule MyApp.Worker do
+        import Kernel, except: [sigil_w: 2]
+
+        def sigil_w(term, _mods), do: term
+
+        def keys, do: ~w(id type)
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoWordSigilLists)
+      |> assert_issue(fn issue -> assert issue.trigger === "~w" end)
+    end
+  end
+
   describe "&run/2 honors :excluded_paths" do
     test "does not report inside an excluded path" do
       """

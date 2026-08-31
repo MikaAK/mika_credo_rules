@@ -73,7 +73,8 @@ defmodule MikaCredoRules.NoWordSigilLists do
     SourceFilter.matches_fragment?(filename, excluded_paths)
   end
 
-  defp traverse({sigil, meta, _args} = ast, sightings, sigils) when is_atom(sigil) do
+  defp traverse({sigil, meta, [{:<<>>, _, _}, _modifiers]} = ast, sightings, sigils)
+       when is_atom(sigil) do
     if sigil in sigils do
       {ast, [sighting(sigil, meta) | sightings]}
     else
