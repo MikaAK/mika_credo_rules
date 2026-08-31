@@ -60,6 +60,10 @@ defmodule MikaCredoRules.ObanWorkerRequiresMaxAttempts do
   option list — a module attribute (`use Oban.Worker, @worker_opts`) or a
   call that builds the options — is invisible to a static check and is
   silently skipped rather than guessed at.
+
+  `use Oban.Pro.Worker, ...` is a different, unrelated module — it never
+  matches the hardcoded `Oban.Worker` alias set this check resolves against,
+  so it is invisible to this check.
   """
   @explanation [check: @moduledoc]
 
@@ -125,7 +129,7 @@ defmodule MikaCredoRules.ObanWorkerRequiresMaxAttempts do
   end
 
   defp issue_for(incomplete_use, issue_meta) do
-    missing = incomplete_use.missing_keys |> Enum.map_join(", ", &inspect/1)
+    missing = Enum.map_join(incomplete_use.missing_keys, ", ", &inspect/1)
 
     format_issue(issue_meta,
       message:
