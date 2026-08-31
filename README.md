@@ -56,8 +56,12 @@ checks: %{
 | [`LoggerModulePrefixAndInspect`](#loggermoduleprefixandinspect) | `:warning` | Logger messages missing the `#{__MODULE__}: ` prefix or interpolating values without `inspect/1` |
 | [`NoApplicationEnvOutsideConfig`](#noapplicationenvoutsideconfig) | `:design` | Any read or write of application env outside a config module |
 | [`NoAtomStringKeyFallback`](#noatomstringkeyfallback) | `:warning` | `m["key"] \|\| m[:key]` mixed-key fallback reads — normalize keys at the boundary |
+| [`NoBarePatternMatchOnFallible`](#nobarepatternmatchonfallible) | `:warning` | `{:ok, x} = call()` — a bare match with no handling for the failure path |
+| [`NoBinaryPatternForStringPrefix`](#nobinarypatternforstringprefix) | `:readability` | `<<"GET ", rest::binary>>` instead of `"GET " <> rest` |
 | [`NoBlanketRescue`](#noblanketrescue) | `:warning` | Catch-all rescue clauses that swallow exceptions |
 | [`NoCastAllKeys`](#nocastallkeys) | `:warning` | `cast(data, params, Map.keys(params))` — a mass-assignment hole |
+| [`NoCondElseAtom`](#nocondelseatom) | `:readability` | A `cond`'s last clause falling through on `:else` instead of `true` |
+| [`NoForWithDiscardedResult`](#noforwithdiscardedresult) | `:warning` | A `for` comprehension in statement position whose built result is thrown away |
 | [`NoIdentityRewrap`](#noidentityrewrap) | `:refactor` | `case` expressions whose every clause returns its pattern unchanged |
 | [`NoJasonDeriveOnEctoSchema`](#nojasonderiveonectoschema) | `:design` | `@derive Jason.Encoder` inside Ecto schema modules |
 | [`NoMixEnvAtRuntime`](#nomixenvatruntime) | `:warning` | `Mix.env()`/`Mix.target()` in compiled code — crashes in releases |
@@ -207,6 +211,83 @@ combination, including adjacent reads inside a chained fallback. Different key
 names, same-type keys, different subjects and plain lookup-or-default
 (`params["id"] || %{}`) are never flagged.
 
+### `NoBarePatternMatchOnFallible`
+
+A bare `=` match against a fallible-tagged call must be handled explicitly with
+`case` or `with`, not left to crash with an opaque `MatchError`. `{:ok, user} =
+Accounts.fetch(id)` works right up until `Accounts.fetch/1` returns
+`{:error, reason}`, at which point it crashes with no context about why the call
+failed.
+
+```elixir
+# BAD — a MatchError with no context if the call fails
+def sync(id) do
+  {:ok, user} = Accounts.fetch(id)
+  broadcast(user)
+end
+
+# GOOD
+def sync(id) do
+  with {:ok, user} <- Accounts.fetch(id) do
+    broadcast(user)
+  end
+end
+```
+
+Only a match whose right-hand side is an actual call — a local call, a remote
+call, or a pipe — is flagged. Rebinding an already-tagged value
+(`{:ok, user} = result`) reads as a shape assertion and is left alone, and a
+`case`/`fn` clause head that binds a shape (`{:ok, _} = result -> ...`) is a
+pattern, not a statement, so only its body is inspected. `<-` in `with` and
+`for` is a different construct entirely and is never matched. A parenless
+dot-read (`state.result`), an Access bracket read (`opts[:result]`), a
+module-attribute read (`@cfg`), and a `||` fallback (`cached || other`) are
+rebinds too, not calls — a parenless *remote* call (`Accounts.fetch`) and an
+anonymous function call (`fun.()`) still count.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `tags` | `[:ok, :error]` | Atoms that mark a 2-tuple as fallible. |
+| `excluded_paths` | `["_test.exs", "test/", "/application.ex", "priv/repo/"]` | Path fragments exempt from the check — tests use the bare match as an assertion, and a boot-time `{:ok, pid} = Supervisor.start_link(...)` in `application.ex` or a broken seed script under `priv/repo/` is deliberate. |
+
+**Limitations.** Only a literal local call, remote call, or pipe on the
+right-hand side counts as a call. A control-flow expression (`case`, `if`,
+`cond`, `for`, a `fn`) on the right-hand side is never flagged, even when it
+ultimately returns a fallible-tagged tuple. A `=` inside a `quote do ... end`
+body is flagged even though it is macro-generated AST, not a runtime match.
+
+### `NoBinaryPatternForStringPrefix`
+
+Match a string prefix with concatenation, not a binary pattern.
+`<<"GET ", rest::binary>>` and `"GET " <> rest` match the same values, but the
+binary-pattern spelling reads like real byte-level parsing (sizes, bit widths,
+encodings) when nothing here needs any of that.
+
+```elixir
+# BAD
+<<"my", rest::binary>> = "my string"
+def parse(<<"GET ", path::binary>>), do: path
+
+# GOOD
+"my" <> rest = "my string"
+def parse("GET " <> path), do: path
+```
+
+Only a `<<>>` pattern with exactly two segments — a plain string literal
+first, and a `::binary`/`::bytes`-typed variable (or `_`) second — is
+flagged. A bare variable with no explicit type (`<<"GET ", rest>>`) binds a
+single byte as an integer, not a string tail, so rewriting it to `<>` would
+change what the code matches, and is left alone, same as genuine binary
+parsing (`<<size::32, rest::binary>>`, `<<"GET", _::8, path::binary>>`). A
+`<<>>` used as a constructor rather than a pattern is never flagged — only
+pattern positions are inspected: the left-hand side of `=`, function-clause
+heads, and `case`/`fn`/`with`/`for` pattern heads. A `<<>>` compared inside a
+`case`/`fn` clause guard is a constructor too and is never inspected.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `excluded_paths` | `[]` | Path fragments exempt from the check, matched at a path-segment boundary. |
+
 ### `NoBlanketRescue`
 
 A rescue clause must not catch every exception only to swallow it. A blanket
@@ -259,6 +340,78 @@ qualified `Ecto.Changeset.cast(...)` and `Changeset.cast(...)` under an alias.
 Indirection through a variable (`fields = Map.keys(attrs)` then
 `cast(user, attrs, fields)`) is invisible to the check — literal lists, module
 attributes and variables are all left alone.
+
+### `NoCondElseAtom`
+
+The last `cond` clause must fall through on `true`, not on an arbitrary truthy
+atom such as `:else`. Every atom other than `nil`/`false` is truthy in a `cond`
+head, so `:else -> ...` works — but it reads as if `cond` supported an `else`
+keyword the way `if`/`case` do, which it does not.
+
+```elixir
+# BAD
+cond do
+  a?() -> 1
+  :else -> 2
+end
+
+# GOOD
+cond do
+  a?() -> 1
+  true -> 2
+end
+```
+
+Only the last clause's head is inspected — an atom used as an earlier clause
+head is a different pattern this check does not cover.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `disallowed_atoms` | `[:else]` | Atoms that must not be used as the last `cond` clause's head. |
+
+### `NoForWithDiscardedResult`
+
+A `for` comprehension in statement position throws its result away — use
+`Enum.each/2` for side-effect-only iteration instead. `for` always builds and
+returns a list (or whatever `:into`/`:reduce` accumulates into); written as a
+standalone statement, that value is built and immediately discarded, with no
+compiler warning to catch it.
+
+```elixir
+# BAD — the built list is thrown away
+def sync(items) do
+  for item <- items do
+    Cache.put(item)
+  end
+
+  :ok
+end
+
+# GOOD — no throwaway list
+def sync(items) do
+  Enum.each(items, fn item ->
+    Cache.put(item)
+  end)
+
+  :ok
+end
+```
+
+A `for` is only flagged when it sits in statement position — an element of a
+block that is not the block's last expression. A `for` that IS the last
+expression of a block, the right-hand side of `=`, a call argument, or a pipe
+stage is consumed elsewhere and is never flagged. `for ... into: ...` and
+`for ... reduce: ...` are flagged the same as a plain `for` when they sit in
+statement position — the accumulated value is still built and discarded, and
+the message names `Enum.into/3` or `Enum.reduce/3` instead of `Enum.each/2`
+for those.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `excluded_paths` | `["_test.exs", "test/"]` | Path fragments exempt from the check, matched at a path-segment boundary — setup loops dominate the for-in-statement-position shape in tests. |
+
+**Limitations.** A `for` inside a `quote do ... end` body is flagged even
+though it is macro-generated AST, not a runtime comprehension.
 
 ### `NoIdentityRewrap`
 
