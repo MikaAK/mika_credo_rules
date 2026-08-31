@@ -45,8 +45,10 @@ defmodule MikaCredoRules.NoInspectModuleInMigrationSql do
       # GOOD
       execute "UPDATE oban_jobs SET worker = 'DeveloperAi.Workers.TicketScanner'"
 
-  Both spellings are caught anywhere in a migration file: `inspect(MyApp.Worker)`
-  and `"\#{MyApp.Worker}"`. Module names have no business being rendered in a
+  Four spellings are caught anywhere in a migration file: `inspect(MyApp.Worker)`,
+  `"\#{MyApp.Worker}"`, `to_string(MyApp.Worker)`, and `Atom.to_string(MyApp.Worker)`
+  — the last two render the identical `"Elixir.MyApp.Worker"` and cause the exact
+  bug this check exists for. Module names have no business being rendered in a
   migration except as a bare string literal.
 
   ## Limitations
@@ -57,8 +59,12 @@ defmodule MikaCredoRules.NoInspectModuleInMigrationSql do
       alias argument, and the interpolated value by the time it reaches the
       string is a plain variable. Prefer `~w(DeveloperAi.Workers.TicketScanner)`
       over that pattern regardless; this check just can't see through it.
-    * `:also_flag_interpolation` set to `false` narrows the check to `inspect/1`
-      only.
+    * `:also_flag_interpolation` only gates string interpolation
+      (`"\#{MyApp.Worker}"`); `inspect/1`, `to_string/1`, and `Atom.to_string/1`
+      calls are always flagged regardless of this param.
+    * A qualified `Kernel.inspect(MyApp.Worker)` call, and `inspect/2` with
+      options (`inspect(MyApp.Worker, pretty: true)`), are NOT caught — only the
+      bare, one-argument `inspect(MyApp.Worker)` form is detected.
   """
   @explanation [check: @moduledoc]
 
@@ -85,6 +91,19 @@ defmodule MikaCredoRules.NoInspectModuleInMigrationSql do
 
   defp traverse({:inspect, meta, [{:__aliases__, _, segments}]} = ast, violations, _also_flag) do
     {ast, [violation(:inspect, meta, segments) | violations]}
+  end
+
+  defp traverse({:to_string, meta, [{:__aliases__, _, segments}]} = ast, violations, _also_flag) do
+    {ast, [violation(:to_string, meta, segments) | violations]}
+  end
+
+  defp traverse(
+         {{:., _, [{:__aliases__, module_meta, [:Atom]}, :to_string]}, _,
+          [{:__aliases__, _, segments}]} = ast,
+         violations,
+         _also_flag
+       ) do
+    {ast, [violation(:atom_to_string, module_meta, segments) | violations]}
   end
 
   defp traverse(
@@ -126,6 +145,26 @@ defmodule MikaCredoRules.NoInspectModuleInMigrationSql do
       message:
         "string interpolation of a module alias found — Oban's worker column strips the Elixir. prefix, so the interpolated value never matches; use a bare string literal instead",
       trigger: violation.module_name,
+      line_no: violation.line_no,
+      column: violation.column
+    )
+  end
+
+  defp issue_for(%{kind: :to_string} = violation, issue_meta) do
+    format_issue(issue_meta,
+      message:
+        "to_string/1 on a module alias found — Oban's worker column strips the Elixir. prefix, so to_string/1's rendered value never matches; use a bare string literal instead",
+      trigger: "to_string",
+      line_no: violation.line_no,
+      column: violation.column
+    )
+  end
+
+  defp issue_for(%{kind: :atom_to_string} = violation, issue_meta) do
+    format_issue(issue_meta,
+      message:
+        "Atom.to_string/1 on a module alias found — Oban's worker column strips the Elixir. prefix, so Atom.to_string/1's rendered value never matches; use a bare string literal instead",
+      trigger: "Atom.to_string",
       line_no: violation.line_no,
       column: violation.column
     )

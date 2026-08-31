@@ -97,6 +97,62 @@ defmodule MikaCredoRules.NoInspectModuleInMigrationSqlTest do
     end
   end
 
+  describe "&run/2 flags to_string/1 and Atom.to_string/1 on a module alias" do
+    test "reports a bare to_string(Module) call" do
+      """
+      defmodule MyApp.Repo.Migrations.RescanQueue do
+        use Ecto.Migration
+
+        def change do
+          worker = to_string(DeveloperAi.Workers.TicketScanner)
+          execute "UPDATE oban_jobs SET worker = '\#{worker}'"
+        end
+      end
+      """
+      |> to_source_file(@migration_file)
+      |> run_check(NoInspectModuleInMigrationSql)
+      |> assert_issue(fn issue ->
+        assert issue.line_no === 5
+        assert issue.trigger === "to_string"
+      end)
+    end
+
+    test "reports an Atom.to_string(Module) call" do
+      """
+      defmodule MyApp.Repo.Migrations.RescanQueue do
+        use Ecto.Migration
+
+        def change do
+          worker = Atom.to_string(DeveloperAi.Workers.TicketScanner)
+          execute "UPDATE oban_jobs SET worker = '\#{worker}'"
+        end
+      end
+      """
+      |> to_source_file(@migration_file)
+      |> run_check(NoInspectModuleInMigrationSql)
+      |> assert_issue(fn issue ->
+        assert issue.line_no === 5
+        assert issue.trigger === "Atom.to_string"
+      end)
+    end
+
+    test "does not report to_string/1 on a variable" do
+      """
+      defmodule MyApp.Repo.Migrations.RescanQueue do
+        use Ecto.Migration
+
+        def change do
+          reason = :timeout
+          execute "-- \#{to_string(reason)}"
+        end
+      end
+      """
+      |> to_source_file(@migration_file)
+      |> run_check(NoInspectModuleInMigrationSql)
+      |> refute_issues()
+    end
+  end
+
   describe "&run/2 allows the moduledoc GOOD example and unrelated calls" do
     test "does not report the moduledoc GOOD example" do
       """
