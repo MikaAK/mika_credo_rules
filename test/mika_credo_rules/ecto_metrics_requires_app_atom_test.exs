@@ -94,7 +94,7 @@ defmodule MikaCredoRules.EctoMetricsRequiresAppAtomTest do
     end
   end
 
-  describe "&run/2 honours the :functions param" do
+  describe "&run/2 honours the :module_functions param" do
     test "flags an additionally configured module/function pair" do
       """
       defmodule MyApp.Application do
@@ -103,14 +103,14 @@ defmodule MikaCredoRules.EctoMetricsRequiresAppAtomTest do
       """
       |> to_source_file(@application_file)
       |> run_check(EctoMetricsRequiresAppAtom,
-        functions: [{PrometheusTelemetry.Metrics.Phoenix, :metrics}]
+        module_functions: [{PrometheusTelemetry.Metrics.Phoenix, :metrics}]
       )
       |> assert_issue(fn issue ->
         assert issue.message =~ "PrometheusTelemetry.Metrics.Phoenix.metrics"
       end)
     end
 
-    test "no longer flags Ecto once :functions is overridden away from it" do
+    test "no longer flags Ecto once :module_functions is overridden away from it" do
       """
       defmodule MyApp.Application do
         def metrics, do: [PrometheusTelemetry.Metrics.Ecto.metrics()]
@@ -118,9 +118,49 @@ defmodule MikaCredoRules.EctoMetricsRequiresAppAtomTest do
       """
       |> to_source_file(@application_file)
       |> run_check(EctoMetricsRequiresAppAtom,
-        functions: [{PrometheusTelemetry.Metrics.Phoenix, :metrics}]
+        module_functions: [{PrometheusTelemetry.Metrics.Phoenix, :metrics}]
       )
       |> refute_issues()
+    end
+  end
+
+  describe "&run/2 allows a piped call that supplies the app atom via the pipe" do
+    test "does not report a two-step pipe ending in metrics()" do
+      """
+      defmodule MyApp.Application do
+        def metrics do
+          cfg = [app: :my_app]
+          [cfg |> Keyword.fetch!(:app) |> PrometheusTelemetry.Metrics.Ecto.metrics()]
+        end
+      end
+      """
+      |> to_source_file(@application_file)
+      |> run_check(EctoMetricsRequiresAppAtom)
+      |> refute_issues()
+    end
+
+    test "does not report an app atom piped directly into metrics()" do
+      """
+      defmodule MyApp.Application do
+        def metrics, do: [:my_app |> PrometheusTelemetry.Metrics.Ecto.metrics()]
+      end
+      """
+      |> to_source_file(@application_file)
+      |> run_check(EctoMetricsRequiresAppAtom)
+      |> refute_issues()
+    end
+  end
+
+  describe "&run/2 accepts a single-segment module in :functions" do
+    test "does not crash and flags a bare single-segment module" do
+      """
+      defmodule MyApp.Application do
+        def metrics, do: [Zqx1.metrics()]
+      end
+      """
+      |> to_source_file(@application_file)
+      |> run_check(EctoMetricsRequiresAppAtom, module_functions: [{Zqx1, :metrics}])
+      |> assert_issue(fn issue -> assert issue.message =~ "Zqx1.metrics" end)
     end
   end
 

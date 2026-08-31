@@ -3,12 +3,12 @@ defmodule MikaCredoRules.EctoMetricsRequiresAppAtom do
     base_priority: :high,
     category: :warning,
     param_defaults: [
-      functions: [{PrometheusTelemetry.Metrics.Ecto, :metrics}],
+      module_functions: [{PrometheusTelemetry.Metrics.Ecto, :metrics}],
       excluded_paths: []
     ],
     explanations: [
       params: [
-        functions: """
+        module_functions: """
         A list of `{module, function}` tuples naming zero-arity calls that
         must instead receive an app atom. Defaults to
         `[{PrometheusTelemetry.Metrics.Ecto, :metrics}]`.
@@ -82,7 +82,7 @@ defmodule MikaCredoRules.EctoMetricsRequiresAppAtom do
 
   defp build_pair_contexts(source_file, params) do
     params
-    |> Params.get(:functions, __MODULE__)
+    |> Params.get(:module_functions, __MODULE__)
     |> Enum.map(&pair_context(source_file, &1))
   end
 
@@ -90,21 +90,39 @@ defmodule MikaCredoRules.EctoMetricsRequiresAppAtom do
     {parent_segments, last_segment} = split_module(module)
 
     %{
-      parent_paths: AstHelpers.resolve_aliases(source_file, [Module.concat(parent_segments)]),
+      parent_paths: parent_paths(source_file, parent_segments),
       last_segment: last_segment,
       function: function
     }
   end
 
-  # `Module.split/1` returns each segment as a string, but the segment atoms
-  # already exist — they were created when this module atom itself was
-  # first referenced in source (e.g. as a param default or a `.credo.exs`
-  # override) — so String.to_existing_atom/1 is always safe here, never a
-  # fresh dynamic atom.
+  # `Module.split/1` returns each segment as a string. Comparing the AST's
+  # atom segment via `Atom.to_string/1` avoids ever turning a string back
+  # into an atom — `String.to_existing_atom/1` on a bare segment (e.g.
+  # `"Foo"`) raises whenever that bare atom was never created elsewhere,
+  # which a single-segment `:module_functions` entry hits immediately.
   defp split_module(module) do
-    segments = module |> Module.split() |> Enum.map(&String.to_existing_atom/1)
+    segments = Module.split(module)
     {parent_segments, [last_segment]} = Enum.split(segments, -1)
     {parent_segments, last_segment}
+  end
+
+  # A single-segment target module (e.g. `Foo`) has no parent namespace to
+  # alias-resolve — `Module.concat([])` is `Elixir`, and `Module.split(Elixir)`
+  # itself raises, so that case is short-circuited to the one path an
+  # unaliased bare reference can take: an empty parent.
+  defp parent_paths(_source_file, []), do: [[]]
+
+  defp parent_paths(source_file, parent_segments) do
+    AstHelpers.resolve_aliases(source_file, [Module.concat(parent_segments)])
+  end
+
+  defp traverse({:|>, pipe_meta, [lhs, rhs]} = ast, calls, pair_contexts) do
+    if piped_metrics_call?(rhs, pair_contexts) do
+      {{:|>, pipe_meta, [lhs, {:__block__, [], []}]}, calls}
+    else
+      {ast, calls}
+    end
   end
 
   defp traverse(
@@ -121,6 +139,19 @@ defmodule MikaCredoRules.EctoMetricsRequiresAppAtom do
 
   defp traverse(ast, calls, _pair_contexts), do: {ast, calls}
 
+  # A dot-call with an empty explicit arg list that is itself the right-hand
+  # side of a pipe is NOT zero-arity in effect — the piped value fills the
+  # missing argument. Consuming it here (before the standalone clause can
+  # re-examine the same node) prevents that false positive.
+  defp piped_metrics_call?(
+         {{:., _, [{:__aliases__, _, module}, function]}, _meta, []},
+         pair_contexts
+       ) do
+    Enum.any?(pair_contexts, &matches_pair?(&1, module, function))
+  end
+
+  defp piped_metrics_call?(_ast, _pair_contexts), do: false
+
   defp matches_pair?(pair_context, module, function) do
     function === pair_context.function and parent_matches?(module, pair_context)
   end
@@ -128,7 +159,8 @@ defmodule MikaCredoRules.EctoMetricsRequiresAppAtom do
   defp parent_matches?(module, pair_context) do
     case Enum.split(module, -1) do
       {parent, [last]} ->
-        last === pair_context.last_segment and parent in pair_context.parent_paths
+        Atom.to_string(last) === pair_context.last_segment and
+          parent in pair_context.parent_paths
 
       _ ->
         false
