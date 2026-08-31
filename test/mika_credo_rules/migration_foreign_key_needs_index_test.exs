@@ -24,9 +24,30 @@ defmodule MikaCredoRules.MigrationForeignKeyNeedsIndexTest do
       |> run_check(MigrationForeignKeyNeedsIndex)
       |> assert_issue(fn issue ->
         assert issue.line_no === 6
-        assert issue.trigger === "references(:organizations)"
+        assert issue.trigger === "references"
+        assert issue.message =~ ":organizations"
         assert issue.message =~ ":organization_id"
         assert issue.message =~ "create index(:users, [:organization_id])"
+      end)
+    end
+
+    test "reports a foreign key whose references/2 carries options" do
+      """
+      defmodule MyApp.Repo.Migrations.CreateUsers do
+        use Ecto.Migration
+
+        def change do
+          create table(:users) do
+            add :organization_id, references(:organizations, on_delete: :delete_all), null: false
+          end
+        end
+      end
+      """
+      |> to_source_file(@migration_file)
+      |> run_check(MigrationForeignKeyNeedsIndex)
+      |> assert_issue(fn issue ->
+        assert issue.trigger === "references"
+        assert issue.message =~ ":organizations"
       end)
     end
 
@@ -101,6 +122,40 @@ defmodule MikaCredoRules.MigrationForeignKeyNeedsIndexTest do
       |> to_source_file(@migration_file)
       |> run_check(MigrationForeignKeyNeedsIndex)
       |> assert_issue()
+    end
+
+    test "reports a foreign key added via alter table" do
+      """
+      defmodule MyApp.Repo.Migrations.AddOrganizationToUsers do
+        use Ecto.Migration
+
+        def change do
+          alter table(:users) do
+            add :organization_id, references(:organizations), null: false
+          end
+        end
+      end
+      """
+      |> to_source_file(@migration_file)
+      |> run_check(MigrationForeignKeyNeedsIndex)
+      |> assert_issue(fn issue -> assert issue.line_no === 6 end)
+    end
+
+    test "reports a foreign key added via add_if_not_exists in alter table" do
+      """
+      defmodule MyApp.Repo.Migrations.AddOrganizationToUsers do
+        use Ecto.Migration
+
+        def change do
+          alter table(:users) do
+            add_if_not_exists :organization_id, references(:organizations), null: false
+          end
+        end
+      end
+      """
+      |> to_source_file(@migration_file)
+      |> run_check(MigrationForeignKeyNeedsIndex)
+      |> assert_issue(fn issue -> assert issue.line_no === 6 end)
     end
 
     test "reports in an umbrella migration path" do
@@ -193,6 +248,42 @@ defmodule MikaCredoRules.MigrationForeignKeyNeedsIndexTest do
           end
 
           create_if_not_exists index(:users, [:organization_id], concurrently: true)
+        end
+      end
+      """
+      |> to_source_file(@migration_file)
+      |> run_check(MigrationForeignKeyNeedsIndex)
+      |> refute_issues()
+    end
+
+    test "does not report a covered foreign key added via alter table" do
+      """
+      defmodule MyApp.Repo.Migrations.AddOrganizationToUsers do
+        use Ecto.Migration
+
+        def change do
+          alter table(:users) do
+            add :organization_id, references(:organizations), null: false
+          end
+
+          create index(:users, [:organization_id])
+        end
+      end
+      """
+      |> to_source_file(@migration_file)
+      |> run_check(MigrationForeignKeyNeedsIndex)
+      |> refute_issues()
+    end
+
+    test "does not report modify on a pre-existing foreign key inside alter table" do
+      """
+      defmodule MyApp.Repo.Migrations.WidenTicketIdReference do
+        use Ecto.Migration
+
+        def change do
+          alter table(:comments) do
+            modify :ticket_id, references(:tickets), from: references(:tickets)
+          end
         end
       end
       """

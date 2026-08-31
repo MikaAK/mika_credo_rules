@@ -53,16 +53,24 @@ defmodule MikaCredoRules.MigrationForeignKeyNeedsIndex do
 
   ## Limitations
 
-    * Only foreign keys added inside a `create table(...)`/`create_if_not_exists
-      table(...)` block are collected, and only when both the table name and the
-      column name are literal atoms. A dynamically built table or column name is
-      silently skipped, not flagged.
+    * Foreign keys are collected from `add`/`add_if_not_exists` inside a
+      `create table(...)`, `create_if_not_exists table(...)`, or `alter
+      table(...)` block, and only when both the table name and the column name
+      are literal atoms. A dynamically built table or column name is silently
+      skipped, not flagged. `modify` is never collected — a pre-existing,
+      already-indexed foreign key widened via `modify` would otherwise be a
+      false positive.
     * An index added in a *different* migration file is invisible to this
       check — coverage is only checked within the same file.
+    * A covering index created by raw SQL (`execute "CREATE INDEX ..."`)
+      instead of the `index/1,2` DSL is invisible to this check and still
+      fires.
   """
   @explanation [check: @moduledoc]
 
   @table_creators [:create, :create_if_not_exists]
+  @table_modifiers [:create, :create_if_not_exists, :alter]
+  @add_functions [:add, :add_if_not_exists]
 
   @doc false
   @impl Credo.Check
@@ -95,7 +103,7 @@ defmodule MikaCredoRules.MigrationForeignKeyNeedsIndex do
          {creator, _, [{:table, _, [table | _opts]}, [{:do, body}]]} = ast,
          foreign_keys
        )
-       when creator in @table_creators and is_atom(table) do
+       when creator in @table_modifiers and is_atom(table) do
     {ast, table |> foreign_keys_in_table(body) |> Enum.reverse() |> Enum.concat(foreign_keys)}
   end
 
@@ -109,9 +117,9 @@ defmodule MikaCredoRules.MigrationForeignKeyNeedsIndex do
 
   defp foreign_key_from_add(
          table,
-         {:add, _meta, [column, {:references, ref_meta, ref_args} | _opts]}
+         {function, _meta, [column, {:references, ref_meta, ref_args} | _opts]}
        )
-       when is_atom(column) do
+       when function in @add_functions and is_atom(column) do
     case ref_args do
       [referenced_table | _] when is_atom(referenced_table) ->
         [
@@ -163,12 +171,10 @@ defmodule MikaCredoRules.MigrationForeignKeyNeedsIndex do
   end
 
   defp issue_for(foreign_key, issue_meta) do
-    trigger = "references(#{inspect(foreign_key.referenced_table)})"
-
     format_issue(issue_meta,
       message:
-        "#{trigger} on #{inspect(foreign_key.column)} found without an index — add `create index(#{inspect(foreign_key.table)}, [#{inspect(foreign_key.column)}])`",
-      trigger: trigger,
+        "references(#{inspect(foreign_key.referenced_table)}) on #{inspect(foreign_key.column)} found without an index — add `create index(#{inspect(foreign_key.table)}, [#{inspect(foreign_key.column)}])`",
+      trigger: "references",
       line_no: foreign_key.line_no,
       column: foreign_key.column_no
     )
