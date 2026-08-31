@@ -5,8 +5,15 @@ defmodule MikaCredoRules.AstHelpers do
   Module identity is the package's most bug-prone concept — hand-rolling it
   shipped both a false negative (a wildcard module slot let `Enum.join/2` borrow
   an Ecto exemption) and a false positive (a literal path list missed
-  `alias Ecto.Query`). Every function here is total: it returns `nil`/`false`
-  rather than raising on shapes it does not recognise.
+  `alias Ecto.Query`). Every function here is total over the AST shapes it is
+  meant to recognise: it returns `nil`/`false` rather than raising on a shape
+  it does not match.
+
+  `module_paths/1` and `resolve_aliases/2` are NOT total over their `module`
+  argument — they require a genuine Elixir module atom (one `Module.split/1`
+  accepts). Passing an erlang-style atom module (e.g. `:maps` in a caller's
+  `nilable_functions: [{:maps, :get, 2}]`) raises `ArgumentError` from
+  `Module.split/1`.
 
   ## House idiom: pruning a subtree with `{nil, acc}`
 
@@ -146,4 +153,58 @@ defmodule MikaCredoRules.AstHelpers do
 
   defp strip_elixir_prefix([Elixir | segments]), do: segments
   defp strip_elixir_prefix(segments), do: segments
+
+  @doc """
+  Default Ecto query DSL function names — the only calls whose loose (`==`/`!=`)
+  or boolean-literal comparisons the query compiler accepts.
+  """
+  @spec ecto_query_functions() :: [atom()]
+  def ecto_query_functions do
+    [
+      :dynamic,
+      :from,
+      :where,
+      :or_where,
+      :having,
+      :or_having,
+      :select,
+      :select_merge,
+      :on,
+      :join,
+      :query,
+      :subquery,
+      :in
+    ]
+  end
+
+  @doc """
+  True when `ast` is a call whose arguments are exempt from an operator check
+  under the Ecto query DSL: a bare/imported call named in `ignored_functions`,
+  or a call qualified on a module in `ecto_query_modules` (from
+  `resolve_aliases/2`) named in `ignored_functions`.
+
+  Qualified calls are only exempt on an Ecto.Query spelling — an ignored
+  function name on another module (`Enum.join/2` sharing the `:join` name)
+  never borrows the exemption.
+
+  Only useful inside a `Credo.Code.prewalk/2` traverse: when this returns
+  `true`, return `{nil, acc}` from the traverse clause to prune the call's
+  *arguments* — returning `true` alone does not stop the walk.
+  """
+  @spec ecto_query_call?(Macro.t(), [module_path()], [atom()]) :: boolean()
+  def ecto_query_call?(
+        {{:., _, [{:__aliases__, _, module}, function]}, _, args},
+        ecto_query_modules,
+        ignored_functions
+      )
+      when is_atom(function) and is_list(args) do
+    module in ecto_query_modules and function in ignored_functions
+  end
+
+  def ecto_query_call?({function, _, args}, _ecto_query_modules, ignored_functions)
+      when is_atom(function) and is_list(args) do
+    function in ignored_functions
+  end
+
+  def ecto_query_call?(_ast, _ecto_query_modules, _ignored_functions), do: false
 end

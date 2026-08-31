@@ -12,6 +12,7 @@
       },
       strict: true,
       checks: [
+        {MikaCredoRules.EnsureLoadedBeforeExported, []},
         {MikaCredoRules.ErrorMessageRequired, []},
         {MikaCredoRules.ExceptionNamesEndInError, []},
         {MikaCredoRules.GenServerRequiresHandleContinue, []},
@@ -22,6 +23,7 @@
         {MikaCredoRules.NoBarePatternMatchOnFallible, []},
         {MikaCredoRules.NoBinaryPatternForStringPrefix, []},
         {MikaCredoRules.NoBlanketRescue, []},
+        {MikaCredoRules.NoBooleanLiteralComparison, []},
         {MikaCredoRules.NoCastAllKeys, []},
         {MikaCredoRules.NoCondElseAtom, []},
         {MikaCredoRules.NoForWithDiscardedResult, []},
@@ -37,6 +39,7 @@
         {MikaCredoRules.NoSingleLetterVariables, []},
         {MikaCredoRules.NoVacuousAssert, []},
         {MikaCredoRules.NoWordSigilLists, []},
+        {MikaCredoRules.NoTruthyAndOr, []},
         {MikaCredoRules.RefuteOverAssertNot, []},
         {MikaCredoRules.SingleModulePerFile, []},
         {MikaCredoRules.StrictEquality, []},

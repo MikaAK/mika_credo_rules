@@ -54,6 +54,7 @@ checks: %{
 
 | Check | Category | What it catches |
 |---|---|---|
+| [`EnsureLoadedBeforeExported`](#ensureloadedbeforeexported) | `:warning` | `function_exported?`/`macro_exported?`/`Code.loaded?/1` not guarded by `Code.ensure_loaded?/1` |
 | [`ErrorMessageRequired`](#errormessagerequired) | `:design` | `{:error, "string literal"}` tuples — use `%ErrorMessage{}` |
 | [`ExceptionNamesEndInError`](#exceptionnamesendinerror) | `:readability` | An exception module whose name does not end in `Error` |
 | [`GenServerRequiresHandleContinue`](#genserverrequireshandlecontinue) | `:refactor` | Real work in `init/1` instead of `handle_continue/2` |
@@ -64,6 +65,7 @@ checks: %{
 | [`NoBarePatternMatchOnFallible`](#nobarepatternmatchonfallible) | `:warning` | `{:ok, x} = call()` — a bare match with no handling for the failure path |
 | [`NoBinaryPatternForStringPrefix`](#nobinarypatternforstringprefix) | `:readability` | `<<"GET ", rest::binary>>` instead of `"GET " <> rest` |
 | [`NoBlanketRescue`](#noblanketrescue) | `:warning` | Catch-all rescue clauses that swallow exceptions |
+| [`NoBooleanLiteralComparison`](#nobooleanliteralcomparison) | `:readability` | `x == true` / `x != false` — use the value directly (Ecto query DSL exempt) |
 | [`NoCastAllKeys`](#nocastallkeys) | `:warning` | `cast(data, params, Map.keys(params))` — a mass-assignment hole |
 | [`NoCondElseAtom`](#nocondelseatom) | `:readability` | A `cond`'s last clause falling through on `:else` instead of `true` |
 | [`NoForWithDiscardedResult`](#noforwithdiscardedresult) | `:warning` | A `for` comprehension in statement position whose built result is thrown away |
@@ -79,12 +81,50 @@ checks: %{
 | [`NoSingleLetterVariables`](#nosinglelettervariables) | `:readability` | Single-letter variable bindings |
 | [`NoVacuousAssert`](#novacuousassert) | `:warning` | `assert true` / `assert <literal>` / `refute false` / `assert x === x` — placeholder assertions that can never fail |
 | [`NoWordSigilLists`](#nowordsigillists) | `:readability` | `~w`/`~W` sigils — use a list literal instead |
+| [`NoTruthyAndOr`](#notruthyandor) | `:warning` | `and`/`or`/`not` on a provably-nilable operand (`opts[:key]`, `Map.get/2`, ...) — use `&&`/`\|\|`/`!` |
 | [`RefuteOverAssertNot`](#refuteoverassertnot) | `:readability` | `assert !expr` / `assert not expr` — use `refute` |
 | [`SingleModulePerFile`](#singlemoduleperfile) | `:design` | More than one top-level `defmodule` per file (nested modules allowed) |
 | [`StrictEquality`](#strictequality) | `:warning` | `==`/`!=` — use `===`/`!==` (Ecto query DSL exempt) |
 | [`TodosNeedTickets`](#todosneedtickets) | `:design` | TODO/FIXME comments without an adjacent ticket URL |
 
 ---
+
+### `EnsureLoadedBeforeExported`
+
+`function_exported?/3`, `macro_exported?/3`, and `Code.loaded?/1` must be
+guarded by `Code.ensure_loaded?/1` in the same clause body. `function_exported?/3`
+returns `false` for a module that has not yet been loaded into the current
+process's code table — not an error, just silently wrong — which flakes
+intermittently across ExUnit seeds instead of failing deterministically. Each
+guard scope (a `def`/`defp`/`defmacro` clause body, or an ExUnit
+`test`/`setup`/`setup_all` block) is checked independently.
+
+```elixir
+# BAD — returns false on first access before the code table loads
+def compile(graph_module, opts) do
+  if function_exported?(graph_module, :compile, 1) do
+    graph_module.compile(opts)
+  end
+end
+
+# GOOD
+def compile(graph_module, opts) do
+  if Code.ensure_loaded?(graph_module) and function_exported?(graph_module, :compile, 1) do
+    graph_module.compile(opts)
+  end
+end
+```
+
+| Param | Default | Meaning |
+|---|---|---|
+| `functions` | `[:function_exported?, :macro_exported?, {Code, :loaded?}]` | Module-capability checks that must be guarded — bare atoms match local/imported/`Kernel.`-qualified calls, `{module, function}` tuples match calls qualified on that module (alias-resolved) |
+| `guard_functions` | `[{Code, :ensure_loaded?}, {Code, :ensure_loaded}, {Code, :ensure_compiled}, {Code, :ensure_compiled!}]` | `{module, function}` calls that satisfy the guard anywhere in the same clause body |
+| `excluded_paths` | `[]` | Path fragments exempt from the check (segment-boundary matched) |
+
+Bare-atom-qualified calls (`:"Elixir.Code".ensure_loaded?(mod)`) and a bare
+`ensure_loaded?(mod)` reached through `import Code` are not recognized as
+guards, and `apply(Kernel, :function_exported?, [...])` evades the check
+entirely.
 
 ### `ErrorMessageRequired`
 
@@ -407,6 +447,45 @@ pass. Both explicit `try/rescue` and the implicit `def ... rescue` form are chec
 | Param | Default | Meaning |
 |---|---|---|
 | `allowed_recovery_calls` | `[:reraise, :raise, Logger]` | Calls that count as handling — module entries allow any call on the module, atom entries allow local/imported calls. Replaces the default when supplied. |
+
+### `NoBooleanLiteralComparison`
+
+Comparing a value to `true`/`false` must use the value directly, not an equality
+operator. The comparison itself already evaluates to a boolean, so comparing it to
+a boolean literal is redundant and invites `==`/`===` inconsistency.
+
+```elixir
+# BAD
+def admin?(user), do: user.admin === true
+Enum.filter(users, &(&1.active === true))
+
+# GOOD
+def admin?(user), do: user.admin
+Enum.filter(users, & &1.active)
+Enum.reject(users, & &1.archived)
+```
+
+Ecto queries are exempt because the query DSL only compiles `==`/`!=`
+(`where(query, [u], u.active == true)` is allowed). A boolean literal on either
+side is caught, including the mirrored `true == x` form.
+
+`_test.exs` and `test/` are excluded by default — `assert x === true` /
+`assert state.timeout === false` is the dominant shape in tests, and its
+exact-value strictness is deliberate and *stricter* than the suggested rewrite.
+
+The rewrite assumes the operand is strictly boolean — `!=`/`!==` against
+`false` on a nilable/non-boolean operand is NOT equivalent to using the value
+directly (`nil != false` is `true`, but `nil` is falsy), and exact-value
+collection helpers (`Enum.count(&(&1 === true))`) hit the same trap the other
+direction. The check still fires, but the message is softened for the
+`!=`/`!==` `false` direction. `Kernel.==(x, true)` (the qualified call form) is
+a false negative — only the bare operator AST node is matched.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `operators` | `[:==, :===, :!=, :!==]` | A subset of these four that counts as a boolean literal comparison when either operand is `true`/`false` — other operators are silently ignored |
+| `ignored_functions` | `[:dynamic, :from, :where, :or_where, :having, :or_having, :select, :select_merge, :on, :join, :query, :subquery, :in]` | Calls whose arguments are exempt — defaults to the Ecto query DSL |
+| `excluded_paths` | `["_test.exs", "test/"]` | Path fragments exempt from the check (segment-boundary matched) |
 
 ### `NoCastAllKeys`
 
@@ -945,6 +1024,38 @@ immediately.
 |---|---|---|
 | `sigils` | `[:sigil_w, :sigil_W]` | Sigil node atoms to ban |
 | `excluded_paths` | `[]` | Path fragments naming files this check skips |
+
+### `NoTruthyAndOr`
+
+`and`/`or`/`not` must not be used on a provably-nilable operand. `and` and `or`
+require a strictly boolean operand and raise `BadBooleanError` the moment either
+side is `nil`; `not` requires the same and raises `ArgumentError` instead.
+`opts[:key]`, `Map.get/2`, `Keyword.get/2`, and `List.first/1` all evaluate to
+`nil` when the value is absent.
+
+```elixir
+# BAD — crashes with BadBooleanError when opts[:key] is nil
+if opts[:llm_merge] or opts[:ai_review], do: ...
+
+# GOOD — ||/&&/! handle nil/falsy operands
+if opts[:llm_merge] || opts[:ai_review], do: ...
+```
+
+`Map.get/3`/`Keyword.get/3` are only flagged when the default argument is the
+literal `nil` — a non-nil default means the result can never be `nil` and is not
+flagged. Plain variables, ordinary function calls, and comparisons are never
+flagged. One issue is emitted per `and`/`or`/`not` node, not per nilable
+operand — `opts[:a] and opts[:b]` reports once, `a and b and c` reports twice.
+
+`test/support/` is excluded by default — Phoenix/Ecto generator files
+(`data_case.ex`, `conn_case.ex`, `feature_case.ex`) commonly write `shared: not
+tags[:async]`, and ExUnit guarantees `:async` is always a boolean by the time
+this runs, so that specific shape can never raise there.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `nilable_functions` | `[{Access, :get, 2}, {Map, :get, 2}, {Keyword, :get, 2}, {List, :first, 1}, {Map, :get, 3}, {Keyword, :get, 3}]` | `{module, function, arity}` shapes that count as provably nilable — `{Access, :get, 2}` also covers `x[:k]` bracket syntax |
+| `excluded_paths` | `["test/support/"]` | Path fragments exempt from the check (segment-boundary matched) |
 
 ### `RefuteOverAssertNot`
 

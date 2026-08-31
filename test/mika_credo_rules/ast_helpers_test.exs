@@ -136,6 +136,60 @@ defmodule MikaCredoRules.AstHelpersTest do
     end
   end
 
+  describe "ecto_query_functions/0" do
+    test "returns the default Ecto query DSL function names" do
+      assert AstHelpers.ecto_query_functions() === [
+               :dynamic,
+               :from,
+               :where,
+               :or_where,
+               :having,
+               :or_having,
+               :select,
+               :select_merge,
+               :on,
+               :join,
+               :query,
+               :subquery,
+               :in
+             ]
+    end
+  end
+
+  describe "ecto_query_call?/3" do
+    test "true for a bare call whose name is ignored" do
+      ast = quote do: where(query, [u], u.age == 18)
+
+      assert AstHelpers.ecto_query_call?(ast, [], AstHelpers.ecto_query_functions())
+    end
+
+    test "false for a bare call whose name is not ignored" do
+      ast = quote do: some_helper(query, [u], u.age === 18)
+
+      refute AstHelpers.ecto_query_call?(ast, [], AstHelpers.ecto_query_functions())
+    end
+
+    test "true for a qualified call on an ecto_query_module whose name is ignored" do
+      ast = quote do: Ecto.Query.where(query, [u], u.age == 18)
+
+      assert AstHelpers.ecto_query_call?(
+               ast,
+               [[:Ecto, :Query]],
+               AstHelpers.ecto_query_functions()
+             )
+    end
+
+    test "false for a qualified call whose module is not an ecto_query_module" do
+      ast = quote do: Enum.join(names, ",")
+
+      refute AstHelpers.ecto_query_call?(ast, [[:Ecto, :Query]], [:join])
+    end
+
+    test "false for a non-call node" do
+      refute AstHelpers.ecto_query_call?(quote(do: :ok), [], AstHelpers.ecto_query_functions())
+    end
+  end
+
   defp resolve(code, modules) do
     code
     |> Credo.SourceFile.parse("lib/sample.ex")
