@@ -116,6 +116,34 @@ defmodule MikaCredoRules.NoVacuousAssertTest do
     end
   end
 
+  describe "&run/2 resolves a real column regardless of how the expression ends" do
+    test "assert %{a: 1} still resolves a column" do
+      """
+      defmodule MyApp.OrdersTest do
+        test "always passes" do
+          assert %{a: 1}
+        end
+      end
+      """
+      |> to_source_file(@test_file)
+      |> run_check(NoVacuousAssert)
+      |> assert_issue(fn issue -> assert issue.column === 5 end)
+    end
+
+    test "assert x === x with function calls still resolves a column" do
+      """
+      defmodule MyApp.OrdersTest do
+        test "always passes" do
+          assert Orders.status(order) === Orders.status(order)
+        end
+      end
+      """
+      |> to_source_file(@test_file)
+      |> run_check(NoVacuousAssert)
+      |> assert_issue(fn issue -> assert issue.column === 5 end)
+    end
+  end
+
   describe "&run/2 flags refute on a falsy literal" do
     test "reports refute false" do
       """

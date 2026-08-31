@@ -63,8 +63,8 @@ defmodule MikaCredoRules.NoVacuousAssert do
   defp traverse({:assert, meta, [{op, _, [left, right]} | _]} = ast, vacuous_asserts)
        when op in [:===, :==] do
     if identical_ast?(left, right) do
-      trigger = "assert #{Macro.to_string(left)} #{op} #{Macro.to_string(right)}"
-      {ast, [vacuous(trigger, meta) | vacuous_asserts]}
+      expression = "assert #{Macro.to_string(left)} #{op} #{Macro.to_string(right)}"
+      {ast, [vacuous("assert", expression, meta) | vacuous_asserts]}
     else
       {ast, vacuous_asserts}
     end
@@ -72,7 +72,8 @@ defmodule MikaCredoRules.NoVacuousAssert do
 
   defp traverse({:assert, meta, [literal | _]} = ast, vacuous_asserts) do
     if truthy_literal?(literal) do
-      {ast, [vacuous("assert #{Macro.to_string(literal)}", meta) | vacuous_asserts]}
+      expression = "assert #{Macro.to_string(literal)}"
+      {ast, [vacuous("assert", expression, meta) | vacuous_asserts]}
     else
       {ast, vacuous_asserts}
     end
@@ -80,7 +81,8 @@ defmodule MikaCredoRules.NoVacuousAssert do
 
   defp traverse({:refute, meta, [literal | _]} = ast, vacuous_asserts)
        when literal in [false, nil] do
-    {ast, [vacuous("refute #{Macro.to_string(literal)}", meta) | vacuous_asserts]}
+    expression = "refute #{Macro.to_string(literal)}"
+    {ast, [vacuous("refute", expression, meta) | vacuous_asserts]}
   end
 
   defp traverse(ast, vacuous_asserts), do: {ast, vacuous_asserts}
@@ -96,11 +98,13 @@ defmodule MikaCredoRules.NoVacuousAssert do
   defp strip_meta(list) when is_list(list), do: Enum.map(list, &strip_meta/1)
   defp strip_meta(other), do: other
 
-  defp vacuous(trigger, meta), do: %{trigger: trigger, line_no: meta[:line]}
+  defp vacuous(trigger, expression, meta) do
+    %{trigger: trigger, expression: expression, line_no: meta[:line]}
+  end
 
   defp issue_for(vacuous_assert, issue_meta) do
     format_issue(issue_meta,
-      message: "#{vacuous_assert.trigger} found — assert a behaviour, not a literal",
+      message: "#{vacuous_assert.expression} found — assert a behaviour, not a literal",
       trigger: vacuous_assert.trigger,
       line_no: vacuous_assert.line_no
     )
