@@ -58,7 +58,21 @@ defmodule MikaCredoRules.CredoConfigNamedDefault do
   that builds its config dynamically (e.g. `Code.eval_file/1`, a function
   call) is skipped — this check can only verify what it can parse
   statically, and a dynamic file is not a false positive risk the same way a
-  naive scan would be.
+  naive scan would be. A `name:` that isn't a string literal (a variable, a
+  module attribute, an interpolation) is treated the same way: the config it
+  belongs to counts as a possible `"default"` rather than being flagged,
+  since the check cannot evaluate it.
+
+  ## Limitations
+
+  A `configs:` key is matched wherever it appears in the file, not only at
+  the top level — an unrelated nested map that happens to carry a
+  `configs:` key of its own (e.g. while assembling several named profiles
+  before merging them) is treated as if it were the real Credo config.
+  Likewise, a `configs:` list built with the cons operator
+  (`[%{name: "default"} | rest]`) is not walked into, so a `"default"` entry
+  hidden behind `|` goes unseen and the file is flagged as missing one even
+  though it isn't. Write `configs:` as a plain list literal to avoid this.
   """
   @explanation [check: @moduledoc]
 
@@ -96,11 +110,17 @@ defmodule MikaCredoRules.CredoConfigNamedDefault do
   defp traverse(ast, line_nos, _allowed_names), do: {ast, line_nos}
 
   defp named_default?(configs, allowed_names) do
-    Enum.any?(configs, fn
-      {:%{}, _, pairs} -> Keyword.get(pairs, :name) in allowed_names
-      _ -> false
-    end)
+    Enum.any?(configs, &config_matches_allowed_name?(&1, allowed_names))
   end
+
+  defp config_matches_allowed_name?({:%{}, _, pairs}, allowed_names) do
+    case Keyword.get(pairs, :name) do
+      name when is_binary(name) -> name in allowed_names
+      _non_literal -> true
+    end
+  end
+
+  defp config_matches_allowed_name?(_other, _allowed_names), do: false
 
   defp issue_for(line_no, issue_meta, allowed_names) do
     format_issue(issue_meta,

@@ -114,7 +114,16 @@ executed none of the checks this file defines.
 
 Only the literal `%{configs: [...]}` shape is inspected. A `.credo.exs` that
 builds its config dynamically (e.g. `Code.eval_file/1`, a function call) is
-skipped — this check can only verify what it can parse statically.
+skipped — this check can only verify what it can parse statically. A `name:`
+that isn't a string literal counts as a possible `"default"` rather than
+being flagged, since the check cannot evaluate it.
+
+**Limitations:** a `configs:` key is matched wherever it appears in the
+file, not only at the top level, so an unrelated nested map with its own
+`configs:` key is treated as the real config. A `configs:` list built with
+the cons operator (`[%{name: "default"} | rest]`) is not walked into, so a
+`"default"` hidden behind `|` goes unseen and the file is flagged as missing
+one even though it isn't — write `configs:` as a plain list literal.
 
 | Param | Default | Meaning |
 |---|---|---|

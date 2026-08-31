@@ -58,6 +58,24 @@ defmodule MikaCredoRules.CredoConfigNamedDefaultTest do
       |> refute_issues()
     end
 
+    test "does not report when a config's name: is a non-literal expression" do
+      """
+      config_name = "mika"
+
+      %{
+        configs: [
+          %{
+            name: config_name,
+            checks: []
+          }
+        ]
+      }
+      """
+      |> to_source_file(".credo.exs")
+      |> run_check(CredoConfigNamedDefault)
+      |> refute_issues()
+    end
+
     test "does not report when two configs exist and the second is named default" do
       """
       %{
@@ -76,6 +94,36 @@ defmodule MikaCredoRules.CredoConfigNamedDefaultTest do
       |> to_source_file(".credo.exs")
       |> run_check(CredoConfigNamedDefault)
       |> refute_issues()
+    end
+  end
+
+  describe "&run/2 documented limitations" do
+    test "an unrelated nested map with a coincidental configs: key still fires" do
+      """
+      %{
+        a: %{
+          configs: [
+            %{name: "x", checks: []}
+          ]
+        }
+      }
+      """
+      |> to_source_file(".credo.exs")
+      |> run_check(CredoConfigNamedDefault)
+      |> assert_issue()
+    end
+
+    test "a configs: list built with the cons operator still fires even when default is present" do
+      """
+      rest = []
+
+      %{
+        configs: [%{name: "default", checks: []} | rest]
+      }
+      """
+      |> to_source_file(".credo.exs")
+      |> run_check(CredoConfigNamedDefault)
+      |> assert_issue()
     end
   end
 
