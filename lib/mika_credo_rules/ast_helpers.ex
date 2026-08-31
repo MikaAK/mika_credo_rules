@@ -109,7 +109,7 @@ defmodule MikaCredoRules.AstHelpers do
 
   defp apply_alias({name, target}, paths) do
     target = strip_elixir_prefix(target)
-    resolves_to_target? = target in paths
+    resolves_to_target? = target in paths or [Elixir | target] in paths
     paths = paths -- [name]
 
     if resolves_to_target?, do: [name | paths], else: paths
