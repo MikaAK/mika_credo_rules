@@ -497,9 +497,9 @@ Enum.map(users, fn user -> user.name end)
 ### `NoVacuousAssert`
 
 Assertions must exercise real behaviour, never a hardcoded literal. `assert true`,
-`assert :ok`, `refute false` always pass or fail regardless of what the test does
-— they are placeholders that survived past the point a real assertion should
-have replaced them. `assert x === x` is the same trap wearing an operator: it
+`assert :ok`, `refute false` always pass regardless of what the test does — they
+are placeholders that survived past the point a real assertion should have
+replaced them. `assert x === x` is the same trap wearing an operator: it
 compares a value to itself, so it can never fail.
 
 ```elixir
@@ -517,9 +517,31 @@ assert Orders.status(order) === :shipped
 A bare variable or a function call is never flagged — `assert some_call()` and
 `assert x` are legitimate assertions on a value computed elsewhere.
 
+`assert x == x` with a bare-variable left-hand side is also caught by Credo's
+own default-on `Credo.Check.Warning.OperationOnSameValues` — measured: it does
+not flag `assert x === x` or a function-call comparison like
+`assert Orders.status(order) === Orders.status(order)`, only bare-variable
+`==`, so the overlap is narrow. Disable the stock check for the `==` case if
+the double report is unwanted:
+
+```elixir
+checks: %{
+  enabled: [{MikaCredoRules.NoVacuousAssert, []}],
+  disabled: [{Credo.Check.Warning.OperationOnSameValues, []}]   # superseded for asserts
+}
+```
+
+Disabling it also drops its unrelated coverage of `x >= x`, `x != x`, `y / y`,
+etc. outside of `assert`/`refute` — only disable it if that coverage isn't
+otherwise wanted.
+
 | Param | Default | Meaning |
 |---|---|---|
 | `test_files` | `["_test.exs"]` | Path suffixes the check runs on — everything else is skipped |
+
+**Limitation:** `assert f() === f()` with an impure `f` (timestamps, random
+values, a counter) is a deliberate determinism/memoization test and will be
+flagged — the check compares AST shape, not runtime purity.
 
 ### `RefuteOverAssertNot`
 

@@ -19,8 +19,8 @@ defmodule MikaCredoRules.NoVacuousAssert do
   @moduledoc """
   Assertions must exercise real behaviour, never a hardcoded literal.
 
-  `assert true`, `assert :ok`, `refute false` always pass or fail regardless of
-  what the test does — they are placeholders that survived past the point a real
+  `assert true`, `assert :ok`, `refute false` always pass regardless of what the
+  test does — they are placeholders that survived past the point a real
   assertion should have replaced them. `assert x === x` is the same trap wearing
   an operator: it compares a value to itself, so it can never fail.
 
@@ -39,6 +39,12 @@ defmodule MikaCredoRules.NoVacuousAssert do
 
   The check only runs on test files, identified by filename via the `:test_files`
   param.
+
+  ## Limitations
+
+  `assert f() === f()` with an impure `f` (timestamps, random values, a
+  counter) is a deliberate determinism/memoization test and will be flagged —
+  the check compares AST shape, not runtime purity.
   """
   @explanation [check: @moduledoc]
 
