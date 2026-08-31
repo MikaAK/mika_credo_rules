@@ -58,13 +58,21 @@ defmodule MikaCredoRules.NoAccessOnStructSubject do
   name heuristic is the only tractable form; the default list covers the three
   subjects this actually bites in practice.
 
+  Reading a variable subject relies on a name heuristic, not type inference —
+  any variable named `conn` in a test (`conn = [status: 200]` then
+  `conn[:status]`) is flagged too. Rename the variable, or narrow
+  `:subject_names`/`:excluded_paths` for that file.
+
   ## Limitations
 
-  A nested access such as `opts[:a][:b]` is only ever checked at its
-  outermost read when the inner subject (`opts`) matches — the outer read's
-  subject is the *result* of the inner access, not a variable or struct
-  literal, so it is never flagged regardless of what the inner value turns
-  out to be at runtime.
+  A nested access such as `opts[:a][:b]` is only ever checked at its inner
+  read (`opts[:a]`, if `opts` matches) — the outer read's subject is the
+  *result* of the inner access, not a variable or struct literal, so it is
+  never flagged regardless of what the inner value turns out to be at
+  runtime. `%__MODULE__{}[:x]`, `Access.get(changeset, :x)` and
+  `get_in(changeset, [:a])` are the same runtime-crash class and are also
+  undetected — none of them matches the bracket-access shape this check
+  keys on.
   """
   @explanation [check: @moduledoc]
 
@@ -105,8 +113,11 @@ defmodule MikaCredoRules.NoAccessOnStructSubject do
   defp subject_meta({_tag, meta, _rest}), do: meta
   defp subject_meta(_subject), do: nil
 
-  defp subject_representation({:%, _, [{:__aliases__, _, module}, {:%{}, _, _fields}]}, _names) do
-    "%" <> Enum.join(module, ".") <> "{}"
+  defp subject_representation(
+         {:%, _, [{:__aliases__, _, _module}, {:%{}, _, _fields}]} = ast,
+         _names
+       ) do
+    Macro.to_string(ast)
   end
 
   defp subject_representation({name, _, subject_context}, subject_names)
@@ -118,7 +129,7 @@ defmodule MikaCredoRules.NoAccessOnStructSubject do
 
   defp access(subject_repr, key, meta) do
     %{
-      trigger: "#{subject_repr}[#{inspect(key)}]",
+      trigger: "#{subject_repr}[#{Macro.to_string(key)}]",
       line_no: meta[:line],
       column: meta[:column]
     }

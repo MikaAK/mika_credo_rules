@@ -214,6 +214,16 @@ the only tractable form. A nested access such as `opts[:a][:b]` is only ever
 checked at the inner read — the outer read's subject is the *result* of the
 inner access, not a variable or struct literal, so it is never flagged.
 
+Because the variable check is a name heuristic, not type inference, any
+variable named `conn` — even a plain keyword list in a test
+(`conn = [status: 200]` then `conn[:status]`) — is flagged too. Rename the
+variable, or use `:subject_names`/`:excluded_paths` to scope the check for
+that file.
+
+`%__MODULE__{}[:x]`, `Access.get(changeset, :x)` and `get_in(changeset,
+[:a])` are the same runtime-crash class and are also undetected — none of
+them matches the bracket-access shape this check keys on.
+
 | Param | Default | Meaning |
 |---|---|---|
 | `subject_names` | `[:changeset, :conn, :socket]` | Variable names treated as known-struct subjects |

@@ -67,6 +67,67 @@ defmodule MikaCredoRules.NoAccessOnStructSubjectTest do
       |> run_check(NoAccessOnStructSubject)
       |> assert_issue(fn issue -> assert issue.trigger === "%MyApp.User{}[:name]" end)
     end
+
+    test "reports a struct literal with fields using its exact source text" do
+      """
+      defmodule MyApp.Worker do
+        def name(name), do: %MyApp.User{name: name}[:x]
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoAccessOnStructSubject)
+      |> assert_issue(fn issue -> assert issue.trigger === "%MyApp.User{name: name}[:x]" end)
+    end
+  end
+
+  describe "&run/2 renders a non-literal key as its exact source text" do
+    test "reports changeset[key] with the variable name, not raw AST" do
+      """
+      defmodule MyApp.Worker do
+        def value(changeset, key), do: changeset[key]
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoAccessOnStructSubject)
+      |> assert_issue(fn issue -> assert issue.trigger === "changeset[key]" end)
+    end
+  end
+
+  describe "&run/2 checks a nested access at its inner read" do
+    test "reports only the inner read of changeset[:a][:b]" do
+      """
+      defmodule MyApp.Worker do
+        def nested(changeset), do: changeset[:a][:b]
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoAccessOnStructSubject)
+      |> assert_issue(fn issue -> assert issue.trigger === "changeset[:a]" end)
+    end
+  end
+
+  describe "&run/2 pins known-safe dot-access reads" do
+    test "does not report conn.assigns[:user]" do
+      """
+      defmodule MyApp.Worker do
+        def user(conn), do: conn.assigns[:user]
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoAccessOnStructSubject)
+      |> refute_issues()
+    end
+
+    test "does not report socket.assigns[:x]" do
+      """
+      defmodule MyApp.Worker do
+        def value(socket), do: socket.assigns[:x]
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoAccessOnStructSubject)
+      |> refute_issues()
+    end
   end
 
   describe "&run/2 leaves plain maps and keyword lists alone" do
