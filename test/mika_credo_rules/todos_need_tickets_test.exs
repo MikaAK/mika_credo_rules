@@ -247,6 +247,267 @@ defmodule MikaCredoRules.TodosNeedTicketsTest do
     end
   end
 
+  describe "&run/2 flags the new default tags" do
+    test "reports an OPTIMIZE comment" do
+      """
+      defmodule MyApp.Worker do
+        # OPTIMIZE: this loop is quadratic
+        def work, do: :ok
+      end
+      """
+      |> to_source_file(@source_file)
+      |> run_check(TodosNeedTickets, ticket_url: @ticket_url)
+      |> assert_issue(fn issue ->
+        assert issue.trigger === "# OPTIMIZE: this loop is quadratic"
+      end)
+    end
+
+    test "reports a HACK comment" do
+      """
+      defmodule MyApp.Worker do
+        # HACK: patched until the upstream fix lands
+        def work, do: :ok
+      end
+      """
+      |> to_source_file(@source_file)
+      |> run_check(TodosNeedTickets, ticket_url: @ticket_url)
+      |> assert_issue(fn issue ->
+        assert issue.trigger === "# HACK: patched until the upstream fix lands"
+      end)
+    end
+
+    test "reports a REVIEW comment" do
+      """
+      defmodule MyApp.Worker do
+        # REVIEW: is this the right retry count?
+        def work, do: :ok
+      end
+      """
+      |> to_source_file(@source_file)
+      |> run_check(TodosNeedTickets, ticket_url: @ticket_url)
+      |> assert_issue(fn issue ->
+        assert issue.trigger === "# REVIEW: is this the right retry count?"
+      end)
+    end
+
+    test "still reports a ticketed OPTIMIZE the same as a ticketed TODO" do
+      """
+      defmodule MyApp.Worker do
+        # OPTIMIZE: this loop is quadratic, see https://linear.app/company/issue/443
+        def work, do: :ok
+      end
+      """
+      |> to_source_file(@source_file)
+      |> run_check(TodosNeedTickets, ticket_url: @ticket_url)
+      |> refute_issues()
+    end
+  end
+
+  describe "&run/2 requires a trailing word boundary on a tag" do
+    test "does not report a comment where the tag is a prefix of a longer word" do
+      """
+      defmodule MyApp.Worker do
+        # hackney 2.x async/stream responses are unsupported
+        def work, do: :ok
+      end
+      """
+      |> to_source_file(@source_file)
+      |> run_check(TodosNeedTickets, ticket_url: @ticket_url)
+      |> refute_issues()
+    end
+
+    test "does not report a hacky-workaround comment as a HACK tag" do
+      """
+      defmodule MyApp.Worker do
+        # hacky workaround for the flaky client
+        def work, do: :ok
+      end
+      """
+      |> to_source_file(@source_file)
+      |> run_check(TodosNeedTickets, ticket_url: @ticket_url)
+      |> refute_issues()
+    end
+
+    test "does not report a reviewed-by comment as a REVIEW tag" do
+      """
+      defmodule MyApp.Worker do
+        # reviewed by Bob
+        def work, do: :ok
+      end
+      """
+      |> to_source_file(@source_file)
+      |> run_check(TodosNeedTickets, ticket_url: @ticket_url)
+      |> refute_issues()
+    end
+
+    test "does not report a reviewer-notes comment as a REVIEW tag" do
+      """
+      defmodule MyApp.Worker do
+        # reviewer notes go in the PR
+        def work, do: :ok
+      end
+      """
+      |> to_source_file(@source_file)
+      |> run_check(TodosNeedTickets, ticket_url: @ticket_url)
+      |> refute_issues()
+    end
+
+    test "does not report an optimized-version comment as an OPTIMIZE tag" do
+      """
+      defmodule MyApp.Worker do
+        # optimized version of the parser
+        def work, do: :ok
+      end
+      """
+      |> to_source_file(@source_file)
+      |> run_check(TodosNeedTickets, ticket_url: @ticket_url)
+      |> refute_issues()
+    end
+
+    test "does not report a @moduledoc that merely starts with a longer word" do
+      """
+      defmodule MyApp.Worker do
+        @moduledoc "Hackney adapter for Tesla."
+      end
+      """
+      |> to_source_file(@source_file)
+      |> run_check(TodosNeedTickets, ticket_url: @ticket_url)
+      |> refute_issues()
+    end
+
+    test "does not report a comment where the tag is followed by more letters" do
+      """
+      defmodule MyApp.Worker do
+        # TODOs remaining before release
+        def work, do: :ok
+      end
+      """
+      |> to_source_file(@source_file)
+      |> run_check(TodosNeedTickets, ticket_url: @ticket_url)
+      |> refute_issues()
+    end
+
+    test "still reports a real tag immediately followed by a colon" do
+      """
+      defmodule MyApp.Worker do
+        # TODO: fix the retry logic
+        def work, do: :ok
+      end
+      """
+      |> to_source_file(@source_file)
+      |> run_check(TodosNeedTickets, ticket_url: @ticket_url)
+      |> assert_issue(fn issue -> assert issue.trigger === "# TODO: fix the retry logic" end)
+    end
+  end
+
+  describe "&run/2 honours the :require_uppercase param" do
+    test "reports a lowercase tag even when it carries a ticket URL" do
+      """
+      defmodule MyApp.Worker do
+        # todo: make this faster, see https://linear.app/company/issue/443
+        def work, do: :ok
+      end
+      """
+      |> to_source_file(@source_file)
+      |> run_check(TodosNeedTickets, ticket_url: @ticket_url, require_uppercase: true)
+      |> assert_issue(fn issue ->
+        assert issue.trigger === "todo"
+        assert issue.message =~ "todo found"
+        assert issue.message =~ "annotation tags must be uppercase followed by a colon"
+      end)
+    end
+
+    test "reports a mixed-case tag with a colon even when it carries a ticket URL" do
+      """
+      defmodule MyApp.Worker do
+        # Todo: make this faster, see https://linear.app/company/issue/443
+        def work, do: :ok
+      end
+      """
+      |> to_source_file(@source_file)
+      |> run_check(TodosNeedTickets, ticket_url: @ticket_url, require_uppercase: true)
+      |> assert_issue(fn issue -> assert issue.trigger === "Todo" end)
+    end
+
+    test "reports an uppercase tag with no colon" do
+      """
+      defmodule MyApp.Worker do
+        # TODO make this faster, see https://linear.app/company/issue/443
+        def work, do: :ok
+      end
+      """
+      |> to_source_file(@source_file)
+      |> run_check(TodosNeedTickets, ticket_url: @ticket_url, require_uppercase: true)
+      |> assert_issue(fn issue -> assert issue.trigger === "TODO" end)
+    end
+
+    test "reports both the missing ticket and the bad casing for the same todo" do
+      """
+      defmodule MyApp.Worker do
+        # todo: make this faster
+        def work, do: :ok
+      end
+      """
+      |> to_source_file(@source_file)
+      |> run_check(TodosNeedTickets, ticket_url: @ticket_url, require_uppercase: true)
+      |> assert_issues(fn issues ->
+        assert length(issues) === 2
+        messages = Enum.map(issues, & &1.message)
+        assert Enum.any?(messages, &(&1 =~ "todos must reference a ticket URL"))
+        assert Enum.any?(messages, &(&1 =~ "annotation tags must be uppercase"))
+      end)
+    end
+
+    test "reports a lowercase @moduledoc tag" do
+      """
+      defmodule MyApp.Worker do
+        @moduledoc "todo: write documentation, see https://linear.app/company/issue/443"
+      end
+      """
+      |> to_source_file(@source_file)
+      |> run_check(TodosNeedTickets, ticket_url: @ticket_url, require_uppercase: true)
+      |> assert_issue(fn issue -> assert issue.trigger === "todo" end)
+    end
+
+    test "does not report a properly cased, ticketed todo" do
+      """
+      defmodule MyApp.Worker do
+        # TODO: make this faster, see https://linear.app/company/issue/443
+        def work, do: :ok
+      end
+      """
+      |> to_source_file(@source_file)
+      |> run_check(TodosNeedTickets, ticket_url: @ticket_url, require_uppercase: true)
+      |> refute_issues()
+    end
+
+    test "still reports bad casing on an inline comment with no space before the tag" do
+      """
+      defmodule MyApp.Worker do
+        def work, do: :ok# todo: fix this, see https://linear.app/company/issue/443
+      end
+      """
+      |> to_source_file(@source_file)
+      |> run_check(TodosNeedTickets, ticket_url: @ticket_url, require_uppercase: true)
+      |> assert_issue(fn issue ->
+        assert issue.trigger === "todo"
+        assert issue.message =~ "annotation tags must be uppercase followed by a colon"
+      end)
+    end
+
+    test "does not report casing when the param is left at its default" do
+      """
+      defmodule MyApp.Worker do
+        # todo: make this faster, see https://linear.app/company/issue/443
+        def work, do: :ok
+      end
+      """
+      |> to_source_file(@source_file)
+      |> run_check(TodosNeedTickets, ticket_url: @ticket_url)
+      |> refute_issues()
+    end
+  end
+
   describe "&run/2 honours the :tags param" do
     test "flags only the configured tags" do
       """

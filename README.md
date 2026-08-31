@@ -37,13 +37,16 @@ Then add the checks you want to `.credo.exs`:
 
 Entries in `checks:` are **additive** — they merge with Credo's default check set
 rather than replacing it. If you enable `TodosNeedTickets`, disable Credo's
-built-in `TagTODO` (default-on, flags every TODO even ticketed ones — you'd get two
-issues per TODO):
+built-in `TagTODO` and `TagFIXME` (both default-on, flagging every TODO/FIXME even
+ticketed ones — you'd get two issues per todo):
 
 ```elixir
 checks: %{
   enabled: [{MikaCredoRules.TodosNeedTickets, []}],
-  disabled: [{Credo.Check.Design.TagTODO, []}]   # superseded by TodosNeedTickets
+  disabled: [
+    {Credo.Check.Design.TagTODO, []},    # superseded by TodosNeedTickets
+    {Credo.Check.Design.TagFIXME, []}    # superseded by TodosNeedTickets
+  ]
 }
 ```
 
@@ -647,7 +650,14 @@ end
 
 Module names are matched on exact segments with full alias resolution — a project
 module that merely contains a banned name (`MyApp.MockingBird`, `MyApp.Mock`) is
-never flagged, while `alias Mox, as: M` still is.
+never flagged, while `alias Mox, as: M` still is. A locally defined module also
+shadows a banned bare name, but only the single segment that Elixir's own
+implicit nested-module aliasing actually introduces: a nested, single-segment
+`defmodule Mock do ... end` shadows `Mock` outright, and a nested, dotted
+`defmodule Bar.Baz do ... end` shadows only its first segment (`Bar`), not
+`Baz`. A *top-level*, dotted `defmodule MyApp.Mock do ... end` shadows nothing
+at all. Only the bare spelling is ever shadowed — the fully-qualified
+`Elixir.Mock` spelling still reports.
 
 | Param | Default | Meaning |
 |---|---|---|
@@ -691,10 +701,15 @@ Orders.update_status(order, :shipped)
 assert_receive {:order_updated, _}, 500
 ```
 
+Some suites keep a directory of timing fixtures that legitimately sleep (a fake
+clock, a poller driving a real external service). Exempt just those directories
+with `:excluded_paths` instead of disabling the whole check.
+
 | Param | Default | Meaning |
 |---|---|---|
 | `test_files` | `["_test.exs"]` | Path suffixes the check runs on — everything else is skipped |
 | `functions` | `[{Process, :sleep}, {:timer, :sleep}]` | Sleep functions to flag |
+| `excluded_paths` | `[]` | Path fragments exempt from the check (segment-boundary matched) |
 
 ### `NoReimplementedHelper`
 
@@ -1031,10 +1046,30 @@ Suppression is **per-todo**, not per-file — a URL elsewhere in the file does n
 excuse an unticketed TODO. For `@doc`/`@moduledoc` todos, the URL must appear
 somewhere in the same doc string.
 
+Each tag matches as a whole word, not a prefix — a trailing letter, digit or
+underscore means the comment is prose, not an annotation. `# TODOs remaining`
+does not fire; `# TODO: remaining work` does. This is a behaviour change from
+earlier versions, which treated a tag as a prefix and fired on ordinary words
+like `hackney` or `reviewed`.
+
+Setting `:require_uppercase` to `true` additionally requires the tag itself to be
+spelled in uppercase and immediately followed by a colon — this is a formatting
+check, independent of ticketing, so `# todo: ...` is reported even with a ticket
+URL attached.
+
+```elixir
+# BAD (require_uppercase: true) — lowercase tag, reported even though ticketed
+# todo: make this faster, see https://linear.app/company/issue/443
+
+# GOOD (require_uppercase: true) — uppercase tag with a colon
+# TODO: make this faster, see https://linear.app/company/issue/443
+```
+
 | Param | Default | Meaning |
 |---|---|---|
-| `tags` | `["Todo", "TODO", "Fixme", "FIXME"]` | Tag words treated as todos (case-insensitive) |
+| `tags` | `["TODO", "FIXME", "OPTIMIZE", "HACK", "REVIEW"]` | Tag words treated as todos (case-insensitive) |
 | `ticket_url` | `"http"` | Substring a line must contain to count as a ticket reference — set to your tracker's URL prefix so only real tickets count |
+| `require_uppercase` | `false` | When `true`, a tag must be uppercase and immediately followed by a colon (`TODO:`) — reported even when ticketed |
 
 ## Adopting incrementally
 
