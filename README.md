@@ -234,17 +234,22 @@ call, or a pipe — is flagged. Rebinding an already-tagged value
 (`{:ok, user} = result`) reads as a shape assertion and is left alone, and a
 `case`/`fn` clause head that binds a shape (`{:ok, _} = result -> ...`) is a
 pattern, not a statement, so only its body is inspected. `<-` in `with` and
-`for` is a different construct entirely and is never matched.
+`for` is a different construct entirely and is never matched. A parenless
+dot-read (`state.result`), an Access bracket read (`opts[:result]`), a
+module-attribute read (`@cfg`), and a `||` fallback (`cached || other`) are
+rebinds too, not calls — a parenless *remote* call (`Accounts.fetch`) and an
+anonymous function call (`fun.()`) still count.
 
 | Param | Default | Meaning |
 |---|---|---|
 | `tags` | `[:ok, :error]` | Atoms that mark a 2-tuple as fallible. |
-| `excluded_paths` | `["_test.exs", "test/", "application.ex"]` | Path fragments exempt from the check — tests use the bare match as an assertion, and a boot-time `{:ok, pid} = Supervisor.start_link(...)` in `application.ex` is deliberate. |
+| `excluded_paths` | `["_test.exs", "test/", "/application.ex", "priv/repo/"]` | Path fragments exempt from the check — tests use the bare match as an assertion, and a boot-time `{:ok, pid} = Supervisor.start_link(...)` in `application.ex` or a broken seed script under `priv/repo/` is deliberate. |
 
 **Limitations.** Only a literal local call, remote call, or pipe on the
 right-hand side counts as a call. A control-flow expression (`case`, `if`,
 `cond`, `for`, a `fn`) on the right-hand side is never flagged, even when it
-ultimately returns a fallible-tagged tuple.
+ultimately returns a fallible-tagged tuple. A `=` inside a `quote do ... end`
+body is flagged even though it is macro-generated AST, not a runtime match.
 
 ### `NoBinaryPatternForStringPrefix`
 
@@ -263,13 +268,16 @@ def parse(<<"GET ", path::binary>>), do: path
 def parse("GET " <> path), do: path
 ```
 
-Only a `<<>>` pattern whose first segment is a plain string literal, and whose
-every other segment is a bare variable or a `::binary`/`::bytes`-typed
-variable, is flagged — genuine binary parsing (`<<size::32, rest::binary>>`,
-`<<"GET", _::8, path::binary>>`) is left alone. A `<<>>` used as a constructor
-rather than a pattern is never flagged — only pattern positions are inspected:
-the left-hand side of `=`, function-clause heads, and `case`/`fn`/`with`/`for`
-pattern heads.
+Only a `<<>>` pattern with exactly two segments — a plain string literal
+first, and a `::binary`/`::bytes`-typed variable (or `_`) second — is
+flagged. A bare variable with no explicit type (`<<"GET ", rest>>`) binds a
+single byte as an integer, not a string tail, so rewriting it to `<>` would
+change what the code matches, and is left alone, same as genuine binary
+parsing (`<<size::32, rest::binary>>`, `<<"GET", _::8, path::binary>>`). A
+`<<>>` used as a constructor rather than a pattern is never flagged — only
+pattern positions are inspected: the left-hand side of `=`, function-clause
+heads, and `case`/`fn`/`with`/`for` pattern heads. A `<<>>` compared inside a
+`case`/`fn` clause guard is a constructor too and is never inspected.
 
 | Param | Default | Meaning |
 |---|---|---|
@@ -389,11 +397,16 @@ block that is not the block's last expression. A `for` that IS the last
 expression of a block, the right-hand side of `=`, a call argument, or a pipe
 stage is consumed elsewhere and is never flagged. `for ... into: ...` and
 `for ... reduce: ...` are flagged the same as a plain `for` when they sit in
-statement position — the accumulated value is still built and discarded.
+statement position — the accumulated value is still built and discarded, and
+the message names `Enum.into/3` or `Enum.reduce/3` instead of `Enum.each/2`
+for those.
 
 | Param | Default | Meaning |
 |---|---|---|
-| `excluded_paths` | `[]` | Path fragments exempt from the check, matched at a path-segment boundary. |
+| `excluded_paths` | `["_test.exs", "test/"]` | Path fragments exempt from the check, matched at a path-segment boundary — setup loops dominate the for-in-statement-position shape in tests. |
+
+**Limitations.** A `for` inside a `quote do ... end` body is flagged even
+though it is macro-generated AST, not a runtime comprehension.
 
 ### `NoIdentityRewrap`
 
