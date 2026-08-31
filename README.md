@@ -292,11 +292,23 @@ Ecto queries are exempt because the query DSL only compiles `==`/`!=`
 (`where(query, [u], u.active == true)` is allowed). A boolean literal on either
 side is caught, including the mirrored `true == x` form.
 
+`_test.exs` and `test/` are excluded by default — `assert x === true` /
+`assert state.timeout === false` is the dominant shape in tests, and its
+exact-value strictness is deliberate and *stricter* than the suggested rewrite.
+
+The rewrite assumes the operand is strictly boolean — `!=`/`!==` against
+`false` on a nilable/non-boolean operand is NOT equivalent to using the value
+directly (`nil != false` is `true`, but `nil` is falsy), and exact-value
+collection helpers (`Enum.count(&(&1 === true))`) hit the same trap the other
+direction. The check still fires, but the message is softened for the
+`!=`/`!==` `false` direction. `Kernel.==(x, true)` (the qualified call form) is
+a false negative — only the bare operator AST node is matched.
+
 | Param | Default | Meaning |
 |---|---|---|
-| `operators` | `[:==, :===, :!=, :!==]` | Operators that count as a boolean literal comparison when either operand is `true`/`false` |
+| `operators` | `[:==, :===, :!=, :!==]` | A subset of these four that counts as a boolean literal comparison when either operand is `true`/`false` — other operators are silently ignored |
 | `ignored_functions` | `[:dynamic, :from, :where, :or_where, :having, :or_having, :select, :select_merge, :on, :join, :query, :subquery, :in]` | Calls whose arguments are exempt — defaults to the Ecto query DSL |
-| `excluded_paths` | `[]` | Path fragments exempt from the check (segment-boundary matched) |
+| `excluded_paths` | `["_test.exs", "test/"]` | Path fragments exempt from the check (segment-boundary matched) |
 
 ### `NoCastAllKeys`
 

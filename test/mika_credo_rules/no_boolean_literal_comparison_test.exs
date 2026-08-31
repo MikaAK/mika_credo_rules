@@ -16,6 +16,7 @@ defmodule MikaCredoRules.NoBooleanLiteralComparisonTest do
         assert issue.line_no === 2
         assert issue.message =~ "== true found"
         assert issue.message =~ "boolean literal"
+        refute issue.message =~ "guaranteed boolean"
       end)
     end
 
@@ -30,7 +31,7 @@ defmodule MikaCredoRules.NoBooleanLiteralComparisonTest do
       |> assert_issue(fn issue -> assert issue.message =~ "=== true found" end)
     end
 
-    test "reports x != false" do
+    test "reports x != false with advice softened for non-boolean operands" do
       """
       defmodule MyApp.Worker do
         def active?(status), do: status != false
@@ -38,10 +39,13 @@ defmodule MikaCredoRules.NoBooleanLiteralComparisonTest do
       """
       |> to_source_file()
       |> run_check(NoBooleanLiteralComparison)
-      |> assert_issue(fn issue -> assert issue.message =~ "!= false found" end)
+      |> assert_issue(fn issue ->
+        assert issue.message =~ "!= false found"
+        assert issue.message =~ "guaranteed boolean"
+      end)
     end
 
-    test "reports x !== false" do
+    test "reports x !== false with advice softened for non-boolean operands" do
       """
       defmodule MyApp.Worker do
         def active?(status), do: status !== false
@@ -49,7 +53,10 @@ defmodule MikaCredoRules.NoBooleanLiteralComparisonTest do
       """
       |> to_source_file()
       |> run_check(NoBooleanLiteralComparison)
-      |> assert_issue(fn issue -> assert issue.message =~ "!== false found" end)
+      |> assert_issue(fn issue ->
+        assert issue.message =~ "!== false found"
+        assert issue.message =~ "guaranteed boolean"
+      end)
     end
 
     test "reports the mirrored true == x form" do
@@ -281,6 +288,45 @@ defmodule MikaCredoRules.NoBooleanLiteralComparisonTest do
       |> to_source_file("lib/my_app/legacy/worker.ex")
       |> run_check(NoBooleanLiteralComparison, excluded_paths: ["legacy/"])
       |> refute_issues()
+    end
+  end
+
+  describe "&run/2 excludes test files by default" do
+    test "does not report assert x === true in a _test.exs file" do
+      """
+      defmodule MyApp.WorkerTest do
+        use ExUnit.Case
+
+        test "times out" do
+          assert state.timeout === false
+        end
+      end
+      """
+      |> to_source_file("test/my_app/worker_test.exs")
+      |> run_check(NoBooleanLiteralComparison)
+      |> refute_issues()
+    end
+
+    test "does not report a boolean literal comparison anywhere under test/" do
+      """
+      defmodule MyApp.Support.Helper do
+        def admin?(user), do: user.admin === true
+      end
+      """
+      |> to_source_file("test/support/helper.ex")
+      |> run_check(NoBooleanLiteralComparison)
+      |> refute_issues()
+    end
+
+    test "still reports the same shape under a lookalike lib/latest/ path" do
+      """
+      defmodule MyApp.Latest.Worker do
+        def admin?(user), do: user.admin === true
+      end
+      """
+      |> to_source_file("lib/latest/worker.ex")
+      |> run_check(NoBooleanLiteralComparison)
+      |> assert_issue()
     end
   end
 

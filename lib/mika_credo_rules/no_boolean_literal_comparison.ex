@@ -5,14 +5,15 @@ defmodule MikaCredoRules.NoBooleanLiteralComparison do
     param_defaults: [
       operators: [:==, :===, :!=, :!==],
       ignored_functions: MikaCredoRules.AstHelpers.ecto_query_functions(),
-      excluded_paths: []
+      excluded_paths: ["_test.exs", "test/"]
     ],
     explanations: [
       params: [
         operators: """
-        A list of comparison operators that count as a boolean literal comparison
-        when either operand is the literal `true` or `false`. Defaults to all four
-        equality operators.
+        A subset of `[:==, :===, :!=, :!==]` that counts as a boolean literal
+        comparison when either operand is the literal `true` or `false`. Defaults
+        to all four. Other operators are silently ignored — the traverse only
+        matches this fixed set of AST operator nodes.
         """,
         ignored_functions: """
         A list of atoms naming calls whose arguments are exempt from this check.
@@ -22,6 +23,7 @@ defmodule MikaCredoRules.NoBooleanLiteralComparison do
         """,
         excluded_paths: """
         A list of path fragments exempt from the check (segment-boundary matched).
+        Defaults to `["_test.exs", "test/"]` — see the moduledoc for why.
         """
       ]
     ]
@@ -69,6 +71,41 @@ defmodule MikaCredoRules.NoBooleanLiteralComparison do
   name with an ignored function (`alias MyApp.Query`) never borrows the
   exemption. Only the arguments of an exempt call are skipped — a boolean
   literal comparison beside a query call on the same line is still reported.
+
+  `_test.exs` and `test/` are excluded by default. `assert x === true` /
+  `assert state.timeout === false` is the dominant shape there, and its
+  exact-value strictness is deliberate and *stricter* than the suggested
+  rewrite — a test asserting `=== true` catches a function that returns `"yes"`
+  where `if x, do: ...` would not.
+
+  ## Limitations
+
+  The rewrite assumes the operand is strictly boolean. For a nilable or
+  non-boolean operand, `!=`/`!==` against `false` is NOT equivalent to using
+  the value directly:
+
+      # config["polling_enabled"] may be nil, a string, or a boolean —
+      # deliberately "true unless explicitly false"
+      polling_enabled: config["polling_enabled"] != false
+
+      # nil != false is true, but nil is falsy — the naive rewrite
+      # `if config["polling_enabled"], do: ...` silently flips behavior
+      # on a missing key
+
+  Exact-value collection helpers hit the same trap the other direction:
+
+      # counts only exact `true` — using the value directly (`Enum.count(& &1)`)
+      # would also count every other truthy element
+      Enum.count(items, &(&1 === true))
+      Enum.reject(items, &(&1 === nil or &1 === false))
+
+  The check still fires on these shapes (see `:operators`/`:ignored_functions`
+  to scope it), but the message is softened for the `!=`/`!==` `false`
+  direction rather than asserting the rewrite is always safe.
+
+  `Kernel.==(x, true)` (the qualified call form of `==`) is a false negative —
+  the traverse only matches the bare operator AST node, not a qualified
+  `Kernel.` call to it.
   """
   @explanation [check: @moduledoc]
 
@@ -157,10 +194,23 @@ defmodule MikaCredoRules.NoBooleanLiteralComparison do
 
     format_issue(issue_meta,
       message:
-        "#{trigger} #{comparison.literal} found — use the value directly, or negate with not/! or Enum.reject, instead of comparing to a boolean literal",
+        "#{trigger} #{comparison.literal} found — #{advice(comparison.operator, comparison.literal)}",
       trigger: trigger,
       line_no: comparison.line_no,
       column: comparison.column
     )
+  end
+
+  # `!=`/`!==` against `false` only equals "use the value directly" when the
+  # operand is guaranteed boolean — for a nilable or non-boolean operand it
+  # changes behavior (`nil != false` is `true`, but `nil` is falsy).
+  defp advice(operator, false) when operator in [:!=, :!==] do
+    "use the value directly only if it is guaranteed boolean — for a nilable or " <>
+      "non-boolean operand this changes behavior (e.g. `nil != false` is `true`, " <>
+      "but `nil` is falsy)"
+  end
+
+  defp advice(_operator, _literal) do
+    "use the value directly, or negate with not/! or Enum.reject, instead of comparing to a boolean literal"
   end
 end
