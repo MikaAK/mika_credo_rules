@@ -48,7 +48,9 @@ defmodule MikaCredoRules.NoServerCodeInHologramAction do
         every app's repo module); `Ecto` is matched BY PREFIX (so
         `Ecto.Changeset`, `Ecto.Multi`, and every other `Ecto.*` submodule are
         caught, not just `Ecto` and `Ecto.Query` themselves); every other
-        entry is matched by its exact, alias-resolved path.
+        Elixir module entry is matched by its exact, alias-resolved path.
+        Erlang modules are given as plain atoms (e.g. `:timer`) and matched
+        exactly — they are not alias-resolved.
         """,
         banned_functions: """
         Local (unqualified) function names that must not be called from an
@@ -156,12 +158,21 @@ defmodule MikaCredoRules.NoServerCodeInHologramAction do
   end
 
   defp build_module_context(source_file, banned_modules) do
+    {erlang_modules, elixir_modules} = Enum.split_with(banned_modules, &erlang_module?/1)
+
     %{
       repo?: Repo in banned_modules,
       ecto_prefix?: Ecto in banned_modules,
-      exact_paths: AstHelpers.resolve_aliases(source_file, banned_modules)
+      erlang_modules: erlang_modules,
+      exact_paths: AstHelpers.resolve_aliases(source_file, elixir_modules)
     }
   end
+
+  # `Module.split/1` (via `AstHelpers.resolve_aliases/2`) only accepts Elixir
+  # module atoms — an Erlang atom like `:timer` raises `ArgumentError`. Elixir
+  # module aliases always compile to an "Elixir."-prefixed atom, so this
+  # distinguishes the two without attempting the split.
+  defp erlang_module?(module), do: not String.starts_with?(Atom.to_string(module), "Elixir.")
 
   defp collect_clause_violations(clause, context) do
     HologramModules.scan_own_body(clause, [], &collect_action_violation(&1, &2, context))
@@ -204,6 +215,10 @@ defmodule MikaCredoRules.NoServerCodeInHologramAction do
       resolved in module_context.exact_paths
   end
 
+  defp banned_module_call?(module_ast, module_context) when is_atom(module_ast) do
+    module_ast in module_context.erlang_modules
+  end
+
   defp banned_module_call?(_module_ast, _module_context), do: false
 
   defp module_violation(module_ast, function, meta) do
@@ -212,6 +227,8 @@ defmodule MikaCredoRules.NoServerCodeInHologramAction do
 
   defp module_display({:__aliases__, _, segments}),
     do: segments |> strip_elixir_prefix() |> Enum.join(".")
+
+  defp module_display(module) when is_atom(module), do: Atom.to_string(module)
 
   defp local_call_violation(function, meta) do
     %{trigger: Atom.to_string(function), line_no: meta[:line], kind: :session_or_cookie}

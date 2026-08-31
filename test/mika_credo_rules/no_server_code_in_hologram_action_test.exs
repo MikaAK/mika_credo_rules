@@ -100,6 +100,38 @@ defmodule MikaCredoRules.NoServerCodeInHologramActionTest do
       |> run_check(NoServerCodeInHologramAction)
       |> assert_issue(fn issue -> assert issue.trigger === "SharedUtils.HTTP.get" end)
     end
+
+    test "reports a banned Erlang module call configured as a bare atom param" do
+      """
+      defmodule MyApp.ProductPage do
+        use Hologram.Page
+
+        def action(:save, _params, component) do
+          :timer.sleep(100)
+          component
+        end
+      end
+      """
+      |> to_source_file(@page_file)
+      |> run_check(NoServerCodeInHologramAction, banned_modules: [:timer])
+      |> assert_issue(fn issue -> assert issue.trigger === "timer.sleep" end)
+    end
+
+    test "does not report an Erlang module call that is not in banned_modules" do
+      """
+      defmodule MyApp.ProductPage do
+        use Hologram.Page
+
+        def action(:save, _params, component) do
+          :timer.sleep(100)
+          component
+        end
+      end
+      """
+      |> to_source_file(@page_file)
+      |> run_check(NoServerCodeInHologramAction)
+      |> refute_issues()
+    end
   end
 
   describe "&run/2 flags local session/cookie calls inside actions" do
