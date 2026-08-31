@@ -135,6 +135,36 @@ defmodule MikaCredoRules.NoStaticNotLoadedDropListTest do
       |> refute_issues()
     end
 
+    test "does not report a drop-list containing only :__meta__ and :__struct__" do
+      """
+      defmodule MyApp.User do
+        @sensitive_keys [:__meta__, :__struct__]
+
+        def to_serializable_map(struct) do
+          struct |> Map.from_struct() |> Map.drop(@sensitive_keys)
+        end
+      end
+      """
+      |> to_source_file(@schema_file)
+      |> run_check(NoStaticNotLoadedDropList)
+      |> refute_issues()
+    end
+
+    test "resolves a module attribute from the LAST assignment in the file, not the one before the point of reference" do
+      """
+      defmodule MyApp.User do
+        @keys [:__meta__, :workspace]
+
+        def to_serializable_map(struct), do: struct |> Map.from_struct() |> Map.drop(@keys)
+
+        @keys [:__meta__]
+      end
+      """
+      |> to_source_file(@schema_file)
+      |> run_check(NoStaticNotLoadedDropList)
+      |> refute_issues()
+    end
+
     test "does not report a variable drop-list" do
       """
       defmodule MyApp.User do
@@ -193,6 +223,21 @@ defmodule MikaCredoRules.NoStaticNotLoadedDropListTest do
       |> to_source_file(@schema_file)
       |> run_check(NoStaticNotLoadedDropList, marker_key: :custom_marker)
       |> assert_issue()
+    end
+
+    test "honors a custom :non_association_keys param" do
+      """
+      defmodule MyApp.User do
+        @association_keys [:__meta__, :workspace]
+
+        def to_serializable_map(struct) do
+          struct |> Map.from_struct() |> Map.drop(@association_keys)
+        end
+      end
+      """
+      |> to_source_file(@schema_file)
+      |> run_check(NoStaticNotLoadedDropList, non_association_keys: [:__struct__, :workspace])
+      |> refute_issues()
     end
 
     test "honors a custom :excluded_paths param" do

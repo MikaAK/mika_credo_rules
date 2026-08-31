@@ -4,6 +4,7 @@ defmodule MikaCredoRules.NoStaticNotLoadedDropList do
     category: :design,
     param_defaults: [
       marker_key: :__meta__,
+      non_association_keys: [:__struct__],
       excluded_paths: []
     ],
     explanations: [
@@ -13,6 +14,15 @@ defmodule MikaCredoRules.NoStaticNotLoadedDropList do
 
         Defaults to `:__meta__` — every schema struct carries it, and no ordinary
         (non-Ecto) map ever legitimately drops it.
+        """,
+        non_association_keys: """
+        A list of atoms that never count toward making a drop-list dangerous,
+        alongside `marker_key`. A list containing only `marker_key` plus atoms
+        from this list is not an association scrub.
+
+        Defaults to `[:__struct__]` — every struct carries it, dropping it
+        alongside `:__meta__` is universal struct-to-map hygiene, and it can
+        never be the name of an association that rots the list.
         """,
         excluded_paths: """
         A list of path fragments, matched at a path-segment boundary via
@@ -49,8 +59,11 @@ defmodule MikaCredoRules.NoStaticNotLoadedDropList do
   schema struct carries it, and no ordinary map drops it. `Map.drop(map,
   [:__meta__])` alone (no other atom in the list) is fine; every schema owns at
   least its own `__meta__`, and dropping only that is not an association scrub.
-  A list containing `:__meta__` plus at least one other atom is a drop-list by
-  construction.
+  `Map.drop(map, [:__meta__, :__struct__])` is fine too — `:__struct__` is
+  universal struct metadata, not an association name, and dropping it alongside
+  `:__meta__` is ordinary struct-to-map hygiene. A list containing `:__meta__`
+  plus at least one atom outside the `:non_association_keys` param is a
+  drop-list by construction.
 
   Both a literal list argument and a module attribute holding one are caught,
   standalone (`Map.drop(map, list)`) and piped (`map |> Map.drop(list)`). `Map`
@@ -59,9 +72,14 @@ defmodule MikaCredoRules.NoStaticNotLoadedDropList do
 
   ## Limitations
 
-    * A module attribute's value is resolved from a flat, file-level table — the
-      most recent `@name [...]` assignment before the point of reference wins,
-      not lexical scoping.
+    * A module attribute's value is resolved from a flat, file-level table built
+      by folding every `@name [...]` assignment in the file — the LAST
+      assignment anywhere in the file wins for every reference to that name,
+      regardless of position. A later, narrower reassignment of the same
+      attribute silently clears an earlier dangerous usage.
+    * A drop-list built with `[:__meta__ | @assocs]` (cons) or `[:__meta__] ++
+      @assocs` (concatenation) is not a literal list or a bare attribute
+      reference, so it is undetected.
   """
   @explanation [check: @moduledoc]
 
@@ -88,6 +106,7 @@ defmodule MikaCredoRules.NoStaticNotLoadedDropList do
     %{
       map_modules: AstHelpers.resolve_aliases(source_file, [Map]),
       marker_key: Params.get(params, :marker_key, __MODULE__),
+      non_association_keys: Params.get(params, :non_association_keys, __MODULE__),
       attribute_lists: collect_attribute_lists(source_file)
     }
   end
@@ -146,20 +165,25 @@ defmodule MikaCredoRules.NoStaticNotLoadedDropList do
   defp drop_list_arg(_args, _position), do: nil
 
   defp dangerous_list?(list, context) when is_list(list) do
-    static_dangerous_list?(list, context.marker_key)
+    static_dangerous_list?(list, context.marker_key, context.non_association_keys)
   end
 
   defp dangerous_list?({:@, _, [{name, _, nil}]}, context) do
     case Map.fetch(context.attribute_lists, name) do
-      {:ok, list} -> static_dangerous_list?(list, context.marker_key)
-      :error -> false
+      {:ok, list} ->
+        static_dangerous_list?(list, context.marker_key, context.non_association_keys)
+
+      :error ->
+        false
     end
   end
 
   defp dangerous_list?(_arg, _context), do: false
 
-  defp static_dangerous_list?(list, marker_key) do
-    marker_key in list and Enum.any?(list, &(&1 !== marker_key and is_atom(&1)))
+  defp static_dangerous_list?(list, marker_key, non_association_keys) do
+    ignored_keys = [marker_key | non_association_keys]
+
+    marker_key in list and Enum.any?(list, &(&1 not in ignored_keys and is_atom(&1)))
   end
 
   defp issue_for(drop, issue_meta) do
