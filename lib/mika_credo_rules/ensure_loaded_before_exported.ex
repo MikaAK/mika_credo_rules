@@ -3,7 +3,7 @@ defmodule MikaCredoRules.EnsureLoadedBeforeExported do
     base_priority: :high,
     category: :warning,
     param_defaults: [
-      functions: [:function_exported?, :macro_exported?],
+      functions: [:function_exported?, :macro_exported?, {Code, :loaded?}],
       guard_functions: [
         {Code, :ensure_loaded?},
         {Code, :ensure_loaded},
@@ -15,8 +15,10 @@ defmodule MikaCredoRules.EnsureLoadedBeforeExported do
     explanations: [
       params: [
         functions: """
-        A list of atoms naming the module-capability checks that must be guarded.
-        Defaults to `[:function_exported?, :macro_exported?]`.
+        A list of bare atoms (matched local/imported or `Kernel.`-qualified) and/or
+        `{module, function}` tuples (matched qualified on that module, alias-resolved)
+        naming the module-capability checks that must be guarded. Defaults to
+        `[:function_exported?, :macro_exported?, {Code, :loaded?}]`.
         """,
         guard_functions: """
         A list of `{module, function}` tuples that count as a load guard when called
@@ -33,8 +35,8 @@ defmodule MikaCredoRules.EnsureLoadedBeforeExported do
   alias MikaCredoRules.SourceFilter
 
   @moduledoc """
-  `function_exported?/3` and `macro_exported?/3` must be guarded by
-  `Code.ensure_loaded?/1` in the same clause body.
+  `function_exported?/3`, `macro_exported?/3`, and `Code.loaded?/1` must be
+  guarded by `Code.ensure_loaded?/1` in the same clause body.
 
   `function_exported?/3` returns `false` for a module that has not yet been
   loaded into the current process's code table — not an error, just silently
@@ -58,18 +60,31 @@ defmodule MikaCredoRules.EnsureLoadedBeforeExported do
 
   Any call to `Code.ensure_loaded?/1`, `Code.ensure_loaded/1`,
   `Code.ensure_compiled/1`, or `Code.ensure_compiled!/1` anywhere in the same
-  `def`/`defp` clause body satisfies the guard — order does not matter, and
-  the guard does not need to wrap the call directly. Every spelling of `Code`
-  is caught (aliased, renamed via `as:`), via `:guard_functions`.
+  clause body satisfies the guard — order does not matter, and the guard does
+  not need to wrap the call directly. Dot-call spellings of `Code` resolved
+  through `alias`/`as:` are caught, via `:guard_functions`.
 
   Both local/imported (`function_exported?(...)`) and `Kernel.`-qualified
   (`Kernel.function_exported?(...)`) spellings of the checked functions are
-  caught. Each `def`/`defp` clause is checked independently — a guard in one
-  clause does not satisfy an unguarded sibling clause.
+  caught, and each is only flagged at its real arity — a same-named call with
+  a different arity is left alone. Each guard scope (a `def`/`defp`/`defmacro`
+  clause body, or an ExUnit `test`/`setup`/`setup_all` block) is checked
+  independently — a guard in one scope does not satisfy an unguarded sibling.
+
+  ## Limitations
+
+  `Code.ensure_loaded?/1` reached through a bare-atom qualifier
+  (`:"Elixir.Code".ensure_loaded?(mod)`) or through `import Code` followed by
+  a bare `ensure_loaded?(mod)` call is not recognized as a guard — both are
+  false positives on correctly-guarded code. `apply(Kernel, :function_exported?,
+  [...])` evades the check entirely (no dot-call or bare-identifier AST node to
+  match).
   """
   @explanation [check: @moduledoc]
 
   @kernel_paths AstHelpers.module_paths(Kernel)
+  @scope_kinds [:def, :defp, :defmacro, :test, :setup, :setup_all]
+  @real_arities %{function_exported?: 3, macro_exported?: 3, loaded?: 1}
 
   @doc false
   @impl Credo.Check
@@ -91,21 +106,24 @@ defmodule MikaCredoRules.EnsureLoadedBeforeExported do
   end
 
   defp build_context(source_file, params) do
+    functions = Params.get(params, :functions, __MODULE__)
     guard_functions = Params.get(params, :guard_functions, __MODULE__)
+    {bare_functions, qualified_functions} = Enum.split_with(functions, &is_atom/1)
 
     %{
-      functions: Params.get(params, :functions, __MODULE__),
-      guard_pairs: resolve_guard_pairs(source_file, guard_functions)
+      bare_functions: bare_functions,
+      qualified_pairs: resolve_module_function_pairs(source_file, qualified_functions),
+      guard_pairs: resolve_module_function_pairs(source_file, guard_functions)
     }
   end
 
-  defp resolve_guard_pairs(source_file, guard_functions) do
-    unique_modules = guard_functions |> Enum.map(&elem(&1, 0)) |> Enum.uniq()
+  defp resolve_module_function_pairs(source_file, module_function_pairs) do
+    unique_modules = module_function_pairs |> Enum.map(&elem(&1, 0)) |> Enum.uniq()
 
     resolved_modules =
       Map.new(unique_modules, &{&1, AstHelpers.resolve_aliases(source_file, [&1])})
 
-    for {module, function} <- guard_functions,
+    for {module, function} <- module_function_pairs,
         module_path <- Map.fetch!(resolved_modules, module) do
       {module_path, function}
     end
@@ -117,32 +135,58 @@ defmodule MikaCredoRules.EnsureLoadedBeforeExported do
     {nil, unguarded_calls}
   end
 
-  # Each def/defp clause body is its own scope: pruning here and walking it
-  # ourselves keeps the outer prewalk from visiting it (and mixing clauses)
-  # a second time.
-  defp traverse({kind, _, [_head, _body]} = ast, unguarded_calls, context)
-       when kind in [:def, :defp] do
-    {nil, collect_unguarded_calls(ast, context) ++ unguarded_calls}
+  # Each guard scope (def/defp/defmacro clause body, or an ExUnit
+  # test/setup/setup_all block) is independent: pruning here and walking it
+  # ourselves keeps the outer prewalk from visiting it (and mixing scopes) a
+  # second time. `test`/`setup`/`setup_all` have variable arity (an optional
+  # name and/or context pattern ahead of the block), so scope membership is
+  # decided by shape — the last argument being a `do:` keyword block — rather
+  # than by fixed arity.
+  defp traverse({kind, _, args} = ast, unguarded_calls, context)
+       when kind in @scope_kinds and is_list(args) do
+    if do_block?(args) do
+      {nil, collect_unguarded_calls(ast, context) ++ unguarded_calls}
+    else
+      {ast, unguarded_calls}
+    end
   end
 
   defp traverse(ast, unguarded_calls, _context), do: {ast, unguarded_calls}
+
+  defp do_block?(args) do
+    match?([{:do, _} | _], List.last(args))
+  end
 
   defp collect_unguarded_calls(clause_ast, context) do
     if guarded?(clause_ast, context) do
       []
     else
+      matcher = &collect_exported_call/3
+
       clause_ast
-      |> Macro.prewalk([], &collect_exported_call(&1, &2, context))
+      |> Macro.prewalk([], &skip_quote_then(&1, &2, context, matcher))
       |> elem(1)
       |> Enum.reverse()
     end
   end
 
   defp guarded?(clause_ast, context) do
+    matcher = &find_guard_call/3
+
     clause_ast
-    |> Macro.prewalk(false, &find_guard_call(&1, &2, context))
+    |> Macro.prewalk(false, &skip_quote_then(&1, &2, context, matcher))
     |> elem(1)
   end
+
+  # Quoted code (`quote do ... end`) is data describing code that runs at the
+  # macro's call site, not in this file — neither a guard nor an exported-call
+  # trigger found inside it is real, so both inner walks prune it the same
+  # way the outer walk does.
+  defp skip_quote_then({:quote, _, args}, acc, _context, _matcher) when is_list(args) do
+    {nil, acc}
+  end
+
+  defp skip_quote_then(ast, acc, context, matcher), do: matcher.(ast, acc, context)
 
   defp find_guard_call(
          {{:., _, [{:__aliases__, _, module}, function]}, _, args} = ast,
@@ -157,7 +201,7 @@ defmodule MikaCredoRules.EnsureLoadedBeforeExported do
 
   defp collect_exported_call({function, meta, args} = ast, calls, context)
        when is_atom(function) and is_list(args) do
-    if function in context.functions do
+    if function in context.bare_functions and real_arity?(function, args) do
       {ast, [exported_call(function, meta) | calls]}
     else
       {ast, calls}
@@ -169,15 +213,28 @@ defmodule MikaCredoRules.EnsureLoadedBeforeExported do
          calls,
          context
        )
-       when module in @kernel_paths and is_atom(function) and is_list(args) do
-    if function in context.functions do
-      {ast, [exported_call(function, meta) | calls]}
-    else
-      {ast, calls}
+       when is_atom(function) and is_list(args) do
+    cond do
+      module in @kernel_paths and function in context.bare_functions and
+          real_arity?(function, args) ->
+        {ast, [exported_call(function, meta) | calls]}
+
+      {module, function} in context.qualified_pairs and real_arity?(function, args) ->
+        {ast, [exported_call(function, meta) | calls]}
+
+      true ->
+        {ast, calls}
     end
   end
 
   defp collect_exported_call(ast, calls, _context), do: {ast, calls}
+
+  defp real_arity?(function, args) do
+    case Map.fetch(@real_arities, function) do
+      {:ok, arity} -> length(args) === arity
+      :error -> true
+    end
+  end
 
   defp exported_call(function, meta) do
     %{function: function, line_no: meta[:line], column: meta[:column]}

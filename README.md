@@ -78,29 +78,40 @@ checks: %{
 
 ### `EnsureLoadedBeforeExported`
 
-`function_exported?/3` and `macro_exported?/3` must be guarded by
-`Code.ensure_loaded?/1` in the same clause body. `function_exported?/3` returns
-`false` for a module that has not yet been loaded into the current process's code
-table — not an error, just silently wrong — which flakes intermittently across
-ExUnit seeds instead of failing deterministically.
+`function_exported?/3`, `macro_exported?/3`, and `Code.loaded?/1` must be
+guarded by `Code.ensure_loaded?/1` in the same clause body. `function_exported?/3`
+returns `false` for a module that has not yet been loaded into the current
+process's code table — not an error, just silently wrong — which flakes
+intermittently across ExUnit seeds instead of failing deterministically. Each
+guard scope (a `def`/`defp`/`defmacro` clause body, or an ExUnit
+`test`/`setup`/`setup_all` block) is checked independently.
 
 ```elixir
 # BAD — returns false on first access before the code table loads
-if function_exported?(graph_module, :compile, 1) do
-  graph_module.compile(opts)
+def compile(graph_module, opts) do
+  if function_exported?(graph_module, :compile, 1) do
+    graph_module.compile(opts)
+  end
 end
 
 # GOOD
-if Code.ensure_loaded?(graph_module) and function_exported?(graph_module, :compile, 1) do
-  graph_module.compile(opts)
+def compile(graph_module, opts) do
+  if Code.ensure_loaded?(graph_module) and function_exported?(graph_module, :compile, 1) do
+    graph_module.compile(opts)
+  end
 end
 ```
 
 | Param | Default | Meaning |
 |---|---|---|
-| `functions` | `[:function_exported?, :macro_exported?]` | Module-capability checks that must be guarded |
+| `functions` | `[:function_exported?, :macro_exported?, {Code, :loaded?}]` | Module-capability checks that must be guarded — bare atoms match local/imported/`Kernel.`-qualified calls, `{module, function}` tuples match calls qualified on that module (alias-resolved) |
 | `guard_functions` | `[{Code, :ensure_loaded?}, {Code, :ensure_loaded}, {Code, :ensure_compiled}, {Code, :ensure_compiled!}]` | `{module, function}` calls that satisfy the guard anywhere in the same clause body |
 | `excluded_paths` | `[]` | Path fragments exempt from the check (segment-boundary matched) |
+
+Bare-atom-qualified calls (`:"Elixir.Code".ensure_loaded?(mod)`) and a bare
+`ensure_loaded?(mod)` reached through `import Code` are not recognized as
+guards, and `apply(Kernel, :function_exported?, [...])` evades the check
+entirely.
 
 ### `ErrorMessageRequired`
 

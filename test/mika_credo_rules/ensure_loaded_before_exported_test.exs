@@ -104,6 +104,73 @@ defmodule MikaCredoRules.EnsureLoadedBeforeExportedTest do
     end
   end
 
+  describe "&run/2 flags Code.loaded?/1" do
+    test "reports Code.loaded?/1 with no Code.ensure_loaded? in the clause" do
+      """
+      defmodule MyApp.Worker do
+        def compile(mod), do: Code.loaded?(mod)
+      end
+      """
+      |> to_source_file()
+      |> run_check(EnsureLoadedBeforeExported)
+      |> assert_issue(fn issue ->
+        assert issue.trigger === "loaded?"
+        assert issue.message =~ "loaded? found without Code.ensure_loaded?"
+      end)
+    end
+
+    test "does not report when Code.ensure_loaded?/1 guards Code.loaded?/1" do
+      """
+      defmodule MyApp.Worker do
+        def compile(mod) do
+          Code.ensure_loaded?(mod)
+          Code.loaded?(mod)
+        end
+      end
+      """
+      |> to_source_file()
+      |> run_check(EnsureLoadedBeforeExported)
+      |> refute_issues()
+    end
+
+    test "resolves an alias of Code for the Code.loaded?/1 spelling" do
+      """
+      defmodule MyApp.Worker do
+        alias Code, as: C
+
+        def compile(mod), do: C.loaded?(mod)
+      end
+      """
+      |> to_source_file()
+      |> run_check(EnsureLoadedBeforeExported)
+      |> assert_issue(fn issue -> assert issue.trigger === "loaded?" end)
+    end
+  end
+
+  describe "&run/2 restricts matches to the real arity" do
+    test "does not report function_exported? called with the wrong arity" do
+      """
+      defmodule MyApp.Worker do
+        def loaded?(mod), do: function_exported?(mod)
+      end
+      """
+      |> to_source_file()
+      |> run_check(EnsureLoadedBeforeExported)
+      |> refute_issues()
+    end
+
+    test "does not report macro_exported? called with the wrong arity" do
+      """
+      defmodule MyApp.Worker do
+        def loaded?(mod, fun), do: macro_exported?(mod, fun)
+      end
+      """
+      |> to_source_file()
+      |> run_check(EnsureLoadedBeforeExported)
+      |> refute_issues()
+    end
+  end
+
   describe "&run/2 allows guarded module-capability checks" do
     test "does not report when Code.ensure_loaded?/1 guards the call" do
       """
@@ -179,6 +246,162 @@ defmodule MikaCredoRules.EnsureLoadedBeforeExportedTest do
       |> to_source_file()
       |> run_check(EnsureLoadedBeforeExported)
       |> refute_issues()
+    end
+  end
+
+  describe "&run/2 flags ExUnit test/setup blocks" do
+    test "reports an unguarded call inside a test block" do
+      """
+      defmodule MyApp.WorkerTest do
+        use ExUnit.Case
+
+        test "compiles" do
+          function_exported?(MyApp.Worker, :compile, 1)
+        end
+      end
+      """
+      |> to_source_file("test/my_app/worker_test.exs")
+      |> run_check(EnsureLoadedBeforeExported)
+      |> assert_issue(fn issue -> assert issue.line_no === 5 end)
+    end
+
+    test "does not report a guarded call inside the same test block" do
+      """
+      defmodule MyApp.WorkerTest do
+        use ExUnit.Case
+
+        test "compiles" do
+          Code.ensure_loaded?(MyApp.Worker)
+          function_exported?(MyApp.Worker, :compile, 1)
+        end
+      end
+      """
+      |> to_source_file("test/my_app/worker_test.exs")
+      |> run_check(EnsureLoadedBeforeExported)
+      |> refute_issues()
+    end
+
+    test "reports an unguarded call inside a test block with a context pattern" do
+      """
+      defmodule MyApp.WorkerTest do
+        use ExUnit.Case
+
+        test "compiles", ctx do
+          function_exported?(ctx.mod, :compile, 1)
+        end
+      end
+      """
+      |> to_source_file("test/my_app/worker_test.exs")
+      |> run_check(EnsureLoadedBeforeExported)
+      |> assert_issue()
+    end
+
+    test "reports an unguarded call inside a setup block" do
+      """
+      defmodule MyApp.WorkerTest do
+        use ExUnit.Case
+
+        setup do
+          function_exported?(MyApp.Worker, :compile, 1)
+          :ok
+        end
+      end
+      """
+      |> to_source_file("test/my_app/worker_test.exs")
+      |> run_check(EnsureLoadedBeforeExported)
+      |> assert_issue(fn issue -> assert issue.line_no === 5 end)
+    end
+
+    test "does not report a guarded call inside the same setup block" do
+      """
+      defmodule MyApp.WorkerTest do
+        use ExUnit.Case
+
+        setup do
+          Code.ensure_loaded?(MyApp.Worker)
+          function_exported?(MyApp.Worker, :compile, 1)
+          :ok
+        end
+      end
+      """
+      |> to_source_file("test/my_app/worker_test.exs")
+      |> run_check(EnsureLoadedBeforeExported)
+      |> refute_issues()
+    end
+
+    test "reports an unguarded call inside a setup_all block" do
+      """
+      defmodule MyApp.WorkerTest do
+        use ExUnit.Case
+
+        setup_all do
+          function_exported?(MyApp.Worker, :compile, 1)
+          :ok
+        end
+      end
+      """
+      |> to_source_file("test/my_app/worker_test.exs")
+      |> run_check(EnsureLoadedBeforeExported)
+      |> assert_issue(fn issue -> assert issue.line_no === 5 end)
+    end
+
+    test "reports an unguarded call inside a defmacro body" do
+      """
+      defmodule MyApp.Macros do
+        defmacro require_compile(mod) do
+          function_exported?(mod, :compile, 1)
+        end
+      end
+      """
+      |> to_source_file()
+      |> run_check(EnsureLoadedBeforeExported)
+      |> assert_issue(fn issue -> assert issue.line_no === 3 end)
+    end
+
+    test "does not report a guarded call inside the same defmacro body" do
+      """
+      defmodule MyApp.Macros do
+        defmacro require_compile(mod) do
+          Code.ensure_loaded?(mod)
+          function_exported?(mod, :compile, 1)
+        end
+      end
+      """
+      |> to_source_file()
+      |> run_check(EnsureLoadedBeforeExported)
+      |> refute_issues()
+    end
+  end
+
+  describe "&run/2 does not descend into quoted code inside a def/defmacro" do
+    test "does not report a function_exported? call quoted inside a defp" do
+      """
+      defmodule MyApp.Macros do
+        defp build(mod) do
+          quote do: function_exported?(unquote(mod), :f, 1)
+        end
+      end
+      """
+      |> to_source_file()
+      |> run_check(EnsureLoadedBeforeExported)
+      |> refute_issues()
+    end
+
+    test "does not treat a guard call quoted inside a def as satisfying the guard" do
+      """
+      defmodule MyApp.Macros do
+        def build(mod) do
+          quote do
+            Code.ensure_loaded?(unquote(mod))
+          end
+
+          function_exported?(mod, :f, 1)
+        end
+      end
+      """
+      |> to_source_file()
+      |> run_check(EnsureLoadedBeforeExported)
+      |> assert_issue()
     end
   end
 
