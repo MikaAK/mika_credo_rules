@@ -77,18 +77,26 @@ defmodule MikaCredoRules.NoServerCodeInHologramAction do
   through `put_action/2,3`.
 
       # BAD — hits the database from the client
-      def action(:save, params, component) do
-        MyApp.Repo.insert(%Product{name: params.name})
+      defmodule MyApp.ProductPage do
+        use Hologram.Page
+
+        def action(:save, params, component) do
+          MyApp.Repo.insert(%Product{name: params.name})
+        end
       end
 
       # GOOD — defers the write to a command
-      def action(:save, params, component) do
-        put_command(component, :save_product, name: params.name)
-      end
+      defmodule MyApp.ProductPage do
+        use Hologram.Page
 
-      def command(:save_product, params, server) do
-        MyApp.Repo.insert(%Product{name: params.name})
-        server
+        def action(:save, params, component) do
+          put_command(component, :save_product, name: params.name)
+        end
+
+        def command(:save_product, params, server) do
+          MyApp.Repo.insert(%Product{name: params.name})
+          server
+        end
       end
 
   Three independent things are flagged inside a `def action(...)` clause of

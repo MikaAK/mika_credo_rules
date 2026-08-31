@@ -30,10 +30,22 @@ defmodule MikaCredoRules.HologramCookieKeysMustBeStrings do
   `get_cookie`/`put_cookie`/`delete_cookie` call actually runs.
 
       # BAD — runtime error, cookie keys must be strings
-      put_cookie(server, :theme, "dark")
+      defmodule MyApp.ProductPage do
+        use Hologram.Page
+
+        def command(:save, _params, server) do
+          put_cookie(server, :theme, "dark")
+        end
+      end
 
       # GOOD
-      put_cookie(server, "theme", "dark")
+      defmodule MyApp.ProductPage do
+        use Hologram.Page
+
+        def command(:save, _params, server) do
+          put_cookie(server, "theme", "dark")
+        end
+      end
 
   Scoped per module, not per file — only a `defmodule` whose own body
   contains `use Hologram.Page`/`use Hologram.Component` is inspected. Only a

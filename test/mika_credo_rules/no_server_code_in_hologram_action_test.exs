@@ -26,7 +26,7 @@ defmodule MikaCredoRules.NoServerCodeInHologramActionTest do
       end)
     end
 
-    test "reports the moduledoc BAD example" do
+    test "the literal moduledoc BAD example fires" do
       """
       defmodule MyApp.ProductPage do
         use Hologram.Page
@@ -294,7 +294,7 @@ defmodule MikaCredoRules.NoServerCodeInHologramActionTest do
       |> refute_issues()
     end
 
-    test "does not report the moduledoc GOOD example" do
+    test "the literal moduledoc GOOD example is clean" do
       """
       defmodule MyApp.ProductPage do
         use Hologram.Page

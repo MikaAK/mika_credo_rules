@@ -126,10 +126,22 @@ passing an atom compiles fine and fails only when the call actually runs.
 
 ```elixir
 # BAD — runtime error, cookie keys must be strings
-put_cookie(server, :theme, "dark")
+defmodule MyApp.ProductPage do
+  use Hologram.Page
+
+  def command(:save, _params, server) do
+    put_cookie(server, :theme, "dark")
+  end
+end
 
 # GOOD
-put_cookie(server, "theme", "dark")
+defmodule MyApp.ProductPage do
+  use Hologram.Page
+
+  def command(:save, _params, server) do
+    put_cookie(server, "theme", "dark")
+  end
+end
 ```
 
 Scoped per module, not per file — only a `defmodule` whose own body contains
@@ -454,10 +466,18 @@ than doing anything.
 
 ```elixir
 # BAD
-~HOLO"<button phx-click="save"><%= @label %></button>"
+defmodule MyApp.ProductPage do
+  use Hologram.Page
+
+  def template, do: ~HOLO(<button phx-click="save"><%= @label %></button>)
+end
 
 # GOOD
-~HOLO"<button $click="save">{@label}</button>"
+defmodule MyApp.ProductPage do
+  use Hologram.Page
+
+  def template, do: ~HOLO(<button $click="save">{@label}</button>)
+end
 ```
 
 Scoped per module, not per file — only a `defmodule` whose own body contains
@@ -525,18 +545,26 @@ browser. Work that needs any of those belongs in a command, dispatched via
 
 ```elixir
 # BAD — hits the database from the client
-def action(:save, params, component) do
-  MyApp.Repo.insert(%Product{name: params.name})
+defmodule MyApp.ProductPage do
+  use Hologram.Page
+
+  def action(:save, params, component) do
+    MyApp.Repo.insert(%Product{name: params.name})
+  end
 end
 
 # GOOD — defers the write to a command
-def action(:save, params, component) do
-  put_command(component, :save_product, name: params.name)
-end
+defmodule MyApp.ProductPage do
+  use Hologram.Page
 
-def command(:save_product, params, server) do
-  MyApp.Repo.insert(%Product{name: params.name})
-  server
+  def action(:save, params, component) do
+    put_command(component, :save_product, name: params.name)
+  end
+
+  def command(:save_product, params, server) do
+    MyApp.Repo.insert(%Product{name: params.name})
+    server
+  end
 end
 ```
 

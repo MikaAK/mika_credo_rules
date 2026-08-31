@@ -32,10 +32,18 @@ defmodule MikaCredoRules.NoPhxBindingsInHoloTemplate do
   understand — they render as literal text rather than doing anything.
 
       # BAD
-      ~HOLO"<button phx-click="save"><%= @label %></button>"
+      defmodule MyApp.ProductPage do
+        use Hologram.Page
+
+        def template, do: ~HOLO(<button phx-click="save"><%= @label %></button>)
+      end
 
       # GOOD
-      ~HOLO"<button $click="save">{@label}</button>"
+      defmodule MyApp.ProductPage do
+        use Hologram.Page
+
+        def template, do: ~HOLO(<button $click="save">{@label}</button>)
+      end
 
   Scoped per module, not per file — only a `defmodule` whose own body
   contains `use Hologram.Page`/`use Hologram.Component` is inspected, and
