@@ -309,6 +309,33 @@ defmodule MikaCredoRules.AstHelpersTest do
     end
   end
 
+  describe "use_options/2" do
+    test "returns the literal keyword list when the module matches" do
+      assert use_opts("use Cache, name: :c, sandbox?: true", [Cache]) ===
+               [name: :c, sandbox?: true]
+    end
+
+    test "returns nil when the module does not match" do
+      assert is_nil(use_opts("use GenServer, restart: :temporary", [Cache]))
+    end
+
+    test "returns nil when opts is not a literal list (module attribute)" do
+      assert is_nil(use_opts("use Cache, @cache_opts", [Cache]))
+    end
+
+    test "returns nil when use has no options" do
+      assert is_nil(use_opts("use Cache", [Cache]))
+    end
+
+    test "matches the Elixir-prefixed atom spelling of the module" do
+      assert use_opts(~S(use :"Elixir.Cache", name: :c), [Cache]) === [name: :c]
+    end
+
+    test "does not match an erlang atom module" do
+      assert is_nil(use_opts("use :ets, name: :c", [Cache]))
+    end
+  end
+
   defp resolve(code, modules) do
     code
     |> Credo.SourceFile.parse("lib/sample.ex")
@@ -339,4 +366,23 @@ defmodule MikaCredoRules.AstHelpersTest do
   defp clause_name({:def, _, [head, _body]}), do: clause_name_from_head(head)
 
   defp clause_name_from_head({name, _, _args}), do: name
+
+  defp use_opts(code, modules) do
+    module_paths = Enum.flat_map(modules, &AstHelpers.module_paths/1)
+
+    code
+    |> Code.string_to_quoted!()
+    |> find_use()
+    |> AstHelpers.use_options(module_paths)
+  end
+
+  defp find_use(ast) do
+    {_ast, use_node} =
+      Macro.prewalk(ast, nil, fn
+        {:use, _, _} = node, nil -> {node, node}
+        node, acc -> {node, acc}
+      end)
+
+    use_node
+  end
 end

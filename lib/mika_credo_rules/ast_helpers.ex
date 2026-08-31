@@ -336,4 +336,66 @@ defmodule MikaCredoRules.AstHelpers do
       entry_name when is_atom(entry_name) -> entry_name === name
     end)
   end
+
+  @doc """
+  The literal keyword-list options of a `use module, opts` call, when `module`
+  resolves to one of `module_paths` (see `resolve_aliases/2`) and `opts` is a
+  literal keyword list.
+
+  Returns `nil` when the call is for a different module, carries no options, or
+  the options are not a literal list — a variable or module-attribute splat
+  (`use Cache, @cache_opts`) cannot be inspected statically and is left alone by
+  every caller.
+
+      iex> {:use, [], [{:__aliases__, [], [:Cache]}, [adapter: Cache.ETS]]}
+      ...> |> MikaCredoRules.AstHelpers.use_options([[:Cache], [Elixir, :Cache]])
+      [adapter: Cache.ETS]
+
+      iex> {:use, [], [{:__aliases__, [], [:Cache]}, {:@, [], [{:cache_opts, [], nil}]}]}
+      ...> |> MikaCredoRules.AstHelpers.use_options([[:Cache], [Elixir, :Cache]])
+      nil
+  """
+  @spec use_options(Macro.t(), [module_path()]) :: keyword() | nil
+  def use_options({:use, _, [module, opts]}, module_paths) when is_list(opts) do
+    if use_module?(module, module_paths), do: opts
+  end
+
+  def use_options(_ast, _module_paths), do: nil
+
+  @doc """
+  True when the `use`/`alias` module argument `module` resolves to one of
+  `module_paths` (see `resolve_aliases/2`).
+
+  Handles all three AST spellings of "module" (see `writing-credo-checks`):
+  an `__aliases__` path, an `Elixir.`-prefixed atom, and any other atom
+  (always `false` — an erlang module name can never resolve to an Elixir
+  one).
+
+  The `__aliases__` clause compares `segments` to `module_paths` directly,
+  without stripping a leading `Elixir` segment — `module_paths/1` already
+  contains the `[Elixir | parts]` spelling, so a literal `Elixir.Cache` in
+  source still resolves correctly even when the bare name `Cache` has been
+  shadowed by a project alias and removed from `module_paths` (only the bare
+  spelling is ever removed by shadowing, see `resolve_aliases/2`).
+
+      iex> MikaCredoRules.AstHelpers.use_module?({:__aliases__, [], [:Cache]}, [[:Cache], [Elixir, :Cache]])
+      true
+
+      iex> MikaCredoRules.AstHelpers.use_module?({:__aliases__, [], [Elixir, :Cache]}, [[Elixir, :Cache]])
+      true
+  """
+  @spec use_module?(Macro.t(), [module_path()]) :: boolean()
+  def use_module?({:__aliases__, _, segments}, module_paths), do: segments in module_paths
+
+  def use_module?(module, module_paths) when is_atom(module) do
+    case Atom.to_string(module) do
+      "Elixir." <> _rest ->
+        [Elixir | module |> Module.split() |> Enum.map(&String.to_atom/1)] in module_paths
+
+      _erlang_name ->
+        false
+    end
+  end
+
+  def use_module?(_other, _module_paths), do: false
 end

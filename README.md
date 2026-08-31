@@ -65,6 +65,8 @@ does) or these three checks will never see a file to run against.
 | [`EctoMetricsRequiresAppAtom`](#ectometricsrequiresappatom) | `:warning` | `PrometheusTelemetry.Metrics.Ecto.metrics/0` — pass the app atom |
 | [`CredoConfigNamedDefault`](#credoconfignameddefault) | `:warning` | A `.credo.exs` with no config named `"default"` — Credo silently falls back to its own stock checks |
 | [`AbsintheDataloaderPluginRequired`](#absinthedataloaderpluginrequired) | `:warning` | A schema that builds a `Dataloader` but omits `Absinthe.Middleware.Dataloader` from `plugins/0` |
+| [`CacheOptsNoHardcodedUri`](#cacheoptsnohardcodeduri) | `:warning` | A literal `uri`/`file_path` inside `use Cache, ..., opts: [...]` |
+| [`CacheRequiresSandboxOption`](#cacherequiressandboxoption) | `:warning` | `use Cache, ...` without `sandbox?: Mix.env() === :test` |
 | [`ErrorMessageRequired`](#errormessagerequired) | `:design` | `{:error, "string literal"}` tuples — use `%ErrorMessage{}` |
 | [`ExceptionNamesEndInError`](#exceptionnamesendinerror) | `:readability` | An exception module whose name does not end in `Error` |
 | [`GenServerRequiresHandleContinue`](#genserverrequireshandlecontinue) | `:refactor` | Real work in `init/1` instead of `handle_continue/2` |
@@ -109,6 +111,8 @@ does) or these three checks will never see a file to run against.
 | [`NoStaticNotLoadedDropList`](#nostaticnotloadeddroplist) | `:design` | `Map.drop(map, [:__meta__, ...])` — a static drop-list scrubbing `%Ecto.Association.NotLoaded{}` |
 | [`NoTaskAsyncInGenServer`](#notaskasyncingenserver) | `:warning` | `Task.async`/`Task.Supervisor.async` inside a GenServer/GenStage callback — a crashing task takes the server down |
 | [`NoUnsupervisedTaskStart`](#nounsupervisedtaskstart) | `:warning` | `Task.start` — a crash inside it is silently discarded |
+| [`NoTelemetrySupervisorModule`](#notelemetrysupervisormodule) | `:design` | A `*Telemetry` module using `Supervisor` — add a `PrometheusTelemetry` child spec instead |
+| [`PrometheusExporterMustBeGated`](#prometheusexportermustbegated) | `:warning` | `exporter: [enabled?: true]` — the metrics endpoint must be gated to prod |
 | [`RefuteOverAssertNot`](#refuteoverassertnot) | `:readability` | `assert !expr` / `assert not expr` — use `refute` |
 | [`SingleModulePerFile`](#singlemoduleperfile) | `:design` | More than one top-level `defmodule` per file (nested modules allowed) |
 | [`SqlSandboxPlugMustBeCompileGated`](#sqlsandboxplugmustbecompilegated) | `:warning` | `plug Phoenix.Ecto.SQL.Sandbox` not gated on `Application.compile_env/2,3` |
@@ -300,6 +304,96 @@ long as every required module appears somewhere in its body — a bare list or a
 |---|---|---|
 | `required_plugins` | `[Absinthe.Middleware.Dataloader]` | Modules that must all appear in `plugins/0` when the schema builds a Dataloader |
 | `excluded_paths` | `[]` | Path fragments naming files this check skips |
+
+### `CacheOptsNoHardcodedUri`
+
+A `use Cache, ..., opts: [...]` definition must not hardcode a connection
+secret or address — use runtime config instead. A literal `uri:`
+(`Cache.Redis`) or `file_path:` (`Cache.DETS`) in `opts:` bakes the
+connection target (and, for `uri:`, often a credential) into compiled code,
+shared by every environment the release ships to.
+
+```elixir
+# BAD — hardcoded in every environment, including the compiled release
+use Cache,
+  adapter: Cache.Redis,
+  name: :c,
+  sandbox?: Mix.env() === :test,
+  opts: [uri: "redis://localhost:6379"]
+
+# GOOD — resolved at runtime
+use Cache,
+  adapter: Cache.Redis,
+  name: :c,
+  sandbox?: Mix.env() === :test,
+  opts: {MyApp.Config, :redis_opts, []}
+```
+
+Only a literal `opts:` keyword list is inspected — an MFA tuple, an
+`{app, key}` tuple, an application-env atom, a zero-arity function reference,
+or a variable are all `elixir_cache`'s documented runtime-config forms and are
+never flagged. `Cache` is alias-aware, the same way as `CacheRequiresSandboxOption`.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `cache_modules` | `[Cache]` | Modules that count as `elixir_cache`'s `Cache` in a `use` expression (alias-aware) |
+| `literal_keys` | `[:uri, :file_path]` | `opts:` keys that must not carry a string or integer literal — `uri` (`Cache.Redis`) and `file_path` (`Cache.DETS`) are the only two `elixir_cache` adapter options that carry an address or path; `elixir_cache` validates `opts:` against each adapter's own closed `NimbleOptions` schema, so an unlisted key like `host`/`port`/`password` is rejected before it ever reaches a real connection — set `literal_keys` explicitly for a project's own adapter with those option names |
+| `excluded_paths` | `["elixir_cache/"]` | Path fragments exempt from the check (segment-boundary matched) — a vendored or umbrella copy of the library (`apps/elixir_cache/`, `deps/elixir_cache/`) legitimately constructs literal connection opts in its own tests and fixtures. This cannot match at the `elixir_cache` repository's own root (`lib/cache/...` has no `elixir_cache` path segment) — that repo should disable this check in its own `.credo.exs` instead. |
+
+**Known limitations:** a charlist (`opts: [uri: ~c"redis://localhost:6379"]`),
+string interpolation, and concatenation all evade the check — only a plain
+string or integer literal is recognised. A multi-line `use Cache, ...`
+reports the issue at the `use` line, not the line the hardcoded `opts:`
+entry is written on. A locally nested `defmodule Cache do ... end` is not
+recognised as shadowing the way a project-level `alias` is, so a `use Cache,
+...` inside it (referring to the local `Cache`) can still be matched against
+`elixir_cache`'s `Cache` and flagged incorrectly.
+
+The original spec's `flag_literal` param was deliberately not implemented —
+`literal_keys` already controls which keys are inspected, and a second
+boolean toggle for whether literals are flagged at all would be redundant
+with simply setting `literal_keys: []`.
+
+### `CacheRequiresSandboxOption`
+
+A `use Cache, ...` module definition must set `sandbox?: Mix.env() === :test` —
+without it, tests hit the real backend (Redis, ETS) and break async safety.
+
+```elixir
+# BAD — tests hit the real Redis backend
+defmodule MyApp.UserCache do
+  use Cache, adapter: Cache.Redis, name: :my_app_user_cache, opts: :my_app
+end
+
+# GOOD
+defmodule MyApp.UserCache do
+  use Cache,
+    adapter: Cache.Redis,
+    name: :my_app_user_cache,
+    sandbox?: Mix.env() === :test,
+    opts: :my_app
+end
+```
+
+Only a literal `use Cache, ...` keyword list is inspected — `use Cache, @opts`
+is left alone, since the check cannot reason about what an attribute holds.
+`Cache` is alias-aware: a project module shadowing the bare name
+(`alias MyApp.Cache`) is correctly not treated as `elixir_cache`'s `Cache`.
+`NoMixEnvAtRuntime` only flags `Mix.env()`/`Mix.target()` inside a `def`/`defp`
+body, so the module-body `sandbox?: Mix.env() === :test` this fix requires
+never conflicts with that check.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `cache_modules` | `[Cache]` | Modules that count as `elixir_cache`'s `Cache` in a `use` expression (alias-aware) |
+| `required_keys` | `[:sandbox?]` | Keys that must be present in the `use Cache, ...` literal keyword list |
+| `excluded_paths` | `["elixir_cache/"]` | Path fragments exempt from the check (segment-boundary matched) — a vendored or umbrella copy of the library (`apps/elixir_cache/`, `deps/elixir_cache/`) legitimately constructs a cache without `:sandbox?` in its own tests and fixtures. This cannot match at the `elixir_cache` repository's own root (`lib/cache/...` has no `elixir_cache` path segment) — that repo should disable this check in its own `.credo.exs` instead. |
+
+**Known limitations:** a locally nested `defmodule Cache do ... end` is not
+recognised as shadowing the way a project-level `alias` is — a `use Cache,
+...` inside that nested module, which really refers to the local `Cache`,
+can still be matched against `elixir_cache`'s `Cache` and flagged
+incorrectly.
 
 ### `ErrorMessageRequired`
 
@@ -1829,6 +1923,79 @@ different, often intentional trade-off — so it is left alone by default.
 |---|---|---|
 | `also_flag_start_link` | `false` | Also flag `Task.start_link/1,3` |
 | `excluded_paths` | `["_test.exs", "test/"]` | Path fragments naming files to skip (segment-boundary matched) |
+
+### `NoTelemetrySupervisorModule`
+
+A dedicated `*Telemetry` supervisor module must not exist — add a
+`{PrometheusTelemetry, ...}` child spec to `application.ex` instead. `phx.new`
+generates a `MyAppWeb.Telemetry` supervisor wrapping `:telemetry_poller`; the
+house convention starts `PrometheusTelemetry` directly as a child of the
+application, so the separate supervisor module only adds indirection.
+
+```elixir
+# BAD — the file phx.new generates
+defmodule MyAppWeb.Telemetry do
+  use Supervisor
+
+  def start_link(arg), do: Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
+end
+
+# GOOD — a child spec in application.ex, no separate supervisor module
+children = [{PrometheusTelemetry, exporter: [enabled?: @is_prod], metrics: [...]}]
+```
+
+Flagged when a `defmodule`'s last name segment is a member of
+`:module_suffixes` **and** its own body contains `use Supervisor`. Scoped per
+module — a nested `defmodule Telemetry do ... end` is its own scope, the same
+way `NoJasonDeriveOnEctoSchema` scopes `@derive`, and `use Supervisor` is
+alias-aware: a project module shadowing the bare name (`alias MyApp.Supervisor`)
+is correctly not treated as Elixir's `Supervisor`.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `module_suffixes` | `[:Telemetry]` | Last-segment module names inspected |
+| `supervisor_modules` | `[Supervisor]` | Modules that count as the `Supervisor` behaviour in a `use` expression (alias-aware) |
+| `excluded_paths` | `[]` | Path fragments exempt from the check (segment-boundary matched) |
+
+### `PrometheusExporterMustBeGated`
+
+The Prometheus exporter must not be hardcoded to `enabled?: true` — gate it to
+production. An always-on exporter opens an HTTP endpoint in every environment
+including dev and test; the idiomatic gate is a compile-time flag derived from
+`Application.compile_env/3`.
+
+```elixir
+# BAD — exposed in every environment
+@is_prod Application.compile_env(:my_app, :env) === :prod
+{PrometheusTelemetry, exporter: [enabled?: true], metrics: [...]}
+
+# GOOD
+{PrometheusTelemetry, exporter: [enabled?: @is_prod], metrics: [...]}
+```
+
+Only a literal `enabled?: true` inside a keyword list or map literal is
+flagged — a computed value (`enabled?: @is_prod`) always passes. `.exs`
+files are always exempt, since `config/prod.exs` may legitimately hardcode
+the flag for a single environment. A `case`/`fn` clause pattern and a
+`@type`/`@spec` body are never inspected.
+
+**Adopting this check:** the default `excluded_paths` covers `test/`, since
+a test double whose entire purpose is a running exporter (a mock supervisor
+under `test/support/`) is not production config and the suggested
+`@is_prod` gate would break it. Add your own `test/`-adjacent fixture
+directories to `excluded_paths` if they live outside that convention.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `keys` | `[:exporter]` | Outer keyword-list keys inspected for a hardcoded `enabled?: true` |
+| `excluded_paths` | `["test/"]` | Path fragments exempt from the check (segment-boundary matched), in addition to the always-exempt `.exs` files |
+
+**Known limitations:** a runtime concatenation (`exporter: [enabled?: true] ++
+extra()`), a value built via `Keyword.put([], :enabled?, true)`, or a literal
+assigned to a variable before being referenced (`conf = [enabled?: true];
+exporter: conf`) all evade the check — the last is the realistic way a
+hardcoded flag survives review, since the literal and the flagged key end up
+on different lines.
 
 ### `RefuteOverAssertNot`
 
