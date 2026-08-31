@@ -76,6 +76,16 @@ defmodule MikaCredoRules.HologramCookieKeysMustBeStrings do
 
   defp traverse({:defmodule, _, _}, violations, _functions), do: {nil, violations}
 
+  # A `def`/`defp` head has the exact same AST shape as a call
+  # (`{name, meta, args}`) — a literal atom in the head's 2nd parameter
+  # position (`defp put_cookie(server, :theme, value)`) would otherwise be
+  # misread as a violating call. The head is dropped from traversal; the
+  # body is kept.
+  defp traverse({def_or_defp, meta, [_head, body]}, violations, _functions)
+       when def_or_defp in [:def, :defp] do
+    {{def_or_defp, meta, [{:__block__, [], []}, body]}, violations}
+  end
+
   # A piped call is consumed here: its key is the piped call's own 1st
   # argument (`lhs |> put_cookie(key, value)`), which becomes the 2nd
   # argument once `lhs` is prepended — the same position a standalone call

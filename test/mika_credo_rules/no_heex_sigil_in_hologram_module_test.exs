@@ -170,5 +170,18 @@ defmodule MikaCredoRules.NoHeexSigilInHologramModuleTest do
       |> run_check(NoHeexSigilInHologramModule)
       |> refute_issues()
     end
+
+    test "does not report a def head whose function is literally named sigil_H" do
+      """
+      defmodule MyApp.ProductPage do
+        use Hologram.Page
+
+        def sigil_H(term, _modifiers), do: term
+      end
+      """
+      |> to_source_file(@page_file)
+      |> run_check(NoHeexSigilInHologramModule)
+      |> refute_issues()
+    end
   end
 end

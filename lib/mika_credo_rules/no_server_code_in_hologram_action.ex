@@ -127,6 +127,14 @@ defmodule MikaCredoRules.NoServerCodeInHologramAction do
   unsupported-forms list is expected to change across versions, so every
   entry is a param; relax or extend it as the framework's client compiler
   gains features.
+
+  Dynamic dispatch evades every module/function matcher here:
+  `apply(MyApp.Repo, :insert, [params])` is never resolved to `MyApp.Repo`.
+  An `Elixir.`-prefixed atom literal used directly as a call target
+  (`:"Elixir.File".read("a")`) also evades the `banned_modules` matcher — it
+  parses to a bare atom rather than the `__aliases__` AST node that
+  `MyApp.Repo`/`File`-style calls produce, so it is never alias-resolved or
+  compared against `:exact_paths`.
   """
   @explanation [check: @moduledoc]
 

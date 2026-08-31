@@ -89,27 +89,43 @@ defmodule MikaCredoRules.NoHeexSigilInHologramModule do
   end
 
   defp collect_violations({_module_ast, body}, context) do
-    HologramModules.scan_own_body(body, [], &collect_node_violation(&1, &2, context))
+    body
+    |> Macro.prewalk([], &traverse(&1, &2, context))
+    |> elem(1)
   end
 
-  defp collect_node_violation({node_name, meta, args}, violations, context)
+  defp traverse({:defmodule, _, _}, violations, _context), do: {nil, violations}
+
+  # A `def`/`defp` head has the exact same AST shape as a call
+  # (`{name, meta, args}`) — a function literally named `sigil_H`
+  # (`def sigil_H(term, _modifiers)`) would otherwise be misread as a
+  # banned sigil use. The head is dropped from traversal; the body is kept.
+  defp traverse({def_or_defp, meta, [_head, body]}, violations, _context)
+       when def_or_defp in [:def, :defp] do
+    {{def_or_defp, meta, [{:__block__, [], []}, body]}, violations}
+  end
+
+  defp traverse({node_name, meta, args} = node, violations, context)
        when is_atom(node_name) and is_list(args) do
-    cond do
-      node_name in context.banned_sigils ->
-        [sigil_violation(node_name, meta) | violations]
+    updated_violations =
+      cond do
+        node_name in context.banned_sigils ->
+          [sigil_violation(node_name, meta) | violations]
 
-      node_name === :use ->
-        case use_violation(args, meta, context) do
-          nil -> violations
-          violation -> [violation | violations]
-        end
+        node_name === :use ->
+          case use_violation(args, meta, context) do
+            nil -> violations
+            violation -> [violation | violations]
+          end
 
-      true ->
-        violations
-    end
+        true ->
+          violations
+      end
+
+    {node, updated_violations}
   end
 
-  defp collect_node_violation(_node, violations, _context), do: violations
+  defp traverse(node, violations, _context), do: {node, violations}
 
   defp sigil_violation(sigil, meta) do
     %{trigger: sigil_display(sigil), line_no: meta[:line], kind: :sigil}

@@ -121,6 +121,23 @@ defmodule MikaCredoRules.HologramCookieKeysMustBeStringsTest do
     end
   end
 
+  describe "&run/2 leaves definition heads alone" do
+    test "does not report a defp head whose 2nd parameter is a literal atom" do
+      """
+      defmodule MyApp.ProductPage do
+        use Hologram.Page
+
+        defp put_cookie(server, :theme, value) do
+          do_something(server, value)
+        end
+      end
+      """
+      |> to_source_file(@page_file)
+      |> run_check(HologramCookieKeysMustBeStrings)
+      |> refute_issues()
+    end
+  end
+
   describe "&run/2 leaves string keys, variable keys, and non-Hologram modules alone" do
     test "does not report a string key" do
       """
