@@ -223,6 +223,18 @@ defmodule MikaCredoRules.AstHelpersTest do
     end
   end
 
+  describe "block_statements/1" do
+    test "splits a __block__ node into its statements" do
+      assert AstHelpers.block_statements({:__block__, [], [1, 2, 3]}) === [1, 2, 3]
+    end
+
+    test "wraps a single non-block statement in a list" do
+      statement = {:foo, [], []}
+
+      assert AstHelpers.block_statements(statement) === [statement]
+    end
+  end
+
   defp resolve(code, modules) do
     code
     |> Credo.SourceFile.parse("lib/sample.ex")

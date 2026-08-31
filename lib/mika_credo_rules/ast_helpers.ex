@@ -242,4 +242,22 @@ defmodule MikaCredoRules.AstHelpers do
       :not_literal
     end
   end
+
+  @doc """
+  Splits a `def`/`do` body into its top-level statements.
+
+  Elixir represents a multi-statement body as `{:__block__, _, statements}`,
+  but a single-statement body is the statement itself, with no wrapper. Checks
+  that scan a body one top-level statement at a time need this normalization
+  either way.
+
+      iex> MikaCredoRules.AstHelpers.block_statements({:__block__, [], [1, 2]})
+      [1, 2]
+
+      iex> MikaCredoRules.AstHelpers.block_statements({:foo, [], []})
+      [{:foo, [], []}]
+  """
+  @spec block_statements(Macro.t()) :: [Macro.t()]
+  def block_statements({:__block__, _, statements}), do: statements
+  def block_statements(statement), do: [statement]
 end

@@ -70,6 +70,9 @@ does) or these three checks will never see a file to run against.
 | [`InUmbrellaDepsNoVersion`](#inumbrelladepsnoversion) | `:readability` | `{:app, "~> x", in_umbrella: true}` — a version requirement on an in_umbrella dep |
 | [`LoggerModulePrefixAndInspect`](#loggermoduleprefixandinspect) | `:warning` | Logger messages missing the `#{__MODULE__}: ` prefix or interpolating values without `inspect/1` |
 | [`NoAccessOnStructSubject`](#noaccessonstructsubject) | `:warning` | `changeset[:name]` — `Access` on a struct raises `UndefinedFunctionError` |
+| [`MigrationExecuteInChange`](#migrationexecuteinchange) | `:warning` | `execute/1` inside `def change` — irreversible, Ecto cannot roll it back |
+| [`MigrationFlushBetweenExecuteAndQuery`](#migrationflushbetweenexecuteandquery) | `:warning` | A direct `repo().query` after `execute/1,2` with no `flush()` between them |
+| [`MigrationForeignKeyNeedsIndex`](#migrationforeignkeyneedsindex) | `:warning` | A `references(...)` foreign key column with no covering index in the same migration |
 | [`NoApplicationEnvOutsideConfig`](#noapplicationenvoutsideconfig) | `:design` | Any read or write of application env outside a config module |
 | [`NoAtomStringKeyFallback`](#noatomstringkeyfallback) | `:warning` | `m["key"] \|\| m[:key]` mixed-key fallback reads — normalize keys at the boundary |
 | [`NoBarePatternMatchOnFallible`](#nobarepatternmatchonfallible) | `:warning` | `{:ok, x} = call()` — a bare match with no handling for the failure path |
@@ -82,6 +85,7 @@ does) or these three checks will never see a file to run against.
 | [`NoDirectErlangRpc`](#nodirecterlangrpc) | `:design` | Direct `:rpc`/`:erpc` calls and `Node.spawn*` — route through your app's RPC wrapper |
 | [`NoDirectHttpClient`](#nodirecthttpclient) | `:design` | Direct `Finch`/`HTTPoison`/`Tesla`/`Req` calls — route through your app's HTTP wrapper |
 | [`NoIdentityRewrap`](#noidentityrewrap) | `:refactor` | `case` expressions whose every clause returns its pattern unchanged |
+| [`NoInspectModuleInMigrationSql`](#noinspectmoduleinmigrationsql) | `:warning` | `inspect/1` or string interpolation of a module alias in a migration |
 | [`NoJasonDeriveOnEctoSchema`](#nojasonderiveonectoschema) | `:design` | `@derive Jason.Encoder` inside Ecto schema modules |
 | [`NoKernelPrefix`](#nokernelprefix) | `:readability` | `Kernel.inspect(value)` — `Kernel` is auto-imported, drop the prefix |
 | [`NoMixEnvAtRuntime`](#nomixenvatruntime) | `:warning` | `Mix.env()`/`Mix.target()` in compiled code — crashes in releases |
@@ -97,6 +101,7 @@ does) or these three checks will never see a file to run against.
 | [`NoWordSigilLists`](#nowordsigillists) | `:readability` | `~w`/`~W` sigils — use a list literal instead |
 | [`NoTruthyAndOr`](#notruthyandor) | `:warning` | `and`/`or`/`not` on a provably-nilable operand (`opts[:key]`, `Map.get/2`, ...) — use `&&`/`\|\|`/`!` |
 | [`ObanWorkerRequiresMaxAttempts`](#obanworkerrequiresmaxattempts) | `:design` | `use Oban.Worker` whose literal opts omit `:max_attempts` |
+| [`NoStaticNotLoadedDropList`](#nostaticnotloadeddroplist) | `:design` | `Map.drop(map, [:__meta__, ...])` — a static drop-list scrubbing `%Ecto.Association.NotLoaded{}` |
 | [`RefuteOverAssertNot`](#refuteoverassertnot) | `:readability` | `assert !expr` / `assert not expr` — use `refute` |
 | [`SingleModulePerFile`](#singlemoduleperfile) | `:design` | More than one top-level `defmodule` per file (nested modules allowed) |
 | [`StrictEquality`](#strictequality) | `:warning` | `==`/`!=` — use `===`/`!==` (Ecto query DSL exempt) |
@@ -435,6 +440,101 @@ them matches the bracket-access shape this check keys on.
 |---|---|---|
 | `subject_names` | `[:changeset, :conn, :socket]` | Variable names treated as known-struct subjects |
 | `excluded_paths` | `[]` | Path fragments naming files this check skips |
+
+### `MigrationExecuteInChange`
+
+`execute/1` inside `def change` is irreversible — Ecto cannot roll it back. `change/0`
+serves both `up` and `down`; a single-argument `execute/1` has no down side, so
+`mix ecto.rollback` either does nothing for that statement or raises
+`Ecto.MigrationError`.
+
+```elixir
+# BAD — no way to roll this back
+def change do
+  execute "UPDATE users SET role = 'student' WHERE role IS NULL"
+end
+
+# GOOD — moved to up/down
+def up, do: execute("UPDATE users SET role = 'student' WHERE role IS NULL")
+def down, do: :ok
+
+# ALSO GOOD — reversible two-arg form
+def change, do: execute("CREATE EXTENSION citext", "DROP EXTENSION citext")
+```
+
+`execute/2` is fine everywhere — the second argument is the down statement, so the
+operation is reversible by construction. `execute/1` inside `def up` or `def down` is
+fine too — those functions already commit to irreversibility.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `migration_paths` | `["migrations/"]` | Path fragments (segment-boundary match) treated as migration directories |
+
+### `MigrationFlushBetweenExecuteAndQuery`
+
+A direct `repo().query`/`query!`/`query_many` call must not follow `execute/1,2` in
+the same migration body without a `flush()` between them. `execute/1,2` is DSL —
+Ecto queues it to run at the end of the migration, on the migration runner's
+connection. A direct query runs immediately, on a separate connection from the
+pool, so without `flush()` it sees the pre-`execute` state.
+
+```elixir
+# BAD — the SELECT runs before the UPDATE has committed
+def up do
+  execute "UPDATE oban_jobs SET queue = 'scanner' WHERE worker IN ('A','B')"
+  repo().query!("SELECT DISTINCT worker FROM oban_jobs WHERE queue = 'default'")
+end
+
+# GOOD — flush() forces the UPDATE to run first
+def up do
+  execute "UPDATE oban_jobs SET queue = 'scanner' WHERE worker IN ('A','B')"
+  flush()
+  repo().query!("SELECT DISTINCT worker FROM oban_jobs WHERE queue = 'default'")
+end
+```
+
+Only the top-level statements of a `def up`/`down`/`change` body are read — a plain,
+in-order scan for `execute`, `flush()` and a direct query call. An `execute`/query
+pair nested inside a conditional branch is invisible to this check.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `migration_paths` | `["migrations/"]` | Path fragments (segment-boundary match) treated as migration directories |
+| `direct_query_functions` | `[:query, :query!, :query_many]` | `repo()` functions that run immediately |
+| `flush_function` | `:flush` | The function that forces deferred `execute/1,2` statements to run |
+
+### `MigrationForeignKeyNeedsIndex`
+
+A `references(...)` foreign key column needs a covering index in the same
+migration file. An unindexed foreign key forces a sequential scan on every join
+and on every cascading delete or update from the referenced table — Postgres
+does not create one automatically for a `references/1,2` column the way it does
+for a primary key.
+
+```elixir
+# BAD
+create table(:users) do
+  add :organization_id, references(:organizations), null: false
+end
+
+# GOOD
+create table(:users) do
+  add :organization_id, references(:organizations), null: false
+end
+
+create index(:users, [:organization_id])
+```
+
+Any index whose column list includes the foreign key column covers it — a
+composite index counts regardless of the column's position, and a
+`concurrently: true` index counts the same as a plain one. Coverage is only
+checked within the same file; an index added in a different migration is
+invisible to this check.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `migration_paths` | `["migrations/"]` | Path fragments (segment-boundary match) treated as migration directories |
+| `index_functions` | `[:index, :unique_index]` | `create`/`create_if_not_exists` functions that count as an index |
 
 ### `NoApplicationEnvOutsideConfig`
 
@@ -863,6 +963,37 @@ clause, a guard, or a multi-expression body means the `case` does real work and
 it passes. If the `case` exists purely to assert the value's shape, prefer an
 explicit pattern match (`{:ok, user} = fetch_user(id)`) — an identity `case`
 hides that intent.
+
+### `NoInspectModuleInMigrationSql`
+
+A module alias must not be rendered with `inspect/1` or string interpolation
+inside a migration. Oban's `worker` column (and any similar SQL allow-list of
+module names) stores names WITHOUT the `Elixir.` prefix, so `inspect(MyApp.Worker)`
+and `"\#{MyApp.Worker}"` both render `"Elixir.MyApp.Worker"` — a `WHERE worker IN
+(...)` built from either never matches a row.
+
+```elixir
+# BAD
+worker = inspect(DeveloperAi.Workers.TicketScanner)
+execute "UPDATE oban_jobs SET worker = '#{worker}'"
+
+# BAD
+execute "UPDATE oban_jobs SET worker = '#{DeveloperAi.Workers.TicketScanner}'"
+
+# GOOD
+execute "UPDATE oban_jobs SET worker = 'DeveloperAi.Workers.TicketScanner'"
+```
+
+Both spellings are caught anywhere in a migration file. Only the literal-argument
+form is detected — `Enum.map([...], &inspect/1) |> Enum.join("','")` is NOT
+caught, since `&inspect/1` there is a capture rather than a call with a literal
+alias argument. Prefer `~w(DeveloperAi.Workers.TicketScanner)` over that pattern
+regardless; this check just can't see through it.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `migration_paths` | `["migrations/"]` | Path fragments (segment-boundary match) treated as migration directories |
+| `also_flag_interpolation` | `true` | Also flag string interpolation of a module alias, not just `inspect/1` |
 
 ### `NoJasonDeriveOnEctoSchema`
 
@@ -1415,6 +1546,36 @@ and is invisible to this check.
 |---|---|---|
 | `required_keys` | `[:max_attempts]` | `use Oban.Worker` options that must be present |
 | `excluded_paths` | `["test/"]` | Path fragments exempt from the check — throwaway fixture workers under test/ |
+
+### `NoStaticNotLoadedDropList`
+
+A static drop-list must not be used to scrub `%Ecto.Association.NotLoaded{}`
+values before serializing a schema. The list has no way to know about an
+association added next sprint — the new field silently slips through and crashes
+`Jason.encode!/1` at runtime. Reject unloaded associations by type instead.
+
+```elixir
+# BAD
+@association_keys [:__meta__, :workspace, :sessions]
+struct |> Map.from_struct() |> Map.drop(@association_keys)
+
+# GOOD
+struct
+|> Map.from_struct()
+|> Map.reject(fn {_key, value} -> match?(%Ecto.Association.NotLoaded{}, value) end)
+|> Map.delete(:__meta__)
+```
+
+The `:__meta__` marker is what makes the trigger unambiguous — a list containing
+`:__meta__` plus at least one other atom is a drop-list by construction.
+`Map.drop(map, [:__meta__])` alone is fine. Both a literal list argument and a
+module attribute holding one are caught, standalone and piped, and `Map` is
+matched alias-aware.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `marker_key` | `:__meta__` | The atom that marks a drop-list as an association-scrubbing list |
+| `excluded_paths` | `[]` | Path fragments (segment-boundary match) exempt from the check |
 
 ### `RefuteOverAssertNot`
 
