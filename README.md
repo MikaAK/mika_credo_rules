@@ -445,9 +445,10 @@ user = FactoryEx.insert!(MyApp.Support.Factory.User)
 Reads are left alone — asserting on persisted state is the correct way to pin a
 behavioural test (`Repo.get/2`, `Repo.all/1`, `Repo.one/1`, `Repo.preload/2` never
 fire). A repo is identified two ways: any `__aliases__` path whose last segment is
-`:Repo` (`MyApp.Repo`, `Repo`, `Schemas.Repo`) — no alias tracking needed, since
-Elixir's own aliasing preserves the last segment — plus any module named in
-`:repo_modules`, alias-resolved for repos that are not named `Repo` at all.
+`:Repo` (`MyApp.Repo`, `Repo`, `Schemas.Repo`) — no alias tracking needed for a
+plain `alias MyApp.Repo`, since that preserves the last segment — plus any module
+named in `:repo_modules`, alias-resolved for repos that are not named `Repo` at
+all.
 
 This is the complement of blitz `NoRampantRepos`, which excludes every `.exs` file
 and so never sees a single one of these — run both.
@@ -459,9 +460,17 @@ and so never sees a single one of these — run both.
 | `test_files` | `["_test.exs"]` | Path suffixes the check runs on — everything else is skipped |
 | `excluded_paths` | `["test/support/"]` | Path fragments exempt from the check (segment-boundary matched) — factories and `DataCase` helpers legitimately write |
 
-**Limitation:** a repo with no `FactoryEx` setup at all will fail every one of
+**Limitations:** a repo with no `FactoryEx` setup at all will fail every one of
 these issues with no path forward — ship this opt-in rather than in a
-recommended-default bundle until `FactoryEx` is wired up.
+recommended-default bundle until `FactoryEx` is wired up. `alias MyApp.Repo, as:
+DB` renames the last segment, so a bare `DB.insert!/1` call is a false negative
+under the default heuristic — name the real module in `:repo_modules`
+(`repo_modules: [MyApp.Repo]`) to catch it too, reported as `DB.insert!`. A
+cleanup call in `setup`/`on_exit` (`Repo.delete_all(User)`) still fires, but "use
+FactoryEx for test data" is not the fix for teardown — deleting test rows
+directly there is legitimate. Only a literal alias at the call site is
+recognised: `@repo.insert!()`, `repo().insert!()`, `apply(Repo, :insert!, [x])`,
+and `Ecto.Adapters.SQL.query!(Repo, "DELETE ...", [])` are all undetected.
 
 ### `NoSingleLetterVariables`
 

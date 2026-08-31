@@ -301,6 +301,109 @@ defmodule MikaCredoRules.NoRepoWritesInTestsTest do
     end
   end
 
+  describe "&run/2 and the :as false negative (documented in the moduledoc)" do
+    test "does not report a repo renamed via alias ..., as: by default" do
+      """
+      defmodule MyApp.OrdersTest do
+        alias MyApp.Repo, as: DB
+
+        test "creates an order" do
+          DB.insert!(%Order{total: 10})
+        end
+      end
+      """
+      |> to_source_file(@test_file)
+      |> run_check(NoRepoWritesInTests)
+      |> refute_issues()
+    end
+
+    test "reports the renamed repo once :repo_modules names the real module" do
+      """
+      defmodule MyApp.OrdersTest do
+        alias MyApp.Repo, as: DB
+
+        test "creates an order" do
+          DB.insert!(%Order{total: 10})
+        end
+      end
+      """
+      |> to_source_file(@test_file)
+      |> run_check(NoRepoWritesInTests, repo_modules: [MyApp.Repo])
+      |> assert_issue(fn issue -> assert issue.message =~ "DB.insert!" end)
+    end
+  end
+
+  describe "&run/2 known limitations" do
+    test "flags a teardown cleanup call, though FactoryEx is not the applicable fix" do
+      """
+      defmodule MyApp.OrdersTest do
+        setup do
+          on_exit(fn -> Repo.delete_all(User) end)
+        end
+      end
+      """
+      |> to_source_file(@test_file)
+      |> run_check(NoRepoWritesInTests)
+      |> assert_issue(fn issue -> assert issue.message =~ "Repo.delete_all" end)
+    end
+
+    test "does not report a repo behind a module attribute (@repo.insert!/1)" do
+      """
+      defmodule MyApp.OrdersTest do
+        @repo MyApp.Repo
+
+        test "creates an order" do
+          @repo.insert!(%Order{total: 10})
+        end
+      end
+      """
+      |> to_source_file(@test_file)
+      |> run_check(NoRepoWritesInTests)
+      |> refute_issues()
+    end
+
+    test "does not report a repo returned from a function call (repo().insert!/1)" do
+      """
+      defmodule MyApp.OrdersTest do
+        defp repo, do: MyApp.Repo
+
+        test "creates an order" do
+          repo().insert!(%Order{total: 10})
+        end
+      end
+      """
+      |> to_source_file(@test_file)
+      |> run_check(NoRepoWritesInTests)
+      |> refute_issues()
+    end
+
+    test "does not report apply/3 dispatch to a repo" do
+      """
+      defmodule MyApp.OrdersTest do
+        test "creates an order" do
+          apply(Repo, :insert!, [%Order{total: 10}])
+        end
+      end
+      """
+      |> to_source_file(@test_file)
+      |> run_check(NoRepoWritesInTests)
+      |> refute_issues()
+    end
+
+    test "does not report Ecto.Adapters.SQL.query!/3 raw writes" do
+      """
+      defmodule MyApp.OrdersTest do
+        test "cleans up" do
+          Ecto.Adapters.SQL.query!(Repo, "DELETE FROM orders", [])
+        end
+      end
+      """
+      |> to_source_file(@test_file)
+      |> run_check(NoRepoWritesInTests)
+      |> refute_issues()
+    end
+  end
+
   describe "&run/2 honours the :functions param" do
     test "flags only the configured functions" do
       """

@@ -77,18 +77,28 @@ defmodule MikaCredoRules.NoRepoWritesInTests do
 
   A repo is identified two ways: any `__aliases__` path whose last segment is
   `:Repo` (`MyApp.Repo`, `Repo`, `Schemas.Repo`) — which needs no alias
-  tracking, since Elixir's own aliasing always preserves the last segment —
-  plus any module named in `:repo_modules`, alias-resolved for repos that are
-  not named `Repo` at all.
+  tracking for a plain `alias MyApp.Repo`, since that preserves `:Repo` as the
+  last segment — plus any module named in `:repo_modules`, alias-resolved for
+  repos that are not named `Repo` at all.
 
   This is the complement of blitz `NoRampantRepos`, which excludes every
   `.exs` file and so never sees a single one of these. Run both.
 
   ## Limitations
 
-  A repo with no `FactoryEx` setup at all will fail every one of these issues
-  with no path forward — ship this opt-in rather than in a recommended-default
-  bundle until `FactoryEx` is wired up.
+    * A repo with no `FactoryEx` setup at all will fail every one of these
+      issues with no path forward — ship this opt-in rather than in a
+      recommended-default bundle until `FactoryEx` is wired up.
+    * `alias MyApp.Repo, as: DB` renames the last segment, so a bare
+      `DB.insert!/1` call is a false negative under the default heuristic.
+      Name the real module in `:repo_modules` (`repo_modules: [MyApp.Repo]`)
+      to catch it too — alias resolution then reports it as `DB.insert!`.
+    * A cleanup call in `setup`/`on_exit` (`Repo.delete_all(User)`) is still a
+      write and still fires — but "use FactoryEx for test data" is not the
+      fix for teardown; deleting test rows directly is legitimate there.
+    * Only a literal alias at the call site is recognised. `@repo.insert!()`,
+      `repo().insert!()`, `apply(Repo, :insert!, [x])`, and
+      `Ecto.Adapters.SQL.query!(Repo, "DELETE ...", [])` are all undetected.
   """
   @explanation [check: @moduledoc]
 
