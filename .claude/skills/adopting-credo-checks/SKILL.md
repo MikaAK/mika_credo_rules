@@ -28,6 +28,15 @@ the deliverable is enabled-what-passes plus a quantified backlog, never a mass r
    must copy, verify with `git check-ignore` and stage explicit paths only, never `git add -A`.
 5. **Conditional checks vs actual deps:** no `:error_message` → drop ErrorMessageRequired; mocking
    lib in use → drop NoMockingLibraries; no SharedUtils → drop NoReimplementedHelper.
+6. **mix.exs / `.credo.exs` / config-scoped checks need those paths in `files.included`, or
+   they are dark.** A typical `included: ["lib/", "test/"]` matches neither file — both live at
+   repo root, outside both globs — so `MixDepsAst`-based checks (`TestOnlyDepsScoped`,
+   `InUmbrellaDepsNoVersion`) and `CredoConfigNamedDefault` run on 0 files and report green while
+   checking nothing. Confirmed empirically: not one of 19 adopting repos' `.credo.exs` files
+   already lists `mix.exs` or `.credo.exs` in `included`. Add the literal filenames
+   (`included: ["lib/", "test/", "mix.exs", ".credo.exs"]`) before trusting a green run — this
+   matters most for `CredoConfigNamedDefault`, whose entire purpose is catching a silently-green
+   config; leaving it dark defeats the check it exists to be.
 
 ## Triage
 
