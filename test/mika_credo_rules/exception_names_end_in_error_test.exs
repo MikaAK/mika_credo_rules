@@ -15,7 +15,8 @@ defmodule MikaCredoRules.ExceptionNamesEndInErrorTest do
       |> to_source_file(@lib_file)
       |> run_check(ExceptionNamesEndInError)
       |> assert_issue(fn issue ->
-        assert issue.line_no === 2
+        assert issue.line_no === 1
+        assert issue.column === 11
         assert issue.trigger === "BadHTTPCode"
         assert issue.message =~ "BadHTTPCode found"
         assert issue.message =~ "must end in \"Error\""
@@ -86,7 +87,7 @@ defmodule MikaCredoRules.ExceptionNamesEndInErrorTest do
       """
       |> to_source_file(@lib_file)
       |> run_check(ExceptionNamesEndInError)
-      |> assert_issue(fn issue -> assert issue.line_no === 3 end)
+      |> assert_issue(fn issue -> assert issue.line_no === 2 end)
     end
 
     test "does not report a plain module sharing a file with an exception" do
@@ -112,6 +113,23 @@ defmodule MikaCredoRules.ExceptionNamesEndInErrorTest do
         defmacro __using__(_opts) do
           quote do
             defexception [:message]
+          end
+        end
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(ExceptionNamesEndInError)
+      |> refute_issues()
+    end
+
+    test "does not report a nested defmodule template generated inside a quote" do
+      """
+      defmodule MyApp.ExceptionBuilder do
+        defmacro __using__(_opts) do
+          quote do
+            defmodule Foo do
+              defexception [:message]
+            end
           end
         end
       end
