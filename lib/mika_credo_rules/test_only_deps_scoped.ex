@@ -62,9 +62,18 @@ defmodule MikaCredoRules.TestOnlyDepsScoped do
 
   `:test_only_packages` and `:require_runtime_false` are checked
   independently — a package on both lists (e.g. `:wallaby`) missing both
-  options is reported twice, once per missing option. `only: :test` and
-  `only: [:dev, :test]` both satisfy the first check; any 2-tuple, 3-tuple,
-  or opts-only (git/path) dep shape is recognised.
+  options is reported twice, once per missing option. `only: :dev`, `only:
+  :test`, and `only: [:dev, :test]` all satisfy the first check; any
+  2-tuple, 3-tuple, or opts-only (git/path) dep shape is recognised.
+
+  ## Limitations
+
+  The `only:` check only rejects values that still include `:prod` (a bare
+  `only: :prod` or a list containing it) — it does not validate against a
+  fixed list of "real" environments. An unconventional atom like
+  `only: :nonsense` satisfies the check just as well as `only: :test`,
+  because both keep the dependency out of a production release, which is
+  the only invariant this check actually protects.
   """
   @explanation [check: @moduledoc]
 
@@ -100,10 +109,19 @@ defmodule MikaCredoRules.TestOnlyDepsScoped do
   end
 
   defp maybe_flag_missing_only(issues, dep, source_file, context) do
-    if dep.pkg in context.test_only_packages and is_nil(Keyword.get(dep.opts, :only)) do
+    if dep.pkg in context.test_only_packages and missing_only_scoping?(dep) do
       [violation(dep, source_file, :only) | issues]
     else
       issues
+    end
+  end
+
+  defp missing_only_scoping?(dep) do
+    case Keyword.get(dep.opts, :only) do
+      nil -> true
+      :prod -> true
+      envs when is_list(envs) -> :prod in envs
+      _other -> false
     end
   end
 
@@ -124,8 +142,8 @@ defmodule MikaCredoRules.TestOnlyDepsScoped do
 
     format_issue(issue_meta,
       message:
-        "#{trigger} missing only: found — test-only dependency #{trigger} must be scoped " <>
-          "with only: :test (or only: [:dev, :test])",
+        "#{trigger} missing only: found — dev/test-only dependency #{trigger} must be scoped " <>
+          "with only: :dev, only: :test, or only: [:dev, :test]",
       trigger: trigger,
       line_no: violation.line_no
     )

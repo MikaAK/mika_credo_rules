@@ -632,10 +632,16 @@ end
 
 `:test_only_packages` and `:require_runtime_false` are checked
 independently — a package on both lists (e.g. `:wallaby`) missing both
-options is reported twice, once per missing option. `only: :test` and
-`only: [:dev, :test]` both satisfy the first check, and every dep shape is
-recognised: 2-tuple with a version, 3-tuple with a version and opts, and the
-opts-only 2-tuple git/path form.
+options is reported twice, once per missing option. `only: :dev`, `only:
+:test`, and `only: [:dev, :test]` all satisfy the first check, and every dep
+shape is recognised: 2-tuple with a version, 3-tuple with a version and opts,
+and the opts-only 2-tuple git/path form.
+
+**Limitation:** the `only:` check only rejects values that still include
+`:prod` — it does not validate against a fixed list of "real" environments,
+so an unconventional atom like `only: :nonsense` satisfies it just as well
+as `only: :test`, since both keep the dependency out of a production
+release.
 
 This package's own `.credo.exs` drops `:credo` from `:test_only_packages`:
 `mika_credo_rules`'s modules `use Credo.Check`, so `:credo` must compile in

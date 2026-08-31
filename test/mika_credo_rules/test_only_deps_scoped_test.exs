@@ -24,6 +24,21 @@ defmodule MikaCredoRules.TestOnlyDepsScopedTest do
       end)
     end
 
+    test "the only: message names dev scoping, not just test scoping" do
+      """
+      defmodule MyApp.MixProject do
+        defp deps do
+          [
+            {:ex_doc, "~> 0.34", runtime: false}
+          ]
+        end
+      end
+      """
+      |> to_source_file("mix.exs")
+      |> run_check(TestOnlyDepsScoped)
+      |> assert_issue(fn issue -> assert issue.message =~ "only: :dev" end)
+    end
+
     test "reports a 3-tuple dep that isn't runtime-relevant but is missing only:" do
       """
       defmodule MyApp.MixProject do
@@ -67,6 +82,36 @@ defmodule MikaCredoRules.TestOnlyDepsScopedTest do
       |> to_source_file("mix.exs")
       |> run_check(TestOnlyDepsScoped)
       |> refute_issues()
+    end
+
+    test "reports when only: is the bare atom :prod" do
+      """
+      defmodule MyApp.MixProject do
+        defp deps do
+          [
+            {:credo, "~> 1.7", only: :prod, runtime: false}
+          ]
+        end
+      end
+      """
+      |> to_source_file("mix.exs")
+      |> run_check(TestOnlyDepsScoped)
+      |> assert_issue(fn issue -> assert issue.message =~ "only:" end)
+    end
+
+    test "reports when only: is a list that still includes :prod" do
+      """
+      defmodule MyApp.MixProject do
+        defp deps do
+          [
+            {:credo, "~> 1.7", only: [:dev, :test, :prod], runtime: false}
+          ]
+        end
+      end
+      """
+      |> to_source_file("mix.exs")
+      |> run_check(TestOnlyDepsScoped)
+      |> assert_issue(fn issue -> assert issue.message =~ "only:" end)
     end
   end
 
