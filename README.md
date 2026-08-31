@@ -50,6 +50,12 @@ checks: %{
 }
 ```
 
+Three checks scope themselves to `mix.exs` and `.credo.exs`, not `lib/`/`test/`:
+`InUmbrellaDepsNoVersion`, `TestOnlyDepsScoped`, and `CredoConfigNamedDefault`. Most
+of Mika's per-project configs narrow `files.included` down to `["lib/", "test/"]` —
+add `"mix.exs"` and `".credo.exs"` to that list (as this package's own `.credo.exs`
+does) or these three checks will never see a file to run against.
+
 ## Checks
 
 | Check | Category | What it catches |
@@ -57,9 +63,11 @@ checks: %{
 | [`EnsureLoadedBeforeExported`](#ensureloadedbeforeexported) | `:warning` | `function_exported?`/`macro_exported?`/`Code.loaded?/1` not guarded by `Code.ensure_loaded?/1` |
 | [`DistributionRequiresBuckets`](#distributionrequiresbuckets) | `:warning` | `distribution/2` whose literal opts omit `:reporter_options` |
 | [`EctoMetricsRequiresAppAtom`](#ectometricsrequiresappatom) | `:warning` | `PrometheusTelemetry.Metrics.Ecto.metrics/0` — pass the app atom |
+| [`CredoConfigNamedDefault`](#credoconfignameddefault) | `:warning` | A `.credo.exs` with no config named `"default"` — Credo silently falls back to its own stock checks |
 | [`ErrorMessageRequired`](#errormessagerequired) | `:design` | `{:error, "string literal"}` tuples — use `%ErrorMessage{}` |
 | [`ExceptionNamesEndInError`](#exceptionnamesendinerror) | `:readability` | An exception module whose name does not end in `Error` |
 | [`GenServerRequiresHandleContinue`](#genserverrequireshandlecontinue) | `:refactor` | Real work in `init/1` instead of `handle_continue/2` |
+| [`InUmbrellaDepsNoVersion`](#inumbrelladepsnoversion) | `:readability` | `{:app, "~> x", in_umbrella: true}` — a version requirement on an in_umbrella dep |
 | [`LoggerModulePrefixAndInspect`](#loggermoduleprefixandinspect) | `:warning` | Logger messages missing the `#{__MODULE__}: ` prefix or interpolating values without `inspect/1` |
 | [`NoAccessOnStructSubject`](#noaccessonstructsubject) | `:warning` | `changeset[:name]` — `Access` on a struct raises `UndefinedFunctionError` |
 | [`NoApplicationEnvOutsideConfig`](#noapplicationenvoutsideconfig) | `:design` | Any read or write of application env outside a config module |
@@ -92,6 +100,7 @@ checks: %{
 | [`RefuteOverAssertNot`](#refuteoverassertnot) | `:readability` | `assert !expr` / `assert not expr` — use `refute` |
 | [`SingleModulePerFile`](#singlemoduleperfile) | `:design` | More than one top-level `defmodule` per file (nested modules allowed) |
 | [`StrictEquality`](#strictequality) | `:warning` | `==`/`!=` — use `===`/`!==` (Ecto query DSL exempt) |
+| [`TestOnlyDepsScoped`](#testonlydepsscoped) | `:warning` | A dev/test-only mix.exs dep missing `only:` or `runtime: false` |
 | [`TodosNeedTickets`](#todosneedtickets) | `:design` | TODO/FIXME comments without an adjacent ticket URL |
 
 ---
@@ -196,6 +205,54 @@ accepted to avoid flagging an unrelated module that happens to be named `Ecto`.
 | `module_functions` | `[{PrometheusTelemetry.Metrics.Ecto, :metrics}]` | `{module, function}` pairs whose zero-arity call is banned |
 | `excluded_paths` | `[]` | Path fragments exempt from the check |
 
+### `CredoConfigNamedDefault`
+
+A `.credo.exs` must have a config named `"default"` (or one of
+`:allowed_names`). `mix credo` selects the config named `"default"` unless
+`--config-name` is passed. If no config in the file has that name, Credo
+silently falls back to its own stock checks — printing a green run that
+executed none of the checks this file defines.
+
+```elixir
+# BAD — no config is named "default"; Credo silently runs its own defaults
+%{
+  configs: [
+    %{
+      name: "mika",
+      checks: []
+    }
+  ]
+}
+
+# GOOD — a config named "default" exists
+%{
+  configs: [
+    %{
+      name: "default",
+      checks: []
+    }
+  ]
+}
+```
+
+Only the literal `%{configs: [...]}` shape is inspected. A `.credo.exs` that
+builds its config dynamically (e.g. `Code.eval_file/1`, a function call) is
+skipped — this check can only verify what it can parse statically. A `name:`
+that isn't a string literal counts as a possible `"default"` rather than
+being flagged, since the check cannot evaluate it.
+
+**Limitations:** a `configs:` key is matched wherever it appears in the
+file, not only at the top level, so an unrelated nested map with its own
+`configs:` key is treated as the real config. A `configs:` list built with
+the cons operator (`[%{name: "default"} | rest]`) is not walked into, so a
+`"default"` hidden behind `|` goes unseen and the file is flagged as missing
+one even though it isn't — write `configs:` as a plain list literal.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `config_files` | `[".credo.exs"]` | Path suffixes treated as Credo config files |
+| `allowed_names` | `["default"]` | Config names Credo will actually select without `--config-name` |
+
 ### `ErrorMessageRequired`
 
 Error tuples must carry a structured `%ErrorMessage{}`
@@ -274,6 +331,37 @@ def handle_continue(:load, _state), do: {:noreply, MyApp.Repo.all(Job)}
 | Param | Default | Meaning |
 |---|---|---|
 | `allowed_modules` | `[Access, Enum, Keyword, Kernel, List, Logger, Map, NimbleOptions, String, {Process, :flag}, {Process, :monitor}, {Process, :send_after}]` | Callable from `init/1` without deferring. A bare module allows every function on it; a `{module, function}` tuple grants one function surgically — the defaults allow `Process.flag/2` while a blocking `Process.sleep/1` in `init/1` stays flagged. The list replaces the default. Erlang modules are plain atoms (`:ets` or `{:ets, :new}`). |
+
+### `InUmbrellaDepsNoVersion`
+
+An `in_umbrella: true` dependency must not also pin a version requirement. An
+in-umbrella dependency is resolved from the sibling app's own `mix.exs`, never
+from Hex — a version requirement on it is dead weight that can drift from the
+sibling's actual version and never gets enforced.
+
+```elixir
+# BAD — the version requirement is never checked against anything
+defp deps do
+  [
+    {:shared_utils, "~> 0.1", in_umbrella: true}
+  ]
+end
+
+# GOOD — the sibling app's own mix.exs is the only source of truth
+defp deps do
+  [
+    {:shared_utils, in_umbrella: true}
+  ]
+end
+```
+
+Only the 3-tuple form can trigger this — a 2-tuple `{:app, in_umbrella: true}`
+has no version slot to remove. `mix.exs` is matched by **basename**, not path
+suffix, so `lib/remix.exs` is never mistaken for a project file.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `mix_files` | `["mix.exs"]` | Filenames (matched by basename) treated as mix.exs files |
 
 ### `LoggerModulePrefixAndInspect`
 
@@ -1408,6 +1496,55 @@ caught. `start_permanent: Mix.env() == :prod` in mix.exs is also exempt.
 | Param | Default | Meaning |
 |---|---|---|
 | `ignored_functions` | `[:dynamic, :from, :where, :or_where, :having, :or_having, :select, :select_merge, :on, :join, :query, :subquery, :in]` | Calls whose arguments are exempt (the Ecto query DSL) |
+
+### `TestOnlyDepsScoped`
+
+A dev/test-only dependency must be scoped so it never ships to a release. A
+tool like `:credo` or `:ex_doc` has no business running in production —
+omitting `only:` pulls it (and its own transitive deps) into every
+environment, and omitting `runtime: false` on a compile-time-only tool lets
+it try to start an application that was never meant to run.
+
+```elixir
+# BAD — no only:, ships to every environment
+defp deps do
+  [
+    {:credo, "~> 1.7"}
+  ]
+end
+
+# GOOD — scoped to the environments it's actually needed in
+defp deps do
+  [
+    {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+    {:ex_doc, "~> 0.34", only: [:dev, :test], runtime: false}
+  ]
+end
+```
+
+`:test_only_packages` and `:require_runtime_false` are checked
+independently — a package on both lists (e.g. `:wallaby`) missing both
+options is reported twice, once per missing option. `only: :dev`, `only:
+:test`, and `only: [:dev, :test]` all satisfy the first check, and every dep
+shape is recognised: 2-tuple with a version, 3-tuple with a version and opts,
+and the opts-only 2-tuple git/path form.
+
+**Limitation:** the `only:` check only rejects values that still include
+`:prod` — it does not validate against a fixed list of "real" environments,
+so an unconventional atom like `only: :nonsense` satisfies it just as well
+as `only: :test`, since both keep the dependency out of a production
+release.
+
+This package's own `.credo.exs` drops `:credo` from `:test_only_packages`:
+`mika_credo_rules`'s modules `use Credo.Check`, so `:credo` must compile in
+every environment this package itself compiles in — `runtime: false` alone
+is the correct scoping here, unlike for a normal consumer.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `mix_files` | `["mix.exs"]` | Filenames (matched by basename) treated as mix.exs files |
+| `test_only_packages` | `[:wallaby, :credo, :dialyxir, :mix_test_watch, :excoveralls, :ex_doc, :mika_credo_rules]` | Packages that must carry an `only:` option |
+| `require_runtime_false` | `[:wallaby, :credo, :dialyxir, :ex_doc, :mika_credo_rules]` | Packages that must carry `runtime: false` |
 
 ### `TodosNeedTickets`
 

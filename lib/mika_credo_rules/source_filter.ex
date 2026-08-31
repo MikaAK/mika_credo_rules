@@ -80,6 +80,27 @@ defmodule MikaCredoRules.SourceFilter do
   end
 
   @doc """
+  True when `filename`'s basename exactly equals one of `names`.
+
+  Some whole-filenames are only safe to match by basename, not suffix — a
+  suffix like `"mix.exs"` also matches `"lib/remix.exs"` (an ordinary module
+  that happens to end the same way), and `matches_fragment?/2`'s
+  `ends_with?` branch has the identical flaw for any fragment lacking a
+  leading path separator. Use this for filenames with no natural boundary
+  character before them, such as `mix.exs`.
+
+      iex> MikaCredoRules.SourceFilter.matches_basename?("apps/my_app/mix.exs", ["mix.exs"])
+      true
+
+      iex> MikaCredoRules.SourceFilter.matches_basename?("lib/remix.exs", ["mix.exs"])
+      false
+  """
+  @spec matches_basename?(String.t(), [String.t()]) :: boolean()
+  def matches_basename?(filename, names) do
+    Path.basename(filename) in names
+  end
+
+  @doc """
   True when `filename` is an Elixir script (`.exs`) — mix.exs, config, tests.
   """
   @spec script_file?(String.t()) :: boolean()
