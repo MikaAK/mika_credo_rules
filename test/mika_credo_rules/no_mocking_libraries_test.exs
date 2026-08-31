@@ -251,6 +251,79 @@ defmodule MikaCredoRules.NoMockingLibrariesTest do
       |> run_check(NoMockingLibraries)
       |> assert_issue(fn issue -> assert issue.message =~ "Mox found" end)
     end
+
+    test "does not report a nested single-segment defmodule shadowing a bare reference" do
+      """
+      defmodule MyApp.WorkerTest do
+        defmodule Mock do
+          def stub(response), do: response
+        end
+
+        test "stubs a response" do
+          assert Mock.stub(:ok) === :ok
+        end
+      end
+      """
+      |> to_source_file(@test_file)
+      |> run_check(NoMockingLibraries)
+      |> refute_issues()
+    end
+
+    test "still reports a bare reference to a banned name defined via a top-level dotted defmodule" do
+      """
+      defmodule MyApp.Mock do
+        def go, do: Mock.expect(:x)
+      end
+      """
+      |> to_source_file(@test_file)
+      |> run_check(NoMockingLibraries)
+      |> assert_issue(fn issue -> assert issue.message =~ "Mock found" end)
+    end
+
+    test "still reports a banned name after an unrelated top-level dotted defmodule" do
+      """
+      defmodule Mimic.Helper do
+        def build, do: :ok
+      end
+
+      defmodule MyApp.WorkerTest do
+        def stub, do: Mimic.stub(:x)
+      end
+      """
+      |> to_source_file(@test_file)
+      |> run_check(NoMockingLibraries)
+      |> assert_issue(fn issue -> assert issue.message =~ "Mimic found" end)
+    end
+
+    test "a nested dotted defmodule shadows only its first segment" do
+      """
+      defmodule Outer do
+        defmodule Bar.Baz do
+          def build, do: :ok
+        end
+
+        def use_bar, do: Bar.thing()
+      end
+      """
+      |> to_source_file(@test_file)
+      |> run_check(NoMockingLibraries, modules: [Bar])
+      |> refute_issues()
+    end
+
+    test "a nested dotted defmodule does not shadow its second segment" do
+      """
+      defmodule Outer do
+        defmodule Bar.Baz do
+          def build, do: :ok
+        end
+
+        def use_baz, do: Baz.thing()
+      end
+      """
+      |> to_source_file(@test_file)
+      |> run_check(NoMockingLibraries, modules: [Baz])
+      |> assert_issue(fn issue -> assert issue.message =~ "Baz found" end)
+    end
   end
 
   describe "&run/2 resolves aliases of banned modules" do

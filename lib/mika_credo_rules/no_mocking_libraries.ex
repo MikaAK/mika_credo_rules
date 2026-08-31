@@ -15,9 +15,11 @@ defmodule MikaCredoRules.NoMockingLibraries do
 
         Module names are matched on their exact segments, so a project module that
         merely contains a banned name (`MyApp.MockingBird`, `MyApp.Mock`) is never
-        flagged. A locally defined `defmodule Mock do ... end` also shadows the
-        bare name for the rest of the file — only the fully-qualified
-        `Elixir.Mock` spelling stays flagged.
+        flagged. A nested `defmodule Mock do ... end` also shadows the bare name
+        for the rest of the file, and a nested, dotted `defmodule Bar.Baz do ...
+        end` shadows only its first segment (`Bar`). A top-level, dotted
+        defmodule shadows nothing. Only the fully-qualified `Elixir.Mock`
+        spelling always stays flagged.
         """,
         erlang_modules: """
         A list of erlang mocking module atoms to ban. Any remote call on one of
@@ -53,10 +55,14 @@ defmodule MikaCredoRules.NoMockingLibraries do
   Banned modules are matched on their exact segments — `MyApp.MockingBird` and
   `MyApp.Mock` are project modules, not mocking libraries, and are never flagged.
 
-  A locally defined module also shadows a banned bare name — a test helper named
-  `Mock` is a project module, not a reference to the `Mock` library:
+  A locally defined module also shadows a banned bare name, but only the single
+  segment that Elixir's own implicit nested-module aliasing actually introduces.
+  A nested, single-segment `defmodule Mock do ... end` shadows `Mock` outright —
+  a test helper named `Mock` is a project module, not a reference to the `Mock`
+  library:
 
-      # GOOD — a local `Mock` helper module, not a reference to the Mock library
+      # GOOD — a local, nested `Mock` helper module, not a reference to the
+      # Mock library
       defmodule MyApp.WorkerTest do
         defmodule Mock do
           def build(response), do: response
@@ -65,6 +71,17 @@ defmodule MikaCredoRules.NoMockingLibraries do
         test "builds a response" do
           assert Mock.build(:ok) === :ok
         end
+      end
+
+  A nested, dotted `defmodule Bar.Baz do ... end` shadows only its first
+  segment (`Bar`) — `Baz` alone stays unshadowed. A *top-level*, dotted
+  `defmodule MyApp.Mock do ... end` shadows nothing at all, since nothing in
+  the file aliases the bare name `Mock` to it:
+
+      # BAD — a top-level, dotted defmodule shadows nothing; `Mock` still
+      # means the banned library
+      defmodule MyApp.Mock do
+        def go, do: Mock.expect(:x)
       end
 
   Only the bare spelling is shadowed — writing out the fully-qualified
@@ -94,15 +111,59 @@ defmodule MikaCredoRules.NoMockingLibraries do
     }
   end
 
-  # A locally defined `defmodule Mock do ... end` is a third shadowing source that
-  # alias resolution does not cover — it emits the same bare `[:Mock]` AST as a
-  # reference to the banned name. Only the bare spelling is deregistered; the
-  # fully-qualified `Elixir.Mock` spelling is unambiguous and stays flagged.
+  # A locally defined `defmodule` is a third shadowing source that alias
+  # resolution does not cover — it emits the same bare `[:Mock]` AST as a
+  # reference to a banned single-segment name. A single-segment defmodule name
+  # (`Mock`) always shadows the bare name. A dotted, multi-segment name
+  # (`Bar.Baz`) shadows only its first segment (`Bar`, not `Baz`) — and only
+  # when the defmodule is nested inside another module, the way Elixir's own
+  # implicit nested-module aliasing works. A top-level `defmodule MyApp.Mock`
+  # defines a fully qualified module that nothing in the file aliases to a
+  # bare name, so it shadows nothing.
   defp shadowed_names(source_file, module_segments) do
     source_file
-    |> AstHelpers.defined_module_names()
-    |> Enum.map(&[List.last(&1)])
+    |> defmodule_definitions()
+    |> Enum.map(&shadow_name/1)
+    |> Enum.reject(&is_nil/1)
     |> Enum.filter(&(&1 in module_segments))
+  end
+
+  defp shadow_name({[single_segment], _nested?}), do: [single_segment]
+  defp shadow_name({name_segments, true}), do: [List.first(name_segments)]
+  defp shadow_name({_name_segments, false}), do: nil
+
+  # Every `defmodule` in the file, paired with whether it is nested inside
+  # another module. The outer pass collects only top-level defmodules and
+  # prunes their bodies (`{nil, acc}`) so nested ones are never double
+  # counted here; each top-level body is then rescanned on its own to find
+  # every defmodule nested inside it, at any depth.
+  defp defmodule_definitions(source_file) do
+    source_file
+    |> Credo.Code.prewalk(&collect_top_level_defmodule/2)
+    |> Enum.flat_map(fn {name_segments, body} ->
+      [{name_segments, false} | nested_defmodule_names(body)]
+    end)
+  end
+
+  defp collect_top_level_defmodule(
+         {:defmodule, _meta, [{:__aliases__, _, name_segments}, [do: body]]},
+         definitions
+       ) do
+    {nil, [{name_segments, body} | definitions]}
+  end
+
+  defp collect_top_level_defmodule(ast, definitions), do: {ast, definitions}
+
+  defp nested_defmodule_names(body) do
+    body
+    |> Macro.prewalk([], fn
+      {:defmodule, _meta, [{:__aliases__, _, name_segments}, _inner_body]} = ast, names ->
+        {ast, [{name_segments, true} | names]}
+
+      ast, names ->
+        {ast, names}
+    end)
+    |> elem(1)
   end
 
   # `alias MyApp.{Mock, Foo}` — the inner aliases are relative to the base, so

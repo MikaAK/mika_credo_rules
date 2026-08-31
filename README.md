@@ -356,10 +356,13 @@ end
 Module names are matched on exact segments with full alias resolution — a project
 module that merely contains a banned name (`MyApp.MockingBird`, `MyApp.Mock`) is
 never flagged, while `alias Mox, as: M` still is. A locally defined module also
-shadows a banned bare name — `defmodule Mock do ... end` and bare references to
-it are never flagged, since `Mock` is now a project module for the rest of the
-file. Only the bare spelling is shadowed — the fully-qualified `Elixir.Mock`
-spelling still reports.
+shadows a banned bare name, but only the single segment that Elixir's own
+implicit nested-module aliasing actually introduces: a nested, single-segment
+`defmodule Mock do ... end` shadows `Mock` outright, and a nested, dotted
+`defmodule Bar.Baz do ... end` shadows only its first segment (`Bar`), not
+`Baz`. A *top-level*, dotted `defmodule MyApp.Mock do ... end` shadows nothing
+at all. Only the bare spelling is ever shadowed — the fully-qualified
+`Elixir.Mock` spelling still reports.
 
 | Param | Default | Meaning |
 |---|---|---|
