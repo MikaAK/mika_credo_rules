@@ -11,8 +11,10 @@ defmodule MikaCredoRules.TodosNeedTickets do
     explanations: [
       params: [
         tags: """
-        A list of tag words treated as todos. Matching is case-insensitive, so a
-        default entry like `"TODO"` matches `TODO`, `Todo` and `todo` alike.
+        A list of tag words treated as todos. Each tag matches as a whole word —
+        matching is case-insensitive, so a default entry like `"TODO"` matches
+        `TODO`, `Todo` and `todo` alike, but not `TODOs` or `HACKney`, where a
+        letter, digit or underscore immediately follows the tag.
         """,
         ticket_url: """
         The substring a line must contain to count as a ticket reference. The
@@ -57,6 +59,15 @@ defmodule MikaCredoRules.TodosNeedTickets do
       # https://linear.app/company/issue/443
       # TODO: make this faster
 
+  Each tag matches as a whole word, not a prefix — a trailing letter, digit or
+  underscore means the comment is prose, not an annotation:
+
+      # GOOD — "TODOs" is a word, not the tag "TODO"
+      # TODOs remaining before release
+
+      # BAD — the tag itself, still needs a ticket
+      # TODO: remaining work
+
   Doc attributes (`@doc`, `@moduledoc`, `@shortdoc`) that start with a tag word are
   flagged too. Line adjacency means nothing inside a doc string, so a doc todo
   passes when the same doc string contains a ticket URL anywhere.
@@ -80,6 +91,7 @@ defmodule MikaCredoRules.TodosNeedTickets do
   @explanation [check: @moduledoc]
 
   @doc_attribute_names [:doc, :moduledoc, :shortdoc]
+  @tag_boundary "(?![A-Za-z0-9_])"
 
   @doc false
   @impl Credo.Check
@@ -132,8 +144,12 @@ defmodule MikaCredoRules.TodosNeedTickets do
     written === String.upcase(written) and has_colon?
   end
 
+  # Not anchored to `\A` — `TagHelper`'s trigger keeps the character before
+  # the comment marker, so a tag appended directly onto code with no
+  # separating space would otherwise never match and silently skip the
+  # casing check.
   defp extract_tag_casing(text, tag) do
-    regex = Regex.compile!("\\A\\s*(?:#\\s*)?(#{Regex.escape(tag)})(:?)", "i")
+    regex = Regex.compile!("\\s*(?:#\\s*)?(#{Regex.escape(tag)})(:?)", "i")
 
     case Regex.run(regex, text) do
       [_full, written, colon] -> {written, colon === ":"}
@@ -156,9 +172,23 @@ defmodule MikaCredoRules.TodosNeedTickets do
 
   defp comment_tags(source_file, tags) do
     tags
-    |> Enum.flat_map(&TagHelper.tags(source_file, &1, false))
+    |> Enum.flat_map(&comment_tags_for(source_file, &1))
     |> Enum.uniq_by(&elem(&1, 0))
     |> Enum.map(fn {line_no, _line, trigger} -> {:comment, line_no, trigger} end)
+  end
+
+  # `TagHelper`'s own regex has no trailing word boundary, so a widened tag
+  # like `HACK` or `OPTIMIZE` fires on ordinary prose (`hackney`, `optimized`).
+  # Filter its output rather than reimplementing comment scanning.
+  defp comment_tags_for(source_file, tag) do
+    source_file
+    |> TagHelper.tags(tag, false)
+    |> Enum.filter(&tag_word_boundary?(&1, tag))
+  end
+
+  defp tag_word_boundary?({_line_no, _line, trigger}, tag) do
+    regex = Regex.compile!("#\\s*#{Regex.escape(tag)}#{@tag_boundary}", "i")
+    trigger =~ regex
   end
 
   defp doc_tags(source_file, tags) do
@@ -171,7 +201,7 @@ defmodule MikaCredoRules.TodosNeedTickets do
   # Mirrors the anchored regex Credo.Check.Design.TagHelper uses for doc
   # attributes: the doc string must start with the tag word.
   defp doc_tags_for(source_file, tag) do
-    regex = Regex.compile!("\\A\\s*#{tag}:?\\s*.+", "i")
+    regex = Regex.compile!("\\A\\s*#{tag}#{@tag_boundary}:?\\s*.+", "i")
 
     Credo.Code.prewalk(source_file, &doc_traverse(&1, &2, regex))
   end

@@ -557,6 +557,12 @@ Suppression is **per-todo**, not per-file — a URL elsewhere in the file does n
 excuse an unticketed TODO. For `@doc`/`@moduledoc` todos, the URL must appear
 somewhere in the same doc string.
 
+Each tag matches as a whole word, not a prefix — a trailing letter, digit or
+underscore means the comment is prose, not an annotation. `# TODOs remaining`
+does not fire; `# TODO: remaining work` does. This is a behaviour change from
+earlier versions, which treated a tag as a prefix and fired on ordinary words
+like `hackney` or `reviewed`.
+
 Setting `:require_uppercase` to `true` additionally requires the tag itself to be
 spelled in uppercase and immediately followed by a colon — this is a formatting
 check, independent of ticketing, so `# todo: ...` is reported even with a ticket
