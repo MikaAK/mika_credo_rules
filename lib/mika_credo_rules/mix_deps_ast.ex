@@ -40,17 +40,26 @@ defmodule MikaCredoRules.MixDepsAst do
   The line number of `dep` inside `source_file`.
 
   Returns the AST-derived line when the tuple already carried one (the
-  3-tuple form), otherwise falls back to a raw scan of `source_file`'s
-  source for the package's atom text.
+  3-tuple form), otherwise falls back to a scan of `source_file`'s source
+  for the opening `{:pkg` of the dependency tuple, with comments, strings,
+  charlists, and sigils blanked out first so neither a `plt_add_apps:` list
+  naming the same atom nor a comment referencing an old pin can outrank the
+  real declaration.
+
+  ## Limitations
+
+  The same package declared twice as 2-tuples still resolves to the first
+  occurrence — there is no way to disambiguate duplicate bare-tuple
+  declarations from source text alone.
   """
   @spec line_no(dep(), Credo.SourceFile.t()) :: pos_integer() | nil
   def line_no(%{line_no: line_no}, _source_file) when not is_nil(line_no), do: line_no
 
   def line_no(%{pkg: pkg}, source_file) do
-    pattern = ~r/:#{Regex.escape(to_string(pkg))}\b/
+    pattern = ~r/\{\s*:#{Regex.escape(to_string(pkg))}\b/
 
     source_file
-    |> Credo.SourceFile.source()
+    |> Credo.Code.clean_charlists_strings_sigils_and_comments()
     |> String.split("\n")
     |> Enum.with_index(1)
     |> Enum.find_value(fn {line, line_no} -> if line =~ pattern, do: line_no end)

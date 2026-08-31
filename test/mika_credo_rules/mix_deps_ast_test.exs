@@ -117,6 +117,55 @@ defmodule MikaCredoRules.MixDepsAstTest do
 
       assert MixDepsAst.line_no(dep, source) === 4
     end
+
+    test "does not pin an earlier line whose atom text only mentions the package" do
+      source =
+        Credo.SourceFile.parse(
+          """
+          defmodule Sample.MixProject do
+            def project do
+              [
+                dialyzer: [plt_add_apps: [:ex_unit, :mix, :credo, :dialyxir]]
+              ]
+            end
+
+            defp deps do
+              [
+                {:credo, "~> 1.7"},
+                {:dialyxir, "~> 1.4"}
+              ]
+            end
+          end
+          """,
+          "mix.exs"
+        )
+
+      [credo_dep, dialyxir_dep] = MixDepsAst.deps(source)
+
+      assert MixDepsAst.line_no(credo_dep, source) === 10
+      assert MixDepsAst.line_no(dialyxir_dep, source) === 11
+    end
+
+    test "does not pin a comment mentioning the package above the real dep" do
+      source =
+        Credo.SourceFile.parse(
+          """
+          # {:credo, "~> 1.6"} was the old pin
+          defmodule Sample.MixProject do
+            defp deps do
+              [
+                {:credo, "~> 1.7"}
+              ]
+            end
+          end
+          """,
+          "mix.exs"
+        )
+
+      [dep] = MixDepsAst.deps(source)
+
+      assert MixDepsAst.line_no(dep, source) === 5
+    end
   end
 
   defp deps_from(code) do
