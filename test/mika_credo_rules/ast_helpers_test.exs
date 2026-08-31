@@ -72,6 +72,27 @@ defmodule MikaCredoRules.AstHelpersTest do
 
       assert paths === AstHelpers.module_paths(Application)
     end
+
+    test "ORDER: a later alias overrides an earlier one (shadow wins)" do
+      code = "defmodule Sample do\n  alias Task.Supervisor\n  alias MyApp.Supervisor\nend"
+      paths = resolve(code, [Task.Supervisor])
+
+      refute [:Supervisor] in paths
+    end
+
+    test "ORDER: a later alias overrides an earlier one (add wins)" do
+      code = "defmodule Sample do\n  alias MyApp.Supervisor\n  alias Task.Supervisor\nend"
+      paths = resolve(code, [Task.Supervisor])
+
+      assert [:Supervisor] in paths
+    end
+
+    test "ORDER: a later re-alias restores a shadowed single-segment name" do
+      code = "defmodule Sample do\n  alias MyApp.Application\n  alias Application\nend"
+      paths = resolve(code, [Application])
+
+      assert [:Application] in paths
+    end
   end
 
   defp resolve(code, modules) do

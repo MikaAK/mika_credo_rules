@@ -60,8 +60,10 @@ defmodule MikaCredoRules.AstHelpers do
   gain ADD entries. An add-only implementation silently breaks single-segment
   callers; a remove-happy one wrongly un-exempts multi-segment callers.
 
-  Aliases are collected into a flat, file-level table rather than a lexical
-  scope stack. An alias declared inside one function is treated as applying to
+  Aliases are applied in source order, so a later alias overrides an earlier
+  one for the same local name — matching Elixir's own last-alias-wins
+  resolution. Aliases are collected into a flat, file-level table rather than
+  a lexical scope stack. An alias declared inside one function is treated as applying to
   the whole file. Aliases injected by a macro (via `__using__`) are invisible
   to Credo and cannot be resolved.
   """
@@ -71,6 +73,7 @@ defmodule MikaCredoRules.AstHelpers do
 
     source_file
     |> Credo.Code.prewalk(&collect_aliases/2)
+    |> Enum.reverse()
     |> Enum.reduce(base, &apply_alias/2)
   end
 
@@ -106,12 +109,10 @@ defmodule MikaCredoRules.AstHelpers do
 
   defp apply_alias({name, target}, paths) do
     target = strip_elixir_prefix(target)
+    resolves_to_target? = target in paths or [Elixir | target] in paths
+    paths = paths -- [name]
 
-    cond do
-      target in paths -> [name | paths]
-      name in paths -> paths -- [name]
-      true -> paths
-    end
+    if resolves_to_target?, do: [name | paths], else: paths
   end
 
   defp strip_elixir_prefix([Elixir | segments]), do: segments

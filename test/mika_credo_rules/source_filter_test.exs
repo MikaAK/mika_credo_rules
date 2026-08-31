@@ -55,6 +55,42 @@ defmodule MikaCredoRules.SourceFilterTest do
     end
   end
 
+  describe "matches_segment_suffix?/2" do
+    test "matches a path segment ending with the suffix" do
+      assert SourceFilter.matches_segment_suffix?("apps/tiingo_api/lib/x.ex", ["_api"])
+
+      assert SourceFilter.matches_segment_suffix?(
+               "apps/developer_ai_icons/lib/developer_ai_icons.ex",
+               ["_icons"]
+             )
+    end
+
+    test "trims a trailing slash from the suffix" do
+      assert SourceFilter.matches_segment_suffix?(
+               "apps/my_app_web/lib/my_app_web/live/foo_live.ex",
+               ["_web/"]
+             )
+    end
+
+    test "matches a segment that is exactly the suffix" do
+      assert SourceFilter.matches_segment_suffix?("apps/_api/lib/x.ex", ["_api"])
+    end
+
+    test "does not match the suffix inside a segment" do
+      refute SourceFilter.matches_segment_suffix?("lib/vendor/rest_api_notes/x.ex", ["_api"])
+      refute SourceFilter.matches_segment_suffix?("lib/cobweb/handler.ex", ["_web"])
+      refute SourceFilter.matches_segment_suffix?("lib/api/x.ex", ["_api"])
+    end
+
+    test "does not match a file basename with an extension" do
+      refute SourceFilter.matches_segment_suffix?("lib/foo_api.ex", ["_api"])
+    end
+
+    test "empty suffix list matches nothing" do
+      refute SourceFilter.matches_segment_suffix?("apps/tiingo_api/lib/x.ex", [])
+    end
+  end
+
   describe "script_file?/1" do
     test "true for .exs files" do
       assert SourceFilter.script_file?("mix.exs")
