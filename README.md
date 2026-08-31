@@ -55,6 +55,8 @@ checks: %{
 | Check | Category | What it catches |
 |---|---|---|
 | [`EnsureLoadedBeforeExported`](#ensureloadedbeforeexported) | `:warning` | `function_exported?`/`macro_exported?`/`Code.loaded?/1` not guarded by `Code.ensure_loaded?/1` |
+| [`DistributionRequiresBuckets`](#distributionrequiresbuckets) | `:warning` | `distribution/2` whose literal opts omit `:reporter_options` |
+| [`EctoMetricsRequiresAppAtom`](#ectometricsrequiresappatom) | `:warning` | `PrometheusTelemetry.Metrics.Ecto.metrics/0` — pass the app atom |
 | [`ErrorMessageRequired`](#errormessagerequired) | `:design` | `{:error, "string literal"}` tuples — use `%ErrorMessage{}` |
 | [`ExceptionNamesEndInError`](#exceptionnamesendinerror) | `:readability` | An exception module whose name does not end in `Error` |
 | [`GenServerRequiresHandleContinue`](#genserverrequireshandlecontinue) | `:refactor` | Real work in `init/1` instead of `handle_continue/2` |
@@ -77,6 +79,7 @@ checks: %{
 | [`NoMixEnvAtRuntime`](#nomixenvatruntime) | `:warning` | `Mix.env()`/`Mix.target()` in compiled code — crashes in releases |
 | [`NoMockingLibraries`](#nomockinglibraries) | `:design` | Any reference to Mox, Hammox, Mock, Mimic, Patch or `:meck` |
 | [`NoNilComparison`](#nonilcomparison) | `:readability` | `x == nil` / `x != nil` — use `is_nil/1` |
+| [`NoObanInsertBang`](#nobaninsertbang) | `:warning` | `Oban.insert!`/`Oban.insert_all!` in application code — prefer the non-bang form and handle `{:error, _}` |
 | [`NoProcessSleepInTests`](#noprocesssleepintests) | `:warning` | `Process.sleep/1` and `:timer.sleep/1` in test files |
 | [`NoRawEts`](#norawets) | `:design` | Raw `:ets` calls — wrap in `Cache.ETS` from elixir_cache |
 | [`NoReimplementedHelper`](#noreimplementedhelper) | `:design` | Local re-implementations of shared library helpers |
@@ -85,6 +88,7 @@ checks: %{
 | [`NoVacuousAssert`](#novacuousassert) | `:warning` | `assert true` / `assert <literal>` / `refute false` / `assert x === x` — placeholder assertions that can never fail |
 | [`NoWordSigilLists`](#nowordsigillists) | `:readability` | `~w`/`~W` sigils — use a list literal instead |
 | [`NoTruthyAndOr`](#notruthyandor) | `:warning` | `and`/`or`/`not` on a provably-nilable operand (`opts[:key]`, `Map.get/2`, ...) — use `&&`/`\|\|`/`!` |
+| [`ObanWorkerRequiresMaxAttempts`](#obanworkerrequiresmaxattempts) | `:design` | `use Oban.Worker` whose literal opts omit `:max_attempts` |
 | [`RefuteOverAssertNot`](#refuteoverassertnot) | `:readability` | `assert !expr` / `assert not expr` — use `refute` |
 | [`SingleModulePerFile`](#singlemoduleperfile) | `:design` | More than one top-level `defmodule` per file (nested modules allowed) |
 | [`StrictEquality`](#strictequality) | `:warning` | `==`/`!=` — use `===`/`!==` (Ecto query DSL exempt) |
@@ -128,6 +132,69 @@ Bare-atom-qualified calls (`:"Elixir.Code".ensure_loaded?(mod)`) and a bare
 `ensure_loaded?(mod)` reached through `import Code` are not recognized as
 guards, and `apply(Kernel, :function_exported?, [...])` evades the check
 entirely.
+
+### `DistributionRequiresBuckets`
+
+`Telemetry.Metrics.distribution/2` must set `:reporter_options` with `:buckets`.
+A Prometheus histogram with no configured buckets has nothing to sort observations
+into — the reporter emits no usable data for the metric.
+
+```elixir
+# BAD
+distribution("my_app.job.duration.microseconds", event_name: @stop, measurement: :duration)
+
+# GOOD
+distribution("my_app.job.duration.microseconds",
+  event_name: @stop,
+  measurement: :duration,
+  reporter_options: [buckets: @buckets]
+)
+```
+
+Both the imported local call (behind `import Telemetry.Metrics` in the same file)
+and the qualified `Telemetry.Metrics.distribution(...)` are caught, including
+aliases of the module. A bare local `distribution/2` call with no
+`import Telemetry.Metrics` in the file is left alone — a local function that
+happens to share the name is not this library's `distribution/2`, and a
+`distribution/2` function definition head is never mistaken for a call. Only a
+literal opts keyword list is inspected; opts built by a helper or held in a
+variable are silently skipped. `reporter_options: [buckets: [...]]` is checked
+too — `reporter_options: []` still fires, since a histogram with no buckets
+emits no usable data either way.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `functions` | `[:distribution]` | `Telemetry.Metrics` functions checked |
+| `required_keys` | `[:reporter_options]` | Options that must be present in the literal opts |
+| `excluded_paths` | `[]` | Path fragments exempt from the check |
+
+### `EctoMetricsRequiresAppAtom`
+
+`PrometheusTelemetry.Metrics.Ecto.metrics/0` must not be called — pass the app
+atom. `metrics/1` takes exactly one argument (an app atom, used as the telemetry
+event-name prefix and the metric's label tag) and has no `metrics/0` clause —
+calling it with no arguments does not compile.
+
+```elixir
+# BAD — metrics/0 has no clause; this does not compile
+metrics: [PrometheusTelemetry.Metrics.Ecto.metrics()]
+
+# GOOD — the app atom is the telemetry event-name prefix and label
+metrics: [PrometheusTelemetry.Metrics.Ecto.metrics(:my_app)]
+```
+
+Every spelling of the module is caught, including
+`alias PrometheusTelemetry.Metrics` + `Metrics.Ecto.metrics()` and the
+fully-qualified `Elixir.PrometheusTelemetry.Metrics.Ecto.metrics()`. It
+deliberately never matches a bare `Ecto.metrics()` — even one reached via
+`alias PrometheusTelemetry.Metrics.Ecto` — because `Ecto` is too common a name
+to trust a bare alias for on its own; that spelling is a known false negative,
+accepted to avoid flagging an unrelated module that happens to be named `Ecto`.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `module_functions` | `[{PrometheusTelemetry.Metrics.Ecto, :metrics}]` | `{module, function}` pairs whose zero-arity call is banned |
+| `excluded_paths` | `[]` | Path fragments exempt from the check |
 
 ### `ErrorMessageRequired`
 
@@ -867,6 +934,36 @@ def fallback(value) when is_nil(value), do: :default
 |---|---|---|
 | `operators` | `[:==, :!=, :===, :!==]` | Operators that count as a nil comparison when either operand is the `nil` literal |
 
+### `NoObanInsertBang`
+
+`Oban.insert!/1,2,3` and `Oban.insert_all!/1,2,3` must not be used in application
+code. `Oban.insert!` raises on failure — a changeset error, a database blip — taking
+down the calling process. `Oban.insert/1` returns `{:ok, job} | {:error, reason}`,
+which lets the caller decide how to respond instead of crashing.
+
+```elixir
+# BAD — a changeset error crashes the caller
+def enqueue(id), do: Oban.insert!(MyApp.Workers.Sync.new(%{id: id}))
+
+# GOOD — the caller decides how to respond
+def enqueue(id) do
+  with {:ok, _job} <- Oban.insert(MyApp.Workers.Sync.new(%{id: id})), do: :ok
+end
+```
+
+Every spelling of the module is caught, including `alias Oban, as: MyOban` and the
+fully-qualified `Elixir.Oban.insert!(...)`, and Mix tasks are in scope. `Oban.insert_all!/1,2,3`
+does not exist on Oban 2.19–2.22 — `Oban.insert_all/1..3` has no bang variant and
+raises by design instead (documented for use inside `Repo.transaction/2` rollback),
+so it is deliberately not flagged. The entry stays in the default `:functions` list
+only so a future Oban release adding a real bang variant is caught without a config
+change.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `functions` | `[:insert!, :insert_all!]` | `Oban` functions that count as a raising insert |
+| `excluded_paths` | `["_test.exs", "test/", "priv/repo/seeds"]` | Path fragments exempt from the check (segment-boundary matched) — a bang insert is legitimate test/seed setup |
+
 ### `NoProcessSleepInTests`
 
 Tests must not sleep — sleeping is the number one source of flaky, slow suites. A
@@ -1198,6 +1295,38 @@ this runs, so that specific shape can never raise there.
 |---|---|---|
 | `nilable_functions` | `[{Access, :get, 2}, {Map, :get, 2}, {Keyword, :get, 2}, {List, :first, 1}, {Map, :get, 3}, {Keyword, :get, 3}]` | `{module, function, arity}` shapes that count as provably nilable — `{Access, :get, 2}` also covers `x[:k]` bracket syntax |
 | `excluded_paths` | `["test/support/"]` | Path fragments exempt from the check (segment-boundary matched) |
+
+### `ObanWorkerRequiresMaxAttempts`
+
+`use Oban.Worker` must set `:max_attempts` explicitly. Oban silently falls back to
+its own retry default when `:max_attempts` is omitted, but different job shapes
+need different attempt counts — a worker that never states its count is a worker
+nobody has actually thought about.
+
+```elixir
+# BAD — relies on whatever Oban currently defaults to
+defmodule MyApp.Workers.SyncOrder do
+  use Oban.Worker, queue: :orders
+end
+
+# GOOD — the attempt count is a deliberate part of the worker's contract
+defmodule MyApp.Workers.SyncOrder do
+  use Oban.Worker, queue: :orders, max_attempts: 3
+end
+```
+
+Every spelling of the module is caught, including `alias Oban.Worker` and the
+fully-qualified `Elixir.Oban.Worker`. `:unique` is deliberately not required by
+default — pick it per worker, not by blanket rule. Only a literal keyword list in
+the `use` clause is inspected; a non-literal option list (a module attribute or a
+call that builds the options) is invisible to a static check and is silently
+skipped rather than guessed at. `use Oban.Pro.Worker, ...` is a different module
+and is invisible to this check.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `required_keys` | `[:max_attempts]` | `use Oban.Worker` options that must be present |
+| `excluded_paths` | `["test/"]` | Path fragments exempt from the check — throwaway fixture workers under test/ |
 
 ### `RefuteOverAssertNot`
 
