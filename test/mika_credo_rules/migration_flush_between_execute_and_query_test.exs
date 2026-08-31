@@ -77,6 +77,46 @@ defmodule MikaCredoRules.MigrationFlushBetweenExecuteAndQueryTest do
       |> assert_issues(fn issues -> assert Enum.map(issues, & &1.line_no) === [6, 7] end)
     end
 
+    test "reports a query wrapped in a case subject" do
+      """
+      defmodule MyApp.Repo.Migrations.ReassignObanWorkers do
+        use Ecto.Migration
+
+        def up do
+          execute "UPDATE oban_jobs SET queue = 'scanner' WHERE worker IN ('A','B')"
+
+          case repo().query!("SELECT DISTINCT worker FROM oban_jobs WHERE queue = 'default'") do
+            {:ok, result} -> result
+            {:error, reason} -> raise reason
+          end
+        end
+      end
+      """
+      |> to_source_file(@migration_file)
+      |> run_check(MigrationFlushBetweenExecuteAndQuery)
+      |> assert_issue(fn issue ->
+        assert issue.line_no === 7
+        assert issue.trigger === "repo().query!"
+      end)
+    end
+
+    test "reports a query wrapped in a match assignment" do
+      """
+      defmodule MyApp.Repo.Migrations.ReassignObanWorkers do
+        use Ecto.Migration
+
+        def up do
+          execute "UPDATE oban_jobs SET queue = 'scanner' WHERE worker IN ('A','B')"
+          {:ok, result} = repo().query!("SELECT DISTINCT worker FROM oban_jobs WHERE queue = 'default'")
+          result
+        end
+      end
+      """
+      |> to_source_file(@migration_file)
+      |> run_check(MigrationFlushBetweenExecuteAndQuery)
+      |> assert_issue(fn issue -> assert issue.line_no === 6 end)
+    end
+
     test "reports in an umbrella migration path" do
       """
       defmodule MyApp.Repo.Migrations.ReassignObanWorkers do
@@ -148,6 +188,27 @@ defmodule MikaCredoRules.MigrationFlushBetweenExecuteAndQueryTest do
         use Ecto.Migration
 
         def up, do: repo().query!("SELECT 1")
+      end
+      """
+      |> to_source_file(@migration_file)
+      |> run_check(MigrationFlushBetweenExecuteAndQuery)
+      |> refute_issues()
+    end
+
+    test "does not report a case-wrapped query when flush() precedes it" do
+      """
+      defmodule MyApp.Repo.Migrations.ReassignObanWorkers do
+        use Ecto.Migration
+
+        def up do
+          execute "UPDATE oban_jobs SET queue = 'scanner' WHERE worker IN ('A','B')"
+          flush()
+
+          case repo().query!("SELECT 1") do
+            {:ok, result} -> result
+            {:error, reason} -> raise reason
+          end
+        end
       end
       """
       |> to_source_file(@migration_file)

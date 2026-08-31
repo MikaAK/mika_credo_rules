@@ -136,18 +136,64 @@ defmodule MikaCredoRules.MigrationFlushBetweenExecuteAndQuery do
        do: :flush
 
   defp classify_statement(
-         {{:., _, [{:repo, repo_meta, []}, function]}, _meta, args},
+         {{:., _, [{:repo, _, []}, _function]}, _meta, args} = ast,
          %{direct_query_functions: direct_query_functions}
        )
        when is_list(args) do
-    if function in direct_query_functions do
-      {:query, %{function: function, line_no: repo_meta[:line], column: repo_meta[:column]}}
-    else
-      :other
-    end
+    ast |> dot_call_query(direct_query_functions) |> query_or_other()
+  end
+
+  # `case repo().query!(...) do ... end` — the query is the case's subject,
+  # evaluated eagerly before any branch. This is the shape
+  # `dev-ai/.../rename_oban_default_queue.exs` was mined from; without this
+  # clause the query is invisible because the top-level statement is `:case`,
+  # not a direct dot-call.
+  defp classify_statement(
+         {:case, _meta, [subject | _clauses]},
+         %{direct_query_functions: direct_query_functions}
+       ) do
+    subject |> find_nested_query(direct_query_functions) |> query_or_other()
+  end
+
+  # `{:ok, result} = repo().query!(...)` — the query is the match's right-hand
+  # side, also evaluated eagerly.
+  defp classify_statement(
+         {:=, _meta, [_lhs, rhs]},
+         %{direct_query_functions: direct_query_functions}
+       ) do
+    rhs |> find_nested_query(direct_query_functions) |> query_or_other()
   end
 
   defp classify_statement(_statement, _context), do: :other
+
+  defp query_or_other(nil), do: :other
+  defp query_or_other(query), do: {:query, query}
+
+  defp find_nested_query(expr, direct_query_functions) do
+    {_ast, queries} =
+      Macro.prewalk(expr, [], &collect_dot_call_query(&1, &2, direct_query_functions))
+
+    List.last(queries)
+  end
+
+  defp collect_dot_call_query(ast, queries, direct_query_functions) do
+    case dot_call_query(ast, direct_query_functions) do
+      nil -> {ast, queries}
+      query -> {ast, [query | queries]}
+    end
+  end
+
+  defp dot_call_query(
+         {{:., _, [{:repo, repo_meta, []}, function]}, _meta, args},
+         direct_query_functions
+       )
+       when is_list(args) do
+    if function in direct_query_functions do
+      %{function: function, line_no: repo_meta[:line], column: repo_meta[:column]}
+    end
+  end
+
+  defp dot_call_query(_ast, _direct_query_functions), do: nil
 
   defp issue_for(query, issue_meta) do
     trigger = "repo().#{query.function}"
