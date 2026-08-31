@@ -60,25 +60,25 @@ does) or these three checks will never see a file to run against.
 
 | Check | Category | What it catches |
 |---|---|---|
-| [`EnsureLoadedBeforeExported`](#ensureloadedbeforeexported) | `:warning` | `function_exported?`/`macro_exported?`/`Code.loaded?/1` not guarded by `Code.ensure_loaded?/1` |
-| [`DistributionRequiresBuckets`](#distributionrequiresbuckets) | `:warning` | `distribution/2` whose literal opts omit `:reporter_options` |
-| [`EctoMetricsRequiresAppAtom`](#ectometricsrequiresappatom) | `:warning` | `PrometheusTelemetry.Metrics.Ecto.metrics/0` — pass the app atom |
-| [`CredoConfigNamedDefault`](#credoconfignameddefault) | `:warning` | A `.credo.exs` with no config named `"default"` — Credo silently falls back to its own stock checks |
 | [`AbsintheDataloaderPluginRequired`](#absinthedataloaderpluginrequired) | `:warning` | A schema that builds a `Dataloader` but omits `Absinthe.Middleware.Dataloader` from `plugins/0` |
 | [`CacheOptsNoHardcodedUri`](#cacheoptsnohardcodeduri) | `:warning` | A literal `uri`/`file_path` inside `use Cache, ..., opts: [...]` |
 | [`CacheRequiresSandboxOption`](#cacherequiressandboxoption) | `:warning` | `use Cache, ...` without `sandbox?: Mix.env() === :test` |
+| [`CredoConfigNamedDefault`](#credoconfignameddefault) | `:warning` | A `.credo.exs` with no config named `"default"` — Credo silently falls back to its own stock checks |
+| [`DistributionRequiresBuckets`](#distributionrequiresbuckets) | `:warning` | `distribution/2` whose literal opts omit `:reporter_options` |
+| [`EctoMetricsRequiresAppAtom`](#ectometricsrequiresappatom) | `:warning` | `PrometheusTelemetry.Metrics.Ecto.metrics/0` — pass the app atom |
+| [`EnsureLoadedBeforeExported`](#ensureloadedbeforeexported) | `:warning` | `function_exported?`/`macro_exported?`/`Code.loaded?/1` not guarded by `Code.ensure_loaded?/1` |
 | [`ErrorMessageRequired`](#errormessagerequired) | `:design` | `{:error, "string literal"}` tuples — use `%ErrorMessage{}` |
 | [`ExceptionNamesEndInError`](#exceptionnamesendinerror) | `:readability` | An exception module whose name does not end in `Error` |
 | [`GenServerRequiresHandleContinue`](#genserverrequireshandlecontinue) | `:refactor` | Real work in `init/1` instead of `handle_continue/2` |
+| [`HologramCookieKeysMustBeStrings`](#hologramcookiekeysmustbestrings) | `:warning` | An atom key literal passed to `get_cookie`/`put_cookie`/`delete_cookie` — cookie keys must be strings |
 | [`InUmbrellaDepsNoVersion`](#inumbrelladepsnoversion) | `:readability` | `{:app, "~> x", in_umbrella: true}` — a version requirement on an in_umbrella dep |
 | [`LiveViewSubscribeRequiresConnected`](#liveviewsubscriberequiresconnected) | `:warning` | A PubSub subscribe in `mount/3` not guarded by `connected?/1` |
-| [`HologramCookieKeysMustBeStrings`](#hologramcookiekeysmustbestrings) | `:warning` | An atom key literal passed to `get_cookie`/`put_cookie`/`delete_cookie` — cookie keys must be strings |
 | [`LoggerModulePrefixAndInspect`](#loggermoduleprefixandinspect) | `:warning` | Logger messages missing the `#{__MODULE__}: ` prefix or interpolating values without `inspect/1` |
-| [`NoAccessOnStructSubject`](#noaccessonstructsubject) | `:warning` | `changeset[:name]` — `Access` on a struct raises `UndefinedFunctionError` |
 | [`MigrationExecuteInChange`](#migrationexecuteinchange) | `:warning` | `execute/1` inside `def change` — irreversible, Ecto cannot roll it back |
 | [`MigrationFlushBetweenExecuteAndQuery`](#migrationflushbetweenexecuteandquery) | `:warning` | A direct `repo().query` after `execute/1,2` with no `flush()` between them |
 | [`MigrationForeignKeyNeedsIndex`](#migrationforeignkeyneedsindex) | `:warning` | A `references(...)` foreign key column with no covering index in the same migration |
 | [`MonolithicTemplateComponent`](#monolithictemplatecomponent) | `:refactor` | A `~H`/`~F` body spanning too many lines — decompose into smaller function components |
+| [`NoAccessOnStructSubject`](#noaccessonstructsubject) | `:warning` | `changeset[:name]` — `Access` on a struct raises `UndefinedFunctionError` |
 | [`NoApplicationEnvOutsideConfig`](#noapplicationenvoutsideconfig) | `:design` | Any read or write of application env outside a config module |
 | [`NoAtomStringKeyFallback`](#noatomstringkeyfallback) | `:warning` | `m["key"] \|\| m[:key]` mixed-key fallback reads — normalize keys at the boundary |
 | [`NoBarePatternMatchOnFallible`](#nobarepatternmatchonfallible) | `:warning` | `{:ok, x} = call()` — a bare match with no handling for the failure path |
@@ -86,13 +86,13 @@ does) or these three checks will never see a file to run against.
 | [`NoBlanketRescue`](#noblanketrescue) | `:warning` | Catch-all rescue clauses that swallow exceptions |
 | [`NoBooleanLiteralComparison`](#nobooleanliteralcomparison) | `:readability` | `x == true` / `x != false` — use the value directly (Ecto query DSL exempt) |
 | [`NoCastAllKeys`](#nocastallkeys) | `:warning` | `cast(data, params, Map.keys(params))` — a mass-assignment hole |
+| [`NoClickHandlerOnNonInteractiveElement`](#noclickhandleronnoninteractiveelement) | `:design` | A click binding on `<span>`/`<div>`/... with no `role`/`tabindex` escape hatch |
 | [`NoCondElseAtom`](#nocondelseatom) | `:readability` | A `cond`'s last clause falling through on `:else` instead of `true` |
-| [`NoForWithDiscardedResult`](#noforwithdiscardedresult) | `:warning` | A `for` comprehension in statement position whose built result is thrown away |
+| [`NoContinueFromLiveViewMount`](#nocontinuefromliveviewmount) | `:warning` | `mount/3` returning `{:ok, socket, {:continue, term}}` — a GenServer shape, not a LiveView one |
 | [`NoDirectErlangRpc`](#nodirecterlangrpc) | `:design` | Direct `:rpc`/`:erpc` calls and `Node.spawn*` — route through your app's RPC wrapper |
 | [`NoDirectHttpClient`](#nodirecthttpclient) | `:design` | Direct `Finch`/`HTTPoison`/`Tesla`/`Req` calls — route through your app's HTTP wrapper |
-| [`NoContinueFromLiveViewMount`](#nocontinuefromliveviewmount) | `:warning` | `mount/3` returning `{:ok, socket, {:continue, term}}` — a GenServer shape, not a LiveView one |
 | [`NoEctoSchemaInWebApp`](#noectoschemainwebapp) | `:design` | `use Ecto.Schema` inside a web app instead of the dedicated `_pg`/`schemas` app |
-| [`NoClickHandlerOnNonInteractiveElement`](#noclickhandleronnoninteractiveelement) | `:design` | A click binding on `<span>`/`<div>`/... with no `role`/`tabindex` escape hatch |
+| [`NoForWithDiscardedResult`](#noforwithdiscardedresult) | `:warning` | A `for` comprehension in statement position whose built result is thrown away |
 | [`NoHeexSigilInHologramModule`](#noheexsigilinhologrammodule) | `:warning` | `~H` sigils or `use Phoenix.LiveView`/`use Phoenix.Component` inside a Hologram module |
 | [`NoIdentityRewrap`](#noidentityrewrap) | `:refactor` | `case` expressions whose every clause returns its pattern unchanged |
 | [`NoInspectModuleInMigrationSql`](#noinspectmoduleinmigrationsql) | `:warning` | `inspect/1` or string interpolation of a module alias in a migration |
@@ -101,7 +101,7 @@ does) or these three checks will never see a file to run against.
 | [`NoMixEnvAtRuntime`](#nomixenvatruntime) | `:warning` | `Mix.env()`/`Mix.target()` in compiled code — crashes in releases |
 | [`NoMockingLibraries`](#nomockinglibraries) | `:design` | Any reference to Mox, Hammox, Mock, Mimic, Patch or `:meck` |
 | [`NoNilComparison`](#nonilcomparison) | `:readability` | `x == nil` / `x != nil` — use `is_nil/1` |
-| [`NoObanInsertBang`](#nobaninsertbang) | `:warning` | `Oban.insert!`/`Oban.insert_all!` in application code — prefer the non-bang form and handle `{:error, _}` |
+| [`NoObanInsertBang`](#noobaninsertbang) | `:warning` | `Oban.insert!`/`Oban.insert_all!` in application code — prefer the non-bang form and handle `{:error, _}` |
 | [`NoPhxBindingsInHoloTemplate`](#nophxbindingsinholotemplate) | `:warning` | `phx-*` attributes or EEx tags inside a `~HOLO` template |
 | [`NoProcessSleepInTests`](#noprocesssleepintests) | `:warning` | `Process.sleep/1` and `:timer.sleep/1` in test files |
 | [`NoRawEts`](#norawets) | `:design` | Raw `:ets` calls — wrap in `Cache.ETS` from elixir_cache |
@@ -111,173 +111,25 @@ does) or these three checks will never see a file to run against.
 | [`NoSelfSendZeroDelay`](#noselfsendzerodelay) | `:refactor` | `Process.send_after(self(), _, 0)` and `send(self(), _)` in `init/1` — use `{:continue, term}` instead |
 | [`NoServerCodeInHologramAction`](#noservercodeinhologramaction) | `:warning` | DB/IO/server calls, session/cookie access, or unimplemented client forms inside a Hologram action |
 | [`NoSingleLetterVariables`](#nosinglelettervariables) | `:readability` | Single-letter variable bindings |
-| [`NoVacuousAssert`](#novacuousassert) | `:warning` | `assert true` / `assert <literal>` / `refute false` / `assert x === x` — placeholder assertions that can never fail |
-| [`NoWordSigilLists`](#nowordsigillists) | `:readability` | `~w`/`~W` sigils — use a list literal instead |
-| [`NoTruthyAndOr`](#notruthyandor) | `:warning` | `and`/`or`/`not` on a provably-nilable operand (`opts[:key]`, `Map.get/2`, ...) — use `&&`/`\|\|`/`!` |
-| [`ObanWorkerRequiresMaxAttempts`](#obanworkerrequiresmaxattempts) | `:design` | `use Oban.Worker` whose literal opts omit `:max_attempts` |
 | [`NoStaticNotLoadedDropList`](#nostaticnotloadeddroplist) | `:design` | `Map.drop(map, [:__meta__, ...])` — a static drop-list scrubbing `%Ecto.Association.NotLoaded{}` |
 | [`NoTaskAsyncInGenServer`](#notaskasyncingenserver) | `:warning` | `Task.async`/`Task.Supervisor.async` inside a GenServer/GenStage callback — a crashing task takes the server down |
-| [`NoUnsupervisedTaskStart`](#nounsupervisedtaskstart) | `:warning` | `Task.start` — a crash inside it is silently discarded |
 | [`NoTelemetrySupervisorModule`](#notelemetrysupervisormodule) | `:design` | A `*Telemetry` module using `Supervisor` — add a `PrometheusTelemetry` child spec instead |
-| [`PrometheusExporterMustBeGated`](#prometheusexportermustbegated) | `:warning` | `exporter: [enabled?: true]` — the metrics endpoint must be gated to prod |
+| [`NoTruthyAndOr`](#notruthyandor) | `:warning` | `and`/`or`/`not` on a provably-nilable operand (`opts[:key]`, `Map.get/2`, ...) — use `&&`/`\|\|`/`!` |
+| [`NoUnsupervisedTaskStart`](#nounsupervisedtaskstart) | `:warning` | `Task.start` — a crash inside it is silently discarded |
+| [`NoVacuousAssert`](#novacuousassert) | `:warning` | `assert true` / `assert <literal>` / `refute false` / `assert x === x` — placeholder assertions that can never fail |
+| [`NoWordSigilLists`](#nowordsigillists) | `:readability` | `~w`/`~W` sigils — use a list literal instead |
+| [`ObanWorkerRequiresMaxAttempts`](#obanworkerrequiresmaxattempts) | `:design` | `use Oban.Worker` whose literal opts omit `:max_attempts` |
 | [`PhxValueNoDashes`](#phxvaluenodashes) | `:warning` | A dashed multiword `phx-value-*` key — LiveView never converts it, so a `%{"foo_bar" => _}` handler clause won't match |
+| [`PrometheusExporterMustBeGated`](#prometheusexportermustbegated) | `:warning` | `exporter: [enabled?: true]` — the metrics endpoint must be gated to prod |
 | [`RefuteOverAssertNot`](#refuteoverassertnot) | `:readability` | `assert !expr` / `assert not expr` — use `refute` |
 | [`SingleModulePerFile`](#singlemoduleperfile) | `:design` | More than one top-level `defmodule` per file (nested modules allowed) |
 | [`SqlSandboxPlugMustBeCompileGated`](#sqlsandboxplugmustbecompilegated) | `:warning` | `plug Phoenix.Ecto.SQL.Sandbox` not gated on `Application.compile_env/2,3` |
 | [`StrictEquality`](#strictequality) | `:warning` | `==`/`!=` — use `===`/`!==` (Ecto query DSL exempt) |
-| [`TestOnlyDepsScoped`](#testonlydepsscoped) | `:warning` | A dev/test-only mix.exs dep missing `only:` or `runtime: false` |
 | [`TaskAsyncStreamRequiresTimeout`](#taskasyncstreamrequirestimeout) | `:warning` | `Task.async_stream`/`Task.Supervisor.async_stream` missing an explicit `:timeout` |
+| [`TestOnlyDepsScoped`](#testonlydepsscoped) | `:warning` | A dev/test-only mix.exs dep missing `only:` or `runtime: false` |
 | [`TodosNeedTickets`](#todosneedtickets) | `:design` | TODO/FIXME comments without an adjacent ticket URL |
 
 ---
-
-### `EnsureLoadedBeforeExported`
-
-`function_exported?/3`, `macro_exported?/3`, and `Code.loaded?/1` must be
-guarded by `Code.ensure_loaded?/1` in the same clause body. `function_exported?/3`
-returns `false` for a module that has not yet been loaded into the current
-process's code table — not an error, just silently wrong — which flakes
-intermittently across ExUnit seeds instead of failing deterministically. Each
-guard scope (a `def`/`defp`/`defmacro` clause body, or an ExUnit
-`test`/`setup`/`setup_all` block) is checked independently.
-
-```elixir
-# BAD — returns false on first access before the code table loads
-def compile(graph_module, opts) do
-  if function_exported?(graph_module, :compile, 1) do
-    graph_module.compile(opts)
-  end
-end
-
-# GOOD
-def compile(graph_module, opts) do
-  if Code.ensure_loaded?(graph_module) and function_exported?(graph_module, :compile, 1) do
-    graph_module.compile(opts)
-  end
-end
-```
-
-| Param | Default | Meaning |
-|---|---|---|
-| `functions` | `[:function_exported?, :macro_exported?, {Code, :loaded?}]` | Module-capability checks that must be guarded — bare atoms match local/imported/`Kernel.`-qualified calls, `{module, function}` tuples match calls qualified on that module (alias-resolved) |
-| `guard_functions` | `[{Code, :ensure_loaded?}, {Code, :ensure_loaded}, {Code, :ensure_compiled}, {Code, :ensure_compiled!}]` | `{module, function}` calls that satisfy the guard anywhere in the same clause body |
-| `excluded_paths` | `[]` | Path fragments exempt from the check (segment-boundary matched) |
-
-Bare-atom-qualified calls (`:"Elixir.Code".ensure_loaded?(mod)`) and a bare
-`ensure_loaded?(mod)` reached through `import Code` are not recognized as
-guards, and `apply(Kernel, :function_exported?, [...])` evades the check
-entirely.
-
-### `DistributionRequiresBuckets`
-
-`Telemetry.Metrics.distribution/2` must set `:reporter_options` with `:buckets`.
-A Prometheus histogram with no configured buckets has nothing to sort observations
-into — the reporter emits no usable data for the metric.
-
-```elixir
-# BAD
-distribution("my_app.job.duration.microseconds", event_name: @stop, measurement: :duration)
-
-# GOOD
-distribution("my_app.job.duration.microseconds",
-  event_name: @stop,
-  measurement: :duration,
-  reporter_options: [buckets: @buckets]
-)
-```
-
-Both the imported local call (behind `import Telemetry.Metrics` in the same file)
-and the qualified `Telemetry.Metrics.distribution(...)` are caught, including
-aliases of the module. A bare local `distribution/2` call with no
-`import Telemetry.Metrics` in the file is left alone — a local function that
-happens to share the name is not this library's `distribution/2`, and a
-`distribution/2` function definition head is never mistaken for a call. Only a
-literal opts keyword list is inspected; opts built by a helper or held in a
-variable are silently skipped. `reporter_options: [buckets: [...]]` is checked
-too — `reporter_options: []` still fires, since a histogram with no buckets
-emits no usable data either way.
-
-| Param | Default | Meaning |
-|---|---|---|
-| `functions` | `[:distribution]` | `Telemetry.Metrics` functions checked |
-| `required_keys` | `[:reporter_options]` | Options that must be present in the literal opts |
-| `excluded_paths` | `[]` | Path fragments exempt from the check |
-
-### `EctoMetricsRequiresAppAtom`
-
-`PrometheusTelemetry.Metrics.Ecto.metrics/0` must not be called — pass the app
-atom. `metrics/1` takes exactly one argument (an app atom, used as the telemetry
-event-name prefix and the metric's label tag) and has no `metrics/0` clause —
-calling it with no arguments does not compile.
-
-```elixir
-# BAD — metrics/0 has no clause; this does not compile
-metrics: [PrometheusTelemetry.Metrics.Ecto.metrics()]
-
-# GOOD — the app atom is the telemetry event-name prefix and label
-metrics: [PrometheusTelemetry.Metrics.Ecto.metrics(:my_app)]
-```
-
-Every spelling of the module is caught, including
-`alias PrometheusTelemetry.Metrics` + `Metrics.Ecto.metrics()` and the
-fully-qualified `Elixir.PrometheusTelemetry.Metrics.Ecto.metrics()`. It
-deliberately never matches a bare `Ecto.metrics()` — even one reached via
-`alias PrometheusTelemetry.Metrics.Ecto` — because `Ecto` is too common a name
-to trust a bare alias for on its own; that spelling is a known false negative,
-accepted to avoid flagging an unrelated module that happens to be named `Ecto`.
-
-| Param | Default | Meaning |
-|---|---|---|
-| `module_functions` | `[{PrometheusTelemetry.Metrics.Ecto, :metrics}]` | `{module, function}` pairs whose zero-arity call is banned |
-| `excluded_paths` | `[]` | Path fragments exempt from the check |
-
-### `CredoConfigNamedDefault`
-
-A `.credo.exs` must have a config named `"default"` (or one of
-`:allowed_names`). `mix credo` selects the config named `"default"` unless
-`--config-name` is passed. If no config in the file has that name, Credo
-silently falls back to its own stock checks — printing a green run that
-executed none of the checks this file defines.
-
-```elixir
-# BAD — no config is named "default"; Credo silently runs its own defaults
-%{
-  configs: [
-    %{
-      name: "mika",
-      checks: []
-    }
-  ]
-}
-
-# GOOD — a config named "default" exists
-%{
-  configs: [
-    %{
-      name: "default",
-      checks: []
-    }
-  ]
-}
-```
-
-Only the literal `%{configs: [...]}` shape is inspected. A `.credo.exs` that
-builds its config dynamically (e.g. `Code.eval_file/1`, a function call) is
-skipped — this check can only verify what it can parse statically. A `name:`
-that isn't a string literal counts as a possible `"default"` rather than
-being flagged, since the check cannot evaluate it.
-
-**Limitations:** a `configs:` key is matched wherever it appears in the
-file, not only at the top level, so an unrelated nested map with its own
-`configs:` key is treated as the real config. A `configs:` list built with
-the cons operator (`[%{name: "default"} | rest]`) is not walked into, so a
-`"default"` hidden behind `|` goes unseen and the file is flagged as missing
-one even though it isn't — write `configs:` as a plain list literal.
-
-| Param | Default | Meaning |
-|---|---|---|
-| `config_files` | `[".credo.exs"]` | Path suffixes treated as Credo config files |
-| `allowed_names` | `["default"]` | Config names Credo will actually select without `--config-name` |
 
 ### `AbsintheDataloaderPluginRequired`
 
@@ -403,6 +255,154 @@ recognised as shadowing the way a project-level `alias` is — a `use Cache,
 can still be matched against `elixir_cache`'s `Cache` and flagged
 incorrectly.
 
+### `CredoConfigNamedDefault`
+
+A `.credo.exs` must have a config named `"default"` (or one of
+`:allowed_names`). `mix credo` selects the config named `"default"` unless
+`--config-name` is passed. If no config in the file has that name, Credo
+silently falls back to its own stock checks — printing a green run that
+executed none of the checks this file defines.
+
+```elixir
+# BAD — no config is named "default"; Credo silently runs its own defaults
+%{
+  configs: [
+    %{
+      name: "mika",
+      checks: []
+    }
+  ]
+}
+
+# GOOD — a config named "default" exists
+%{
+  configs: [
+    %{
+      name: "default",
+      checks: []
+    }
+  ]
+}
+```
+
+Only the literal `%{configs: [...]}` shape is inspected. A `.credo.exs` that
+builds its config dynamically (e.g. `Code.eval_file/1`, a function call) is
+skipped — this check can only verify what it can parse statically. A `name:`
+that isn't a string literal counts as a possible `"default"` rather than
+being flagged, since the check cannot evaluate it.
+
+**Limitations:** a `configs:` key is matched wherever it appears in the
+file, not only at the top level, so an unrelated nested map with its own
+`configs:` key is treated as the real config. A `configs:` list built with
+the cons operator (`[%{name: "default"} | rest]`) is not walked into, so a
+`"default"` hidden behind `|` goes unseen and the file is flagged as missing
+one even though it isn't — write `configs:` as a plain list literal.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `config_files` | `[".credo.exs"]` | Path suffixes treated as Credo config files |
+| `allowed_names` | `["default"]` | Config names Credo will actually select without `--config-name` |
+
+### `DistributionRequiresBuckets`
+
+`Telemetry.Metrics.distribution/2` must set `:reporter_options` with `:buckets`.
+A Prometheus histogram with no configured buckets has nothing to sort observations
+into — the reporter emits no usable data for the metric.
+
+```elixir
+# BAD
+distribution("my_app.job.duration.microseconds", event_name: @stop, measurement: :duration)
+
+# GOOD
+distribution("my_app.job.duration.microseconds",
+  event_name: @stop,
+  measurement: :duration,
+  reporter_options: [buckets: @buckets]
+)
+```
+
+Both the imported local call (behind `import Telemetry.Metrics` in the same file)
+and the qualified `Telemetry.Metrics.distribution(...)` are caught, including
+aliases of the module. A bare local `distribution/2` call with no
+`import Telemetry.Metrics` in the file is left alone — a local function that
+happens to share the name is not this library's `distribution/2`, and a
+`distribution/2` function definition head is never mistaken for a call. Only a
+literal opts keyword list is inspected; opts built by a helper or held in a
+variable are silently skipped. `reporter_options: [buckets: [...]]` is checked
+too — `reporter_options: []` still fires, since a histogram with no buckets
+emits no usable data either way.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `functions` | `[:distribution]` | `Telemetry.Metrics` functions checked |
+| `required_keys` | `[:reporter_options]` | Options that must be present in the literal opts |
+| `excluded_paths` | `[]` | Path fragments exempt from the check |
+
+### `EctoMetricsRequiresAppAtom`
+
+`PrometheusTelemetry.Metrics.Ecto.metrics/0` must not be called — pass the app
+atom. `metrics/1` takes exactly one argument (an app atom, used as the telemetry
+event-name prefix and the metric's label tag) and has no `metrics/0` clause —
+calling it with no arguments does not compile.
+
+```elixir
+# BAD — metrics/0 has no clause; this does not compile
+metrics: [PrometheusTelemetry.Metrics.Ecto.metrics()]
+
+# GOOD — the app atom is the telemetry event-name prefix and label
+metrics: [PrometheusTelemetry.Metrics.Ecto.metrics(:my_app)]
+```
+
+Every spelling of the module is caught, including
+`alias PrometheusTelemetry.Metrics` + `Metrics.Ecto.metrics()` and the
+fully-qualified `Elixir.PrometheusTelemetry.Metrics.Ecto.metrics()`. It
+deliberately never matches a bare `Ecto.metrics()` — even one reached via
+`alias PrometheusTelemetry.Metrics.Ecto` — because `Ecto` is too common a name
+to trust a bare alias for on its own; that spelling is a known false negative,
+accepted to avoid flagging an unrelated module that happens to be named `Ecto`.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `module_functions` | `[{PrometheusTelemetry.Metrics.Ecto, :metrics}]` | `{module, function}` pairs whose zero-arity call is banned |
+| `excluded_paths` | `[]` | Path fragments exempt from the check |
+
+### `EnsureLoadedBeforeExported`
+
+`function_exported?/3`, `macro_exported?/3`, and `Code.loaded?/1` must be
+guarded by `Code.ensure_loaded?/1` in the same clause body. `function_exported?/3`
+returns `false` for a module that has not yet been loaded into the current
+process's code table — not an error, just silently wrong — which flakes
+intermittently across ExUnit seeds instead of failing deterministically. Each
+guard scope (a `def`/`defp`/`defmacro` clause body, or an ExUnit
+`test`/`setup`/`setup_all` block) is checked independently.
+
+```elixir
+# BAD — returns false on first access before the code table loads
+def compile(graph_module, opts) do
+  if function_exported?(graph_module, :compile, 1) do
+    graph_module.compile(opts)
+  end
+end
+
+# GOOD
+def compile(graph_module, opts) do
+  if Code.ensure_loaded?(graph_module) and function_exported?(graph_module, :compile, 1) do
+    graph_module.compile(opts)
+  end
+end
+```
+
+| Param | Default | Meaning |
+|---|---|---|
+| `functions` | `[:function_exported?, :macro_exported?, {Code, :loaded?}]` | Module-capability checks that must be guarded — bare atoms match local/imported/`Kernel.`-qualified calls, `{module, function}` tuples match calls qualified on that module (alias-resolved) |
+| `guard_functions` | `[{Code, :ensure_loaded?}, {Code, :ensure_loaded}, {Code, :ensure_compiled}, {Code, :ensure_compiled!}]` | `{module, function}` calls that satisfy the guard anywhere in the same clause body |
+| `excluded_paths` | `[]` | Path fragments exempt from the check (segment-boundary matched) |
+
+Bare-atom-qualified calls (`:"Elixir.Code".ensure_loaded?(mod)`) and a bare
+`ensure_loaded?(mod)` reached through `import Code` are not recognized as
+guards, and `apply(Kernel, :function_exported?, [...])` evades the check
+entirely.
+
 ### `ErrorMessageRequired`
 
 Error tuples must carry a structured `%ErrorMessage{}`
@@ -482,6 +482,42 @@ def handle_continue(:load, _state), do: {:noreply, MyApp.Repo.all(Job)}
 |---|---|---|
 | `allowed_modules` | `[Access, Enum, Keyword, Kernel, List, Logger, Map, NimbleOptions, String, {Process, :flag}, {Process, :monitor}, {Process, :send_after}]` | Callable from `init/1` without deferring. A bare module allows every function on it; a `{module, function}` tuple grants one function surgically — the defaults allow `Process.flag/2` while a blocking `Process.sleep/1` in `init/1` stays flagged. The list replaces the default. Erlang modules are plain atoms (`:ets` or `{:ets, :new}`). |
 
+### `HologramCookieKeysMustBeStrings`
+
+A Hologram cookie key must be a string — an atom key errors at runtime. Session
+keys accept either atoms or strings, but cookie keys accept strings only, and
+passing an atom compiles fine and fails only when the call actually runs.
+
+```elixir
+# BAD — runtime error, cookie keys must be strings
+defmodule MyApp.ProductPage do
+  use Hologram.Page
+
+  def command(:save, _params, server) do
+    put_cookie(server, :theme, "dark")
+  end
+end
+
+# GOOD
+defmodule MyApp.ProductPage do
+  use Hologram.Page
+
+  def command(:save, _params, server) do
+    put_cookie(server, "theme", "dark")
+  end
+end
+```
+
+Scoped per module, not per file — only a `defmodule` whose own body contains
+`use Hologram.Page`/`use Hologram.Component` is inspected. Only a literal atom
+in the key position (always the 2nd positional argument) is flagged; a
+variable is left alone since its runtime value is unknown to a static check.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `hologram_modules` | `[Hologram.Page, Hologram.Component]` | Modules whose `use` marks a `defmodule` as a Hologram module |
+| `functions` | `[:get_cookie, :put_cookie, :delete_cookie]` | Local cookie function names to check |
+
 ### `InUmbrellaDepsNoVersion`
 
 An `in_umbrella: true` dependency must not also pin a version requirement. An
@@ -557,42 +593,6 @@ subscribe-named function fires whether or not the enclosing module actually
 `use`s `Phoenix.LiveView`. `apply(Phoenix.PubSub, :subscribe, [pubsub, topic])`
 is undetected — only a literal remote or local call shape is matched.
 
-### `HologramCookieKeysMustBeStrings`
-
-A Hologram cookie key must be a string — an atom key errors at runtime. Session
-keys accept either atoms or strings, but cookie keys accept strings only, and
-passing an atom compiles fine and fails only when the call actually runs.
-
-```elixir
-# BAD — runtime error, cookie keys must be strings
-defmodule MyApp.ProductPage do
-  use Hologram.Page
-
-  def command(:save, _params, server) do
-    put_cookie(server, :theme, "dark")
-  end
-end
-
-# GOOD
-defmodule MyApp.ProductPage do
-  use Hologram.Page
-
-  def command(:save, _params, server) do
-    put_cookie(server, "theme", "dark")
-  end
-end
-```
-
-Scoped per module, not per file — only a `defmodule` whose own body contains
-`use Hologram.Page`/`use Hologram.Component` is inspected. Only a literal atom
-in the key position (always the 2nd positional argument) is flagged; a
-variable is left alone since its runtime value is unknown to a static check.
-
-| Param | Default | Meaning |
-|---|---|---|
-| `hologram_modules` | `[Hologram.Page, Hologram.Component]` | Modules whose `use` marks a `defmodule` as a Hologram module |
-| `functions` | `[:get_cookie, :put_cookie, :delete_cookie]` | Local cookie function names to check |
-
 ### `LoggerModulePrefixAndInspect`
 
 Logger messages must literally start with the `#{__MODULE__}` interpolation and wrap
@@ -619,52 +619,6 @@ Qualified spellings of allowed functions match on the function name, so
 | `logger_functions` | `[:debug, :info, :warning, :warn, :error, :critical]` | Logger functions whose messages are checked |
 | `enforce_prefix` | `true` | Require the `__MODULE__` interpolation as the very first segment |
 | `allowed_interpolations` | `[:__MODULE__, :inspect]` | What may appear inside an interpolation — add your own formatting helpers |
-
-### `NoAccessOnStructSubject`
-
-`Access` bracket reads must not be used on a struct. `changeset[:name]` compiles,
-but raises `UndefinedFunctionError` at runtime unless the struct's module
-implements the `Access` behaviour — most structs, including `Ecto.Changeset`,
-`Plug.Conn` and `Phoenix.LiveView.Socket`, do not. This is a runtime crash class,
-not a style preference.
-
-```elixir
-# BAD — raises UndefinedFunctionError at runtime
-changeset[:name]
-conn[:assigns]
-socket[:assigns]
-
-# GOOD
-Ecto.Changeset.get_field(changeset, :name)
-conn.assigns
-socket.assigns
-
-# GOOD — not flagged, these are maps/keywords
-params["id"]
-opts[:timeout]
-```
-
-Two shapes count as a struct subject: a struct literal (`%MyApp.User{}`), or a
-variable whose name is in the configured `:subject_names` list. Full struct-type
-inference from a single-file AST check is out of reach, so the name heuristic is
-the only tractable form. A nested access such as `opts[:a][:b]` is only ever
-checked at the inner read — the outer read's subject is the *result* of the
-inner access, not a variable or struct literal, so it is never flagged.
-
-Because the variable check is a name heuristic, not type inference, any
-variable named `conn` — even a plain keyword list in a test
-(`conn = [status: 200]` then `conn[:status]`) — is flagged too. Rename the
-variable, or use `:subject_names`/`:excluded_paths` to scope the check for
-that file.
-
-`%__MODULE__{}[:x]`, `Access.get(changeset, :x)` and `get_in(changeset,
-[:a])` are the same runtime-crash class and are also undetected — none of
-them matches the bracket-access shape this check keys on.
-
-| Param | Default | Meaning |
-|---|---|---|
-| `subject_names` | `[:changeset, :conn, :socket]` | Variable names treated as known-struct subjects |
-| `excluded_paths` | `[]` | Path fragments naming files this check skips |
 
 ### `MigrationExecuteInChange`
 
@@ -804,6 +758,52 @@ above the `~H`/`~F` line — unlike the other sigil checks, whose issues report
 from inside the body and need `# credo:disable-for-lines:N` or
 `# credo:disable-for-this-file` (see `NoRawMarkupInTemplates`'s Limitations
 section).
+
+### `NoAccessOnStructSubject`
+
+`Access` bracket reads must not be used on a struct. `changeset[:name]` compiles,
+but raises `UndefinedFunctionError` at runtime unless the struct's module
+implements the `Access` behaviour — most structs, including `Ecto.Changeset`,
+`Plug.Conn` and `Phoenix.LiveView.Socket`, do not. This is a runtime crash class,
+not a style preference.
+
+```elixir
+# BAD — raises UndefinedFunctionError at runtime
+changeset[:name]
+conn[:assigns]
+socket[:assigns]
+
+# GOOD
+Ecto.Changeset.get_field(changeset, :name)
+conn.assigns
+socket.assigns
+
+# GOOD — not flagged, these are maps/keywords
+params["id"]
+opts[:timeout]
+```
+
+Two shapes count as a struct subject: a struct literal (`%MyApp.User{}`), or a
+variable whose name is in the configured `:subject_names` list. Full struct-type
+inference from a single-file AST check is out of reach, so the name heuristic is
+the only tractable form. A nested access such as `opts[:a][:b]` is only ever
+checked at the inner read — the outer read's subject is the *result* of the
+inner access, not a variable or struct literal, so it is never flagged.
+
+Because the variable check is a name heuristic, not type inference, any
+variable named `conn` — even a plain keyword list in a test
+(`conn = [status: 200]` then `conn[:status]`) — is flagged too. Rename the
+variable, or use `:subject_names`/`:excluded_paths` to scope the check for
+that file.
+
+`%__MODULE__{}[:x]`, `Access.get(changeset, :x)` and `get_in(changeset,
+[:a])` are the same runtime-crash class and are also undetected — none of
+them matches the bracket-access shape this check keys on.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `subject_names` | `[:changeset, :conn, :socket]` | Variable names treated as known-struct subjects |
+| `excluded_paths` | `[]` | Path fragments naming files this check skips |
 
 ### `NoApplicationEnvOutsideConfig`
 
@@ -1038,6 +1038,50 @@ Indirection through a variable (`fields = Map.keys(attrs)` then
 `cast(user, attrs, fields)`) is invisible to the check — literal lists, module
 attributes and variables are all left alone.
 
+### `NoClickHandlerOnNonInteractiveElement`
+
+A click binding on a non-interactive element (`<span>`, `<div>`, ...) must use a
+native interactive element instead, unless it also carries the ARIA attributes
+that make it keyboard- and screen-reader-accessible. A `<span phx-click="...">`
+is invisible to keyboard navigation and assistive tech — it never receives
+focus, has no default role, and `Tab`/`Enter` do nothing.
+
+```elixir
+# BAD
+~H"""
+<span class="pill" phx-click="show_findings">click</span>
+"""
+
+# GOOD
+~H"""
+<button type="button" aria-label="Show findings" phx-click="show_findings">click</button>
+"""
+```
+
+An element that legitimately needs the click binding (a full-card click target)
+is not flagged once it carries BOTH `role=` and `tabindex=` — the escape hatch
+is a conjunction, not a flat ban. An `aria-hidden="true"` element (e.g. a modal
+backdrop) is exempted independently of `role`/`tabindex` — pairing
+`role`+`tabindex` with `aria-hidden="true"` would itself be a WCAG violation.
+An opening tag may span multiple lines; the check scans from `<tag` to its
+matching `>` regardless of how many lines that spans.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `non_interactive_tags` | `["span", "div", "p", "li", "td", "th", "h1", "h2", "h3", "h4", "h5", "h6"]` | Tag names with no native click semantics |
+| `bindings` | `["phx-click"]` | Attribute names that count as a click handler. A Hologram repo must set BOTH `sigils: [:sigil_HOLO]` and `bindings: ["$click"]` together — the defaults never combine to scan Hologram templates |
+| `escape_attributes` | `["role", "tabindex"]` | Attributes that, when ALL present, exempt the tag |
+| `sigils` | `[:sigil_H, :sigil_F]` | Which sigil names count as template bodies |
+| `excluded_paths` | `[]` | Path fragments whose files are skipped entirely |
+
+**Limitations.** Same as `NoRawMarkupInTemplates` — only `~H`/`~F` sigils
+colocated inside a `.ex`/`.exs` module are covered; a `.html.heex` file is never
+read by Credo. A `>` character inside a quoted attribute value (e.g.
+`title="a > b"`) would incorrectly end the tag scan early — accepted as a rare
+edge case rather than handled with a full attribute parser. Suppressing an
+issue inside a sigil body also works the same as `NoRawMarkupInTemplates` —
+see its Limitations section for the two escapes that actually work.
+
 ### `NoCondElseAtom`
 
 The last `cond` clause must fall through on `true`, not on an arbitrary truthy
@@ -1066,49 +1110,34 @@ head is a different pattern this check does not cover.
 |---|---|---|
 | `disallowed_atoms` | `[:else]` | Atoms that must not be used as the last `cond` clause's head. |
 
-### `NoForWithDiscardedResult`
+### `NoContinueFromLiveViewMount`
 
-A `for` comprehension in statement position throws its result away — use
-`Enum.each/2` for side-effect-only iteration instead. `for` always builds and
-returns a list (or whatever `:into`/`:reduce` accumulates into); written as a
-standalone statement, that value is built and immediately discarded, with no
-compiler warning to catch it.
+`mount/3` must not return `{:ok, socket, {:continue, term}}`. `{:continue, term}`
+is a `GenServer.init/1` return value — LiveView's `mount/3` does not implement
+that protocol, so returning it either does nothing or crashes depending on the
+LiveView version.
 
 ```elixir
-# BAD — the built list is thrown away
-def sync(items) do
-  for item <- items do
-    Cache.put(item)
-  end
+# BAD — {:continue, _} is GenServer-only; mount/3 does not implement it
+def mount(_params, _session, socket), do: {:ok, socket, {:continue, :load}}
 
-  :ok
-end
-
-# GOOD — no throwaway list
-def sync(items) do
-  Enum.each(items, fn item ->
-    Cache.put(item)
-  end)
-
-  :ok
+# GOOD — gate the deferred load on connected?/1 and message yourself
+def mount(_params, _session, socket) do
+  if connected?(socket), do: send(self(), :load)
+  {:ok, socket}
 end
 ```
 
-A `for` is only flagged when it sits in statement position — an element of a
-block that is not the block's last expression. A `for` that IS the last
-expression of a block, the right-hand side of `=`, a call argument, or a pipe
-stage is consumed elsewhere and is never flagged. `for ... into: ...` and
-`for ... reduce: ...` are flagged the same as a plain `for` when they sit in
-statement position — the accumulated value is still built and discarded, and
-the message names `Enum.into/3` or `Enum.reduce/3` instead of `Enum.each/2`
-for those.
+Only the clause's own last expression is inspected — a continue tuple produced
+inside a `case`/`cond` branch that isn't literally the trailing expression of
+the `def` body is not flagged. Mirror image of
+[`GenServerRequiresHandleContinue`](#genserverrequireshandlecontinue), which
+*requires* `{:continue, term}` from a GenServer's `init/1` — same shape,
+opposite callback, opposite advice.
 
 | Param | Default | Meaning |
 |---|---|---|
-| `excluded_paths` | `["_test.exs", "test/"]` | Path fragments exempt from the check, matched at a path-segment boundary — setup loops dominate the for-in-statement-position shape in tests. |
-
-**Limitations.** A `for` inside a `quote do ... end` body is flagged even
-though it is macro-generated AST, not a runtime comprehension.
+| `excluded_paths` | `[]` | Path fragments naming files this check skips |
 
 ### `NoDirectErlangRpc`
 
@@ -1211,35 +1240,6 @@ spelling. Same gap for `alias HTTPoison.Base`. A locally nested
 `defmodule Req do ... end` is not treated as shadowing, so `Req.get(url)`
 inside such a module can still fire.
 
-### `NoContinueFromLiveViewMount`
-
-`mount/3` must not return `{:ok, socket, {:continue, term}}`. `{:continue, term}`
-is a `GenServer.init/1` return value — LiveView's `mount/3` does not implement
-that protocol, so returning it either does nothing or crashes depending on the
-LiveView version.
-
-```elixir
-# BAD — {:continue, _} is GenServer-only; mount/3 does not implement it
-def mount(_params, _session, socket), do: {:ok, socket, {:continue, :load}}
-
-# GOOD — gate the deferred load on connected?/1 and message yourself
-def mount(_params, _session, socket) do
-  if connected?(socket), do: send(self(), :load)
-  {:ok, socket}
-end
-```
-
-Only the clause's own last expression is inspected — a continue tuple produced
-inside a `case`/`cond` branch that isn't literally the trailing expression of
-the `def` body is not flagged. Mirror image of
-[`GenServerRequiresHandleContinue`](#genserverrequireshandlecontinue), which
-*requires* `{:continue, term}` from a GenServer's `init/1` — same shape,
-opposite callback, opposite advice.
-
-| Param | Default | Meaning |
-|---|---|---|
-| `excluded_paths` | `[]` | Path fragments naming files this check skips |
-
 ### `NoEctoSchemaInWebApp`
 
 `use Ecto.Schema` must not appear in a web app — schemas belong in a dedicated
@@ -1282,49 +1282,49 @@ matches.
 Include the leading underscore in `banned_path_fragments` — `"web"` (no
 underscore) is a segment-suffix match and over-matches `apps/cobweb/...`.
 
-### `NoClickHandlerOnNonInteractiveElement`
+### `NoForWithDiscardedResult`
 
-A click binding on a non-interactive element (`<span>`, `<div>`, ...) must use a
-native interactive element instead, unless it also carries the ARIA attributes
-that make it keyboard- and screen-reader-accessible. A `<span phx-click="...">`
-is invisible to keyboard navigation and assistive tech — it never receives
-focus, has no default role, and `Tab`/`Enter` do nothing.
+A `for` comprehension in statement position throws its result away — use
+`Enum.each/2` for side-effect-only iteration instead. `for` always builds and
+returns a list (or whatever `:into`/`:reduce` accumulates into); written as a
+standalone statement, that value is built and immediately discarded, with no
+compiler warning to catch it.
 
 ```elixir
-# BAD
-~H"""
-<span class="pill" phx-click="show_findings">click</span>
-"""
+# BAD — the built list is thrown away
+def sync(items) do
+  for item <- items do
+    Cache.put(item)
+  end
 
-# GOOD
-~H"""
-<button type="button" aria-label="Show findings" phx-click="show_findings">click</button>
-"""
+  :ok
+end
+
+# GOOD — no throwaway list
+def sync(items) do
+  Enum.each(items, fn item ->
+    Cache.put(item)
+  end)
+
+  :ok
+end
 ```
 
-An element that legitimately needs the click binding (a full-card click target)
-is not flagged once it carries BOTH `role=` and `tabindex=` — the escape hatch
-is a conjunction, not a flat ban. An `aria-hidden="true"` element (e.g. a modal
-backdrop) is exempted independently of `role`/`tabindex` — pairing
-`role`+`tabindex` with `aria-hidden="true"` would itself be a WCAG violation.
-An opening tag may span multiple lines; the check scans from `<tag` to its
-matching `>` regardless of how many lines that spans.
+A `for` is only flagged when it sits in statement position — an element of a
+block that is not the block's last expression. A `for` that IS the last
+expression of a block, the right-hand side of `=`, a call argument, or a pipe
+stage is consumed elsewhere and is never flagged. `for ... into: ...` and
+`for ... reduce: ...` are flagged the same as a plain `for` when they sit in
+statement position — the accumulated value is still built and discarded, and
+the message names `Enum.into/3` or `Enum.reduce/3` instead of `Enum.each/2`
+for those.
 
 | Param | Default | Meaning |
 |---|---|---|
-| `non_interactive_tags` | `["span", "div", "p", "li", "td", "th", "h1", "h2", "h3", "h4", "h5", "h6"]` | Tag names with no native click semantics |
-| `bindings` | `["phx-click"]` | Attribute names that count as a click handler. A Hologram repo must set BOTH `sigils: [:sigil_HOLO]` and `bindings: ["$click"]` together — the defaults never combine to scan Hologram templates |
-| `escape_attributes` | `["role", "tabindex"]` | Attributes that, when ALL present, exempt the tag |
-| `sigils` | `[:sigil_H, :sigil_F]` | Which sigil names count as template bodies |
-| `excluded_paths` | `[]` | Path fragments whose files are skipped entirely |
+| `excluded_paths` | `["_test.exs", "test/"]` | Path fragments exempt from the check, matched at a path-segment boundary — setup loops dominate the for-in-statement-position shape in tests. |
 
-**Limitations.** Same as `NoRawMarkupInTemplates` — only `~H`/`~F` sigils
-colocated inside a `.ex`/`.exs` module are covered; a `.html.heex` file is never
-read by Credo. A `>` character inside a quoted attribute value (e.g.
-`title="a > b"`) would incorrectly end the tag scan early — accepted as a rare
-edge case rather than handled with a full attribute parser. Suppressing an
-issue inside a sigil body also works the same as `NoRawMarkupInTemplates` —
-see its Limitations section for the two escapes that actually work.
+**Limitations.** A `for` inside a `quote do ... end` body is flagged even
+though it is macro-generated AST, not a runtime comprehension.
 
 ### `NoHeexSigilInHologramModule`
 
@@ -2035,6 +2035,167 @@ underscore-prefix exemption.
 | `allowed_names` | `[]` | Single-letter names allowed anyway — atoms or strings |
 | `banned_names` | `[]` | Additional variable names flagged at binding sites, whatever their length — atoms or strings, e.g. project-specific abbreviations you have banned. A name in both `:banned_names` and `:allowed_names` is still flagged — `:banned_names` wins. A single-letter name in `:banned_names` is reported as a single-letter violation, not a banned name, since that check runs first. |
 
+### `NoStaticNotLoadedDropList`
+
+A static drop-list must not be used to scrub `%Ecto.Association.NotLoaded{}`
+values before serializing a schema. The list has no way to know about an
+association added next sprint — the new field silently slips through and crashes
+`Jason.encode!/1` at runtime. Reject unloaded associations by type instead.
+
+```elixir
+# BAD
+@association_keys [:__meta__, :workspace, :sessions]
+struct |> Map.from_struct() |> Map.drop(@association_keys)
+
+# GOOD
+struct
+|> Map.from_struct()
+|> Map.reject(fn {_key, value} -> match?(%Ecto.Association.NotLoaded{}, value) end)
+|> Map.delete(:__meta__)
+```
+
+The `:__meta__` marker is what makes the trigger unambiguous — a list containing
+`:__meta__` plus at least one other atom is a drop-list by construction.
+`Map.drop(map, [:__meta__])` alone is fine. Both a literal list argument and a
+module attribute holding one are caught, standalone and piped, and `Map` is
+matched alias-aware.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `marker_key` | `:__meta__` | The atom that marks a drop-list as an association-scrubbing list |
+| `excluded_paths` | `[]` | Path fragments (segment-boundary match) exempt from the check |
+
+### `NoTaskAsyncInGenServer`
+
+`Task.async` and `Task.Supervisor.async` must not be called from inside a
+GenServer or GenStage callback. `Task.async/1,3` links the new task to the process
+that calls it — inside a callback, that process IS the server, so a crashing task
+takes the whole server down with it.
+
+```elixir
+# BAD — a crashing task takes the GenServer down with it
+def handle_continue(:init_work, state) do
+  task = Task.async(fn -> expensive_fetch(state.config) end)
+  {:noreply, %{state | task_ref: task.ref}}
+end
+
+# GOOD — isolate the crash, handle it explicitly
+def handle_continue(:init_work, state) do
+  task = Task.Supervisor.async_nolink(MyApp.TaskSupervisor, fn -> expensive_fetch(state.config) end)
+  {:noreply, %{state | task_ref: task.ref}}
+end
+
+def handle_info({ref, result}, %{task_ref: ref} = state) do
+  Process.demonitor(ref, [:flush])
+  {:noreply, %{state | task_ref: nil, data: result}}
+end
+```
+
+There is no bare `Task.async_nolink/1,2` — only the supervised
+`Task.Supervisor.async_nolink/2,3,4` exists, which needs a `Task.Supervisor`
+already running in the app's supervision tree.
+
+Only the bodies of callbacks are inspected — a public client-side function
+defined in the same module runs in the caller's process, not the server's, and
+may legitimately want the link `Task.async` provides, so it is never scanned.
+`async` is matched by exact function name, never a prefix — `Task.async_stream/2`
+is a different, unlinked API and is never flagged here.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `banned` | `[{Task, :async}, {Task.Supervisor, :async}]` | `{module, function}` pairs banned inside a callback body |
+| `callbacks` | `[:init, :handle_call, :handle_cast, :handle_info, :handle_continue, :handle_events, :handle_demand, :terminate]` | Function names whose bodies are inspected |
+| `behaviour_modules` | `[GenServer, GenStage]` | Modules whose `use` marks a file as worth scanning at all (alias-aware) |
+
+### `NoTelemetrySupervisorModule`
+
+A dedicated `*Telemetry` supervisor module must not exist — add a
+`{PrometheusTelemetry, ...}` child spec to `application.ex` instead. `phx.new`
+generates a `MyAppWeb.Telemetry` supervisor wrapping `:telemetry_poller`; the
+house convention starts `PrometheusTelemetry` directly as a child of the
+application, so the separate supervisor module only adds indirection.
+
+```elixir
+# BAD — the file phx.new generates
+defmodule MyAppWeb.Telemetry do
+  use Supervisor
+
+  def start_link(arg), do: Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
+end
+
+# GOOD — a child spec in application.ex, no separate supervisor module
+children = [{PrometheusTelemetry, exporter: [enabled?: @is_prod], metrics: [...]}]
+```
+
+Flagged when a `defmodule`'s last name segment is a member of
+`:module_suffixes` **and** its own body contains `use Supervisor`. Scoped per
+module — a nested `defmodule Telemetry do ... end` is its own scope, the same
+way `NoJasonDeriveOnEctoSchema` scopes `@derive`, and `use Supervisor` is
+alias-aware: a project module shadowing the bare name (`alias MyApp.Supervisor`)
+is correctly not treated as Elixir's `Supervisor`.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `module_suffixes` | `[:Telemetry]` | Last-segment module names inspected |
+| `supervisor_modules` | `[Supervisor]` | Modules that count as the `Supervisor` behaviour in a `use` expression (alias-aware) |
+| `excluded_paths` | `[]` | Path fragments exempt from the check (segment-boundary matched) |
+
+### `NoTruthyAndOr`
+
+`and`/`or`/`not` must not be used on a provably-nilable operand. `and` and `or`
+require a strictly boolean operand and raise `BadBooleanError` the moment either
+side is `nil`; `not` requires the same and raises `ArgumentError` instead.
+`opts[:key]`, `Map.get/2`, `Keyword.get/2`, and `List.first/1` all evaluate to
+`nil` when the value is absent.
+
+```elixir
+# BAD — crashes with BadBooleanError when opts[:key] is nil
+if opts[:llm_merge] or opts[:ai_review], do: ...
+
+# GOOD — ||/&&/! handle nil/falsy operands
+if opts[:llm_merge] || opts[:ai_review], do: ...
+```
+
+`Map.get/3`/`Keyword.get/3` are only flagged when the default argument is the
+literal `nil` — a non-nil default means the result can never be `nil` and is not
+flagged. Plain variables, ordinary function calls, and comparisons are never
+flagged. One issue is emitted per `and`/`or`/`not` node, not per nilable
+operand — `opts[:a] and opts[:b]` reports once, `a and b and c` reports twice.
+
+`test/support/` is excluded by default — Phoenix/Ecto generator files
+(`data_case.ex`, `conn_case.ex`, `feature_case.ex`) commonly write `shared: not
+tags[:async]`, and ExUnit guarantees `:async` is always a boolean by the time
+this runs, so that specific shape can never raise there.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `nilable_functions` | `[{Access, :get, 2}, {Map, :get, 2}, {Keyword, :get, 2}, {List, :first, 1}, {Map, :get, 3}, {Keyword, :get, 3}]` | `{module, function, arity}` shapes that count as provably nilable — `{Access, :get, 2}` also covers `x[:k]` bracket syntax |
+| `excluded_paths` | `["test/support/"]` | Path fragments exempt from the check (segment-boundary matched) |
+
+### `NoUnsupervisedTaskStart`
+
+`Task.start/1,3` must not be used — a crash inside the task is silently
+discarded. Nothing supervises it and nothing is linked to it, so the failure
+disappears with no log, no restart and no trace.
+
+```elixir
+# BAD — a crash here is silently lost
+def notify(payload), do: Task.start(fn -> send_webhook(payload) end)
+
+# GOOD — supervised; a crash is visible and can be handled
+def notify(payload) do
+  Task.Supervisor.start_child(MyApp.TaskSupervisor, fn -> send_webhook(payload) end)
+end
+```
+
+`Task.start_link/1,3` links the caller instead of losing the crash silently — a
+different, often intentional trade-off — so it is left alone by default.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `also_flag_start_link` | `false` | Also flag `Task.start_link/1,3` |
+| `excluded_paths` | `["_test.exs", "test/"]` | Path fragments naming files to skip (segment-boundary matched) |
+
 ### `NoVacuousAssert`
 
 Assertions must exercise real behaviour, never a hardcoded literal. `assert true`,
@@ -2113,38 +2274,6 @@ immediately.
 | `sigils` | `[:sigil_w, :sigil_W]` | Sigil node atoms to ban |
 | `excluded_paths` | `[]` | Path fragments naming files this check skips |
 
-### `NoTruthyAndOr`
-
-`and`/`or`/`not` must not be used on a provably-nilable operand. `and` and `or`
-require a strictly boolean operand and raise `BadBooleanError` the moment either
-side is `nil`; `not` requires the same and raises `ArgumentError` instead.
-`opts[:key]`, `Map.get/2`, `Keyword.get/2`, and `List.first/1` all evaluate to
-`nil` when the value is absent.
-
-```elixir
-# BAD — crashes with BadBooleanError when opts[:key] is nil
-if opts[:llm_merge] or opts[:ai_review], do: ...
-
-# GOOD — ||/&&/! handle nil/falsy operands
-if opts[:llm_merge] || opts[:ai_review], do: ...
-```
-
-`Map.get/3`/`Keyword.get/3` are only flagged when the default argument is the
-literal `nil` — a non-nil default means the result can never be `nil` and is not
-flagged. Plain variables, ordinary function calls, and comparisons are never
-flagged. One issue is emitted per `and`/`or`/`not` node, not per nilable
-operand — `opts[:a] and opts[:b]` reports once, `a and b and c` reports twice.
-
-`test/support/` is excluded by default — Phoenix/Ecto generator files
-(`data_case.ex`, `conn_case.ex`, `feature_case.ex`) commonly write `shared: not
-tags[:async]`, and ExUnit guarantees `:async` is always a boolean by the time
-this runs, so that specific shape can never raise there.
-
-| Param | Default | Meaning |
-|---|---|---|
-| `nilable_functions` | `[{Access, :get, 2}, {Map, :get, 2}, {Keyword, :get, 2}, {List, :first, 1}, {Map, :get, 3}, {Keyword, :get, 3}]` | `{module, function, arity}` shapes that count as provably nilable — `{Access, :get, 2}` also covers `x[:k]` bracket syntax |
-| `excluded_paths` | `["test/support/"]` | Path fragments exempt from the check (segment-boundary matched) |
-
 ### `ObanWorkerRequiresMaxAttempts`
 
 `use Oban.Worker` must set `:max_attempts` explicitly. Oban silently falls back to
@@ -2177,134 +2306,39 @@ and is invisible to this check.
 | `required_keys` | `[:max_attempts]` | `use Oban.Worker` options that must be present |
 | `excluded_paths` | `["test/"]` | Path fragments exempt from the check — throwaway fixture workers under test/ |
 
-### `NoStaticNotLoadedDropList`
+### `PhxValueNoDashes`
 
-A static drop-list must not be used to scrub `%Ecto.Association.NotLoaded{}`
-values before serializing a schema. The list has no way to know about an
-association added next sprint — the new field silently slips through and crashes
-`Jason.encode!/1` at runtime. Reject unloaded associations by type instead.
+A multiword `phx-value-*` attribute key must use underscores, never dashes.
+LiveView takes the text after `phx-value-` verbatim as the param key —
+`phx-value-group-id` becomes `%{"group-id" => ...}`, the dash is kept, not
+converted. This never matches a `%{"group_id" => _}` clause; a handler
+written the natural way, with underscored keys, raises a
+`FunctionClauseError` when it receives the dashed key instead.
 
 ```elixir
-# BAD
-@association_keys [:__meta__, :workspace, :sessions]
-struct |> Map.from_struct() |> Map.drop(@association_keys)
+# BAD — never matches a %{"group_id" => _} handler clause
+~H"""
+<button phx-click="delete" phx-value-group-id={@id}>Delete</button>
+"""
 
 # GOOD
-struct
-|> Map.from_struct()
-|> Map.reject(fn {_key, value} -> match?(%Ecto.Association.NotLoaded{}, value) end)
-|> Map.delete(:__meta__)
+~H"""
+<button phx-click="delete" phx-value-group_id={@id}>Delete</button>
+"""
 ```
 
-The `:__meta__` marker is what makes the trigger unambiguous — a list containing
-`:__meta__` plus at least one other atom is a drop-list by construction.
-`Map.drop(map, [:__meta__])` alone is fine. Both a literal list argument and a
-module attribute holding one are caught, standalone and piped, and `Map` is
-matched alias-aware.
+Single-word keys (`phx-value-id`, `phx-value-kind`) are unaffected.
 
 | Param | Default | Meaning |
 |---|---|---|
-| `marker_key` | `:__meta__` | The atom that marks a drop-list as an association-scrubbing list |
-| `excluded_paths` | `[]` | Path fragments (segment-boundary match) exempt from the check |
+| `sigils` | `[:sigil_H, :sigil_F]` | Which sigil names count as template bodies |
+| `excluded_paths` | `[]` | Path fragments whose files are skipped entirely |
 
-### `NoTaskAsyncInGenServer`
-
-`Task.async` and `Task.Supervisor.async` must not be called from inside a
-GenServer or GenStage callback. `Task.async/1,3` links the new task to the process
-that calls it — inside a callback, that process IS the server, so a crashing task
-takes the whole server down with it.
-
-```elixir
-# BAD — a crashing task takes the GenServer down with it
-def handle_continue(:init_work, state) do
-  task = Task.async(fn -> expensive_fetch(state.config) end)
-  {:noreply, %{state | task_ref: task.ref}}
-end
-
-# GOOD — isolate the crash, handle it explicitly
-def handle_continue(:init_work, state) do
-  task = Task.Supervisor.async_nolink(MyApp.TaskSupervisor, fn -> expensive_fetch(state.config) end)
-  {:noreply, %{state | task_ref: task.ref}}
-end
-
-def handle_info({ref, result}, %{task_ref: ref} = state) do
-  Process.demonitor(ref, [:flush])
-  {:noreply, %{state | task_ref: nil, data: result}}
-end
-```
-
-There is no bare `Task.async_nolink/1,2` — only the supervised
-`Task.Supervisor.async_nolink/2,3,4` exists, which needs a `Task.Supervisor`
-already running in the app's supervision tree.
-
-Only the bodies of callbacks are inspected — a public client-side function
-defined in the same module runs in the caller's process, not the server's, and
-may legitimately want the link `Task.async` provides, so it is never scanned.
-`async` is matched by exact function name, never a prefix — `Task.async_stream/2`
-is a different, unlinked API and is never flagged here.
-
-| Param | Default | Meaning |
-|---|---|---|
-| `banned` | `[{Task, :async}, {Task.Supervisor, :async}]` | `{module, function}` pairs banned inside a callback body |
-| `callbacks` | `[:init, :handle_call, :handle_cast, :handle_info, :handle_continue, :handle_events, :handle_demand, :terminate]` | Function names whose bodies are inspected |
-| `behaviour_modules` | `[GenServer, GenStage]` | Modules whose `use` marks a file as worth scanning at all (alias-aware) |
-
-### `NoUnsupervisedTaskStart`
-
-`Task.start/1,3` must not be used — a crash inside the task is silently
-discarded. Nothing supervises it and nothing is linked to it, so the failure
-disappears with no log, no restart and no trace.
-
-```elixir
-# BAD — a crash here is silently lost
-def notify(payload), do: Task.start(fn -> send_webhook(payload) end)
-
-# GOOD — supervised; a crash is visible and can be handled
-def notify(payload) do
-  Task.Supervisor.start_child(MyApp.TaskSupervisor, fn -> send_webhook(payload) end)
-end
-```
-
-`Task.start_link/1,3` links the caller instead of losing the crash silently — a
-different, often intentional trade-off — so it is left alone by default.
-
-| Param | Default | Meaning |
-|---|---|---|
-| `also_flag_start_link` | `false` | Also flag `Task.start_link/1,3` |
-| `excluded_paths` | `["_test.exs", "test/"]` | Path fragments naming files to skip (segment-boundary matched) |
-
-### `NoTelemetrySupervisorModule`
-
-A dedicated `*Telemetry` supervisor module must not exist — add a
-`{PrometheusTelemetry, ...}` child spec to `application.ex` instead. `phx.new`
-generates a `MyAppWeb.Telemetry` supervisor wrapping `:telemetry_poller`; the
-house convention starts `PrometheusTelemetry` directly as a child of the
-application, so the separate supervisor module only adds indirection.
-
-```elixir
-# BAD — the file phx.new generates
-defmodule MyAppWeb.Telemetry do
-  use Supervisor
-
-  def start_link(arg), do: Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
-end
-
-# GOOD — a child spec in application.ex, no separate supervisor module
-children = [{PrometheusTelemetry, exporter: [enabled?: @is_prod], metrics: [...]}]
-```
-
-Flagged when a `defmodule`'s last name segment is a member of
-`:module_suffixes` **and** its own body contains `use Supervisor`. Scoped per
-module — a nested `defmodule Telemetry do ... end` is its own scope, the same
-way `NoJasonDeriveOnEctoSchema` scopes `@derive`, and `use Supervisor` is
-alias-aware: a project module shadowing the bare name (`alias MyApp.Supervisor`)
-is correctly not treated as Elixir's `Supervisor`.
-
-| Param | Default | Meaning |
-|---|---|---|
-| `module_suffixes` | `[:Telemetry]` | Last-segment module names inspected |
-| `supervisor_modules` | `[Supervisor]` | Modules that count as the `Supervisor` behaviour in a `use` expression (alias-aware) |
-| `excluded_paths` | `[]` | Path fragments exempt from the check (segment-boundary matched) |
+**Limitations.** Same as `NoRawMarkupInTemplates` — only `~H`/`~F` sigils
+colocated inside a `.ex`/`.exs` module are covered; a `.html.heex` file is
+never read by Credo. Suppressing an issue inside a sigil body also works the
+same as `NoRawMarkupInTemplates` — see its Limitations section for the two
+escapes that actually work.
 
 ### `PrometheusExporterMustBeGated`
 
@@ -2345,40 +2379,6 @@ assigned to a variable before being referenced (`conf = [enabled?: true];
 exporter: conf`) all evade the check — the last is the realistic way a
 hardcoded flag survives review, since the literal and the flagged key end up
 on different lines.
-
-### `PhxValueNoDashes`
-
-A multiword `phx-value-*` attribute key must use underscores, never dashes.
-LiveView takes the text after `phx-value-` verbatim as the param key —
-`phx-value-group-id` becomes `%{"group-id" => ...}`, the dash is kept, not
-converted. This never matches a `%{"group_id" => _}` clause; a handler
-written the natural way, with underscored keys, raises a
-`FunctionClauseError` when it receives the dashed key instead.
-
-```elixir
-# BAD — never matches a %{"group_id" => _} handler clause
-~H"""
-<button phx-click="delete" phx-value-group-id={@id}>Delete</button>
-"""
-
-# GOOD
-~H"""
-<button phx-click="delete" phx-value-group_id={@id}>Delete</button>
-"""
-```
-
-Single-word keys (`phx-value-id`, `phx-value-kind`) are unaffected.
-
-| Param | Default | Meaning |
-|---|---|---|
-| `sigils` | `[:sigil_H, :sigil_F]` | Which sigil names count as template bodies |
-| `excluded_paths` | `[]` | Path fragments whose files are skipped entirely |
-
-**Limitations.** Same as `NoRawMarkupInTemplates` — only `~H`/`~F` sigils
-colocated inside a `.ex`/`.exs` module are covered; a `.html.heex` file is
-never read by Credo. Suppressing an issue inside a sigil body also works the
-same as `NoRawMarkupInTemplates` — see its Limitations section for the two
-escapes that actually work.
 
 ### `RefuteOverAssertNot`
 
@@ -2491,6 +2491,33 @@ caught. `start_permanent: Mix.env() == :prod` in mix.exs is also exempt.
 |---|---|---|
 | `ignored_functions` | `[:dynamic, :from, :where, :or_where, :having, :or_having, :select, :select_merge, :on, :join, :query, :subquery, :in]` | Calls whose arguments are exempt (the Ecto query DSL) |
 
+### `TaskAsyncStreamRequiresTimeout`
+
+`Task.async_stream/2,3` and `Task.Supervisor.async_stream/3,4` (and its
+`async_stream_nolink` sibling) default to a 5-second-per-item timeout when no
+`:timeout` option is given. One slow item then crashes the whole stream — pass
+`timeout:` explicitly, even when the value is `:infinity`.
+
+```elixir
+# BAD — silently uses the 5s default and kills long batches
+Task.async_stream(symbols, &process_one/1, max_concurrency: 5)
+
+# BAD — no options argument at all
+Task.async_stream(symbols, &process_one/1)
+
+# GOOD
+Task.async_stream(symbols, &process_one/1, max_concurrency: 5, timeout: 35_000)
+```
+
+Only a literal trailing options keyword list is inspected — options built by a
+helper or held in a variable are invisible to this check, an accepted false
+negative rather than a guess in either direction.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `functions` | `[{Task, :async_stream}, {Task.Supervisor, :async_stream}, {Task.Supervisor, :async_stream_nolink}]` | `{module, function}` pairs whose trailing options are checked |
+| `excluded_paths` | `[]` | Path fragments naming files to skip (segment-boundary matched) |
+
 ### `TestOnlyDepsScoped`
 
 A dev/test-only dependency must be scoped so it never ships to a release. A
@@ -2539,33 +2566,6 @@ is the correct scoping here, unlike for a normal consumer.
 | `mix_files` | `["mix.exs"]` | Filenames (matched by basename) treated as mix.exs files |
 | `test_only_packages` | `[:wallaby, :credo, :dialyxir, :mix_test_watch, :excoveralls, :ex_doc, :mika_credo_rules]` | Packages that must carry an `only:` option |
 | `require_runtime_false` | `[:wallaby, :credo, :dialyxir, :ex_doc, :mika_credo_rules]` | Packages that must carry `runtime: false` |
-
-### `TaskAsyncStreamRequiresTimeout`
-
-`Task.async_stream/2,3` and `Task.Supervisor.async_stream/3,4` (and its
-`async_stream_nolink` sibling) default to a 5-second-per-item timeout when no
-`:timeout` option is given. One slow item then crashes the whole stream — pass
-`timeout:` explicitly, even when the value is `:infinity`.
-
-```elixir
-# BAD — silently uses the 5s default and kills long batches
-Task.async_stream(symbols, &process_one/1, max_concurrency: 5)
-
-# BAD — no options argument at all
-Task.async_stream(symbols, &process_one/1)
-
-# GOOD
-Task.async_stream(symbols, &process_one/1, max_concurrency: 5, timeout: 35_000)
-```
-
-Only a literal trailing options keyword list is inspected — options built by a
-helper or held in a variable are invisible to this check, an accepted false
-negative rather than a guess in either direction.
-
-| Param | Default | Meaning |
-|---|---|---|
-| `functions` | `[{Task, :async_stream}, {Task.Supervisor, :async_stream}, {Task.Supervisor, :async_stream_nolink}]` | `{module, function}` pairs whose trailing options are checked |
-| `excluded_paths` | `[]` | Path fragments naming files to skip (segment-boundary matched) |
 
 ### `TodosNeedTickets`
 
