@@ -4,7 +4,7 @@ defmodule MikaCredoRules.NoBarePatternMatchOnFallible do
     category: :warning,
     param_defaults: [
       tags: [:ok, :error],
-      excluded_paths: ["_test.exs", "test/", "application.ex"]
+      excluded_paths: ["_test.exs", "test/", "/application.ex", "priv/repo/"]
     ],
     explanations: [
       params: [
@@ -18,10 +18,11 @@ defmodule MikaCredoRules.NoBarePatternMatchOnFallible do
         A list of path fragments exempt from the check, matched at a path-segment
         boundary (see `MikaCredoRules.SourceFilter.matches_fragment?/2`).
 
-        Defaults to `["_test.exs", "test/", "application.ex"]` — `assert {:ok, _} =
-        call()` is the correct test idiom (a crash *is* the assertion), and a
-        boot-time `{:ok, pid} = Supervisor.start_link(...)` in `application.ex` is a
-        deliberate crash-on-boot.
+        Defaults to `["_test.exs", "test/", "/application.ex", "priv/repo/"]` —
+        `assert {:ok, _} = call()` is the correct test idiom (a crash *is* the
+        assertion), a boot-time `{:ok, pid} = Supervisor.start_link(...)` in
+        `application.ex` is a deliberate crash-on-boot, and so is a broken seed
+        script under `priv/repo/`.
         """
       ]
     ]
@@ -78,6 +79,10 @@ defmodule MikaCredoRules.NoBarePatternMatchOnFallible do
   `fn`) is never flagged, even when it ultimately returns a fallible-tagged
   tuple — the bare-match risk lives at the call boundary, and control-flow
   bodies are outside this check's scope.
+
+  A `=` inside a `quote do ... end` body is indistinguishable from real code
+  to this check and is flagged even though it is macro-generated AST, not a
+  runtime match.
   """
   @explanation [check: @moduledoc]
 
@@ -88,6 +93,10 @@ defmodule MikaCredoRules.NoBarePatternMatchOnFallible do
     :<<>>,
     :fn,
     :&,
+    :^,
+    :||,
+    :<>,
+    :@,
     :__aliases__,
     :__block__,
     :case,
@@ -146,12 +155,34 @@ defmodule MikaCredoRules.NoBarePatternMatchOnFallible do
   end
 
   defp call?({:|>, _, [_lhs, _rhs]}), do: true
-  defp call?({{:., _, [_target, _function]}, _, args}) when is_list(args), do: true
+
+  # An anonymous function call (`fun.()`) carries a 1-element dot target list
+  # (just the function), not `[target, function_name]` — always a call.
+  defp call?({{:., _, [_fun]}, _, args}) when is_list(args), do: true
+
+  defp call?({{:., _, [target, _function]}, call_meta, args}) when is_list(args) do
+    not parenless_field_read?(call_meta, target) and not access_bracket_read?(call_meta)
+  end
 
   defp call?({name, _, args}) when is_atom(name) and is_list(args),
     do: name not in @non_call_heads
 
   defp call?(_rhs), do: false
+
+  # `state.result` (no parens) desugars to the same dot-call shape as a real
+  # remote call, distinguished only by `no_parens: true` in the call's own
+  # meta. `Module.fun` (no parens) is still a genuine call — only a field
+  # read on a non-module target is exempt.
+  defp parenless_field_read?(call_meta, target) do
+    Keyword.get(call_meta, :no_parens, false) and not module_reference?(target)
+  end
+
+  # `opts[:key]` desugars to `Access.get(opts, :key)`, tagged `from_brackets:
+  # true` on the call — a rebind, not a risky call.
+  defp access_bracket_read?(call_meta), do: Keyword.get(call_meta, :from_brackets, false)
+
+  defp module_reference?({:__aliases__, _, _}), do: true
+  defp module_reference?(_target), do: false
 
   defp issue_for(match, issue_meta) do
     format_issue(issue_meta,

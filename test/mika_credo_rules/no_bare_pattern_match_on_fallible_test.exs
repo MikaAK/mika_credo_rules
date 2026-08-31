@@ -292,6 +292,106 @@ defmodule MikaCredoRules.NoBarePatternMatchOnFallibleTest do
       |> run_check(NoBarePatternMatchOnFallible)
       |> refute_issues()
     end
+
+    test "does not report a parenless dot-read of a struct/map field" do
+      """
+      defmodule MyApp.Sync do
+        def sync(state) do
+          {:ok, x} = state.result
+          broadcast(x)
+        end
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoBarePatternMatchOnFallible)
+      |> refute_issues()
+    end
+
+    test "does not report a chained parenless dot-read" do
+      """
+      defmodule MyApp.Sync do
+        def sync(state) do
+          {:ok, x} = state.inner.result
+          broadcast(x)
+        end
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoBarePatternMatchOnFallible)
+      |> refute_issues()
+    end
+
+    test "does not report an Access bracket read" do
+      """
+      defmodule MyApp.Sync do
+        def sync(opts) do
+          {:ok, x} = opts[:result]
+          broadcast(x)
+        end
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoBarePatternMatchOnFallible)
+      |> refute_issues()
+    end
+
+    test "does not report a module attribute read" do
+      """
+      defmodule MyApp.Sync do
+        @cfg {:ok, %{}}
+
+        def sync(_id) do
+          {:ok, x} = @cfg
+          broadcast(x)
+        end
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoBarePatternMatchOnFallible)
+      |> refute_issues()
+    end
+
+    test "does not report a || fallback rhs" do
+      """
+      defmodule MyApp.Sync do
+        def sync(cached, other) do
+          {:ok, x} = cached || other
+          broadcast(x)
+        end
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoBarePatternMatchOnFallible)
+      |> refute_issues()
+    end
+
+    test "still reports a parenless zero-arity remote call" do
+      """
+      defmodule MyApp.Sync do
+        def sync(_id) do
+          {:ok, user} = Accounts.fetch
+          broadcast(user)
+        end
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoBarePatternMatchOnFallible)
+      |> assert_issue(fn issue -> assert issue.line_no === 3 end)
+    end
+
+    test "reports a bare match on an anonymous function call" do
+      """
+      defmodule MyApp.Sync do
+        def sync(fun) do
+          {:ok, x} = fun.()
+          broadcast(x)
+        end
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoBarePatternMatchOnFallible)
+      |> assert_issue(fn issue -> assert issue.line_no === 3 end)
+    end
   end
 
   describe "&run/2 respects the excluded_paths param" do
@@ -335,6 +435,33 @@ defmodule MikaCredoRules.NoBarePatternMatchOnFallibleTest do
       |> to_source_file("apps/my_app/lib/latest/helpers.ex")
       |> run_check(NoBarePatternMatchOnFallible)
       |> assert_issue(fn issue -> assert issue.line_no === 3 end)
+    end
+
+    test "does not exempt a lookalike application filename (web_application.ex)" do
+      """
+      defmodule MyApp.WebApplication do
+        def sync(id) do
+          {:ok, user} = Accounts.fetch(id)
+          broadcast(user)
+        end
+      end
+      """
+      |> to_source_file("apps/my_app/lib/my_app/web_application.ex")
+      |> run_check(NoBarePatternMatchOnFallible)
+      |> assert_issue(fn issue -> assert issue.line_no === 3 end)
+    end
+
+    test "does not report a boot-time match in priv/repo/seeds.exs" do
+      """
+      defmodule MyApp.Repo.Seeds do
+        def run do
+          {:ok, _user} = Accounts.create(%{name: "seed"})
+        end
+      end
+      """
+      |> to_source_file("apps/my_app/priv/repo/seeds.exs")
+      |> run_check(NoBarePatternMatchOnFallible)
+      |> refute_issues()
     end
 
     test "excluded_paths param can be narrowed to exclude nothing" do
