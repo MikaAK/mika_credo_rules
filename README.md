@@ -65,7 +65,9 @@ checks: %{
 | [`NoNilComparison`](#nonilcomparison) | `:readability` | `x == nil` / `x != nil` — use `is_nil/1` |
 | [`NoProcessSleepInTests`](#noprocesssleepintests) | `:warning` | `Process.sleep/1` and `:timer.sleep/1` in test files |
 | [`NoReimplementedHelper`](#noreimplementedhelper) | `:design` | Local re-implementations of shared library helpers |
+| [`NoRepoWritesInTests`](#norepowritesintests) | `:design` | Write-side `Repo` calls (`insert!`, `update!`, `delete!`, ...) in test files — use `FactoryEx` |
 | [`NoSingleLetterVariables`](#nosinglelettervariables) | `:readability` | Single-letter variable bindings |
+| [`NoVacuousAssert`](#novacuousassert) | `:warning` | `assert true` / `assert <literal>` / `refute false` / `assert x === x` — placeholder assertions that can never fail |
 | [`RefuteOverAssertNot`](#refuteoverassertnot) | `:readability` | `assert !expr` / `assert not expr` — use `refute` |
 | [`SingleModulePerFile`](#singlemoduleperfile) | `:design` | More than one top-level `defmodule` per file (nested modules allowed) |
 | [`StrictEquality`](#strictequality) | `:warning` | `==`/`!=` — use `===`/`!==` (Ecto query DSL exempt) |
@@ -423,6 +425,53 @@ def process(map), do: SharedUtils.Enum.atomize_keys(map)
 | `functions` | `%{atomize_keys: "SharedUtils.Enum.atomize_keys/1", deep_merge: "SharedUtils.Map.merge_deep_left/2", deep_struct_to_map: "SharedUtils.Map.deep_struct_to_map/1", pluck: "SharedUtils.Collection.pluck/2", random_string: "SharedUtils.String.generate_random/1", reject_nil_values: "SharedUtils.Enum.reject_nil_values/1", stringify_keys: "SharedUtils.Enum.stringify_keys/1", valid_email?: "SharedUtils.String.valid_email?/1"}` | Banned local function names → the shared helper to use instead. Overriding replaces the whole map. |
 | `excluded_paths` | `["shared_utils"]` | Path fragments exempt from the check (segment-boundary matched) — the shared library itself defines the canonical implementations |
 
+### `NoRepoWritesInTests`
+
+Tests must not write to the database directly — use `FactoryEx` for test data. A
+raw `Repo.insert!/1` in a test hardcodes every required association and default
+inline, so it silently drifts from the schema's real constraints. `FactoryEx`
+centralizes that shape in one factory module every test shares.
+
+```elixir
+# BAD
+{:ok, user} = Repo.insert(%User{email: "a@b.c"})
+Repo.insert_all(Order, rows)
+%User{email: "a@b.c"} |> Repo.insert!()
+
+# GOOD
+user = FactoryEx.insert!(MyApp.Support.Factory.User)
+```
+
+Reads are left alone — asserting on persisted state is the correct way to pin a
+behavioural test (`Repo.get/2`, `Repo.all/1`, `Repo.one/1`, `Repo.preload/2` never
+fire). A repo is identified two ways: any `__aliases__` path whose last segment is
+`:Repo` (`MyApp.Repo`, `Repo`, `Schemas.Repo`) — no alias tracking needed for a
+plain `alias MyApp.Repo`, since that preserves the last segment — plus any module
+named in `:repo_modules`, alias-resolved for repos that are not named `Repo` at
+all.
+
+This is the complement of blitz `NoRampantRepos`, which excludes every `.exs` file
+and so never sees a single one of these — run both.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `functions` | `[:insert, :insert!, :insert_all, :update, :update!, :update_all, :delete, :delete!, :delete_all, :insert_or_update, :insert_or_update!]` | Write-side `Ecto.Repo` functions to flag |
+| `repo_modules` | `[]` | Additional repo modules to treat as write targets, for repos not named `Repo`. Alias-resolved via `AstHelpers.resolve_aliases/2` |
+| `test_files` | `["_test.exs"]` | Path suffixes the check runs on — everything else is skipped |
+| `excluded_paths` | `["test/support/"]` | Path fragments exempt from the check (segment-boundary matched) — factories and `DataCase` helpers legitimately write |
+
+**Limitations:** a repo with no `FactoryEx` setup at all will fail every one of
+these issues with no path forward — ship this opt-in rather than in a
+recommended-default bundle until `FactoryEx` is wired up. `alias MyApp.Repo, as:
+DB` renames the last segment, so a bare `DB.insert!/1` call is a false negative
+under the default heuristic — name the real module in `:repo_modules`
+(`repo_modules: [MyApp.Repo]`) to catch it too, reported as `DB.insert!`. A
+cleanup call in `setup`/`on_exit` (`Repo.delete_all(User)`) still fires, but "use
+FactoryEx for test data" is not the fix for teardown — deleting test rows
+directly there is legitimate. Only a literal alias at the call site is
+recognised: `@repo.insert!()`, `repo().insert!()`, `apply(Repo, :insert!, [x])`,
+and `Ecto.Adapters.SQL.query!(Repo, "DELETE ...", [])` are all undetected.
+
 ### `NoSingleLetterVariables`
 
 Variables must not be named with a single letter — the name should say what the
@@ -444,6 +493,55 @@ Enum.map(users, fn user -> user.name end)
 | Param | Default | Meaning |
 |---|---|---|
 | `allowed_names` | `[]` | Single-letter names allowed anyway — atoms or strings |
+
+### `NoVacuousAssert`
+
+Assertions must exercise real behaviour, never a hardcoded literal. `assert true`,
+`assert :ok`, `refute false` always pass regardless of what the test does — they
+are placeholders that survived past the point a real assertion should have
+replaced them. `assert x === x` is the same trap wearing an operator: it
+compares a value to itself, so it can never fail.
+
+```elixir
+# BAD
+assert true
+assert :ok
+refute false
+refute nil
+assert Orders.status(order) === Orders.status(order)
+
+# GOOD
+assert Orders.status(order) === :shipped
+```
+
+A bare variable or a function call is never flagged — `assert some_call()` and
+`assert x` are legitimate assertions on a value computed elsewhere.
+
+`assert x == x` with a bare-variable left-hand side is also caught by Credo's
+own default-on `Credo.Check.Warning.OperationOnSameValues` — measured: it does
+not flag `assert x === x` or a function-call comparison like
+`assert Orders.status(order) === Orders.status(order)`, only bare-variable
+`==`, so the overlap is narrow. Disable the stock check for the `==` case if
+the double report is unwanted:
+
+```elixir
+checks: %{
+  enabled: [{MikaCredoRules.NoVacuousAssert, []}],
+  disabled: [{Credo.Check.Warning.OperationOnSameValues, []}]   # superseded for asserts
+}
+```
+
+Disabling it also drops its unrelated coverage of `x >= x`, `x != x`, `y / y`,
+etc. outside of `assert`/`refute` — only disable it if that coverage isn't
+otherwise wanted.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `test_files` | `["_test.exs"]` | Path suffixes the check runs on — everything else is skipped |
+
+**Limitation:** `assert f() === f()` with an impure `f` (timestamps, random
+values, a counter) is a deliberate determinism/memoization test and will be
+flagged — the check compares AST shape, not runtime purity.
 
 ### `RefuteOverAssertNot`
 
