@@ -4,7 +4,7 @@ defmodule MikaCredoRules.MigrationFlushBetweenExecuteAndQuery do
     category: :warning,
     param_defaults: [
       migration_paths: ["migrations/"],
-      direct_query_functions: [:query, :query!, :query_many],
+      direct_query_functions: [:query, :query!, :query_many, :query_many!],
       flush_function: :flush
     ],
     explanations: [
@@ -20,7 +20,7 @@ defmodule MikaCredoRules.MigrationFlushBetweenExecuteAndQuery do
         direct_query_functions: """
         A list of atoms naming the `repo()` functions that run immediately, on a
         separate connection from the deferred `execute/1,2` DSL. Defaults to
-        `[:query, :query!, :query_many]`.
+        `[:query, :query!, :query_many, :query_many!]`.
         """,
         flush_function: """
         The name of the function that forces deferred `execute/1,2` statements to
@@ -30,8 +30,9 @@ defmodule MikaCredoRules.MigrationFlushBetweenExecuteAndQuery do
     ]
 
   @moduledoc """
-  A direct `repo().query`/`query!`/`query_many` call must not follow `execute/1,2`
-  in the same migration body without a `flush()` between them.
+  A direct `repo().query`/`query!`/`query_many`/`query_many!` call must not
+  follow `execute/1,2` in the same migration body without a `flush()` between
+  them.
 
   `execute/1,2` is DSL — Ecto queues it to run at the end of the migration, on the
   migration runner's connection. `repo().query!/1` runs immediately, on a separate

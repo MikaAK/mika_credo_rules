@@ -44,6 +44,22 @@ defmodule MikaCredoRules.MigrationFlushBetweenExecuteAndQueryTest do
       |> assert_issue(fn issue -> assert issue.line_no === 6 end)
     end
 
+    test "reports repo().query_many! after execute" do
+      """
+      defmodule MyApp.Repo.Migrations.ReassignObanWorkers do
+        use Ecto.Migration
+
+        def change do
+          execute "UPDATE oban_jobs SET queue = 'scanner' WHERE worker IN ('A','B')"
+          repo().query_many!("SELECT 1; SELECT 2;")
+        end
+      end
+      """
+      |> to_source_file(@migration_file)
+      |> run_check(MigrationFlushBetweenExecuteAndQuery)
+      |> assert_issue(fn issue -> assert issue.line_no === 6 end)
+    end
+
     test "reports repo().query_many after execute" do
       """
       defmodule MyApp.Repo.Migrations.ReassignObanWorkers do
