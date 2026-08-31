@@ -4,18 +4,21 @@ defmodule MikaCredoRules.NoReimplementedHelper do
     category: :design,
     param_defaults: [
       functions: %{
-        atom_if_exists: "SharedUtils.Enum.atomize_keys/1",
+        atom_if_exists: "String.to_existing_atom/1",
         atomize_keys: "SharedUtils.Enum.atomize_keys/1",
         atomize_params: "SharedUtils.Enum.atomize_keys/1",
+        deep_merge: "SharedUtils.Map.merge_deep_left/2",
         deep_struct_to_map: "SharedUtils.Map.deep_struct_to_map/1",
         deep_transform: "SharedUtils.Enum.deep_transform/2",
         drop_nil_values: "SharedUtils.Enum.reject_nil_values/1",
+        pluck: "SharedUtils.Collection.pluck/2",
         random_string: "SharedUtils.String.generate_random/1",
         reject_nil_values: "SharedUtils.Enum.reject_nil_values/1",
         stringify_keys: "SharedUtils.Enum.stringify_keys/1",
-        title_case: "SharedUtils.String.title_case/1"
+        title_case: "SharedUtils.String.title_case/1",
+        valid_email?: "SharedUtils.String.valid_email?/1"
       },
-      excluded_paths: ["shared_utils"]
+      excluded_paths: ["shared_utils/"]
     ],
     explanations: [
       params: [
@@ -29,8 +32,10 @@ defmodule MikaCredoRules.NoReimplementedHelper do
         ends with a fragment, or contains one after a `/` — matching happens on
         path-segment boundaries, so `test/` does not exempt `lib/latest/`.
 
-        Defaults to `["shared_utils"]`, exempting the shared library that defines
-        the canonical implementations.
+        Defaults to `["shared_utils/"]`, exempting the shared library that defines
+        the canonical implementations. The trailing `/` matters: it exempts
+        `apps/shared_utils/lib/shared_utils/map.ex`, never a lookalike file such as
+        `apps/my_app/lib/my_app/shared_utils.ex` or `shared_utils_helpers.ex`.
         """
       ]
     ]
@@ -64,6 +69,21 @@ defmodule MikaCredoRules.NoReimplementedHelper do
 
   Files matching an entry of `:excluded_paths` on a path-segment boundary are
   exempt, so the shared library itself can define the canonical implementations.
+
+  ## Limitations
+
+  Only `def` and `defp` are matched — a `defmacro` or `defmacrop` named after a
+  banned key is not flagged.
+
+  The shared workspace has three divergent `SharedUtils` libraries (one per
+  umbrella app). The `:functions` default targets their common core: pointers
+  present in at least two of the three trees. One consequence is `drop_nil_values`
+  and `reject_nil_values`, which both point at `SharedUtils.Enum.reject_nil_values/1`
+  — in cheddar_flow_ex_umbrella that function only accepts a map, while the other
+  two trees also accept a list. A project on the map-only tree that calls the
+  replacement with a list gets a `FunctionClauseError`, not a compile error.
+  Repos with a different or extended `SharedUtils` should override `:functions`
+  (see the README for a suggested-override block of tree-specific extras).
   """
   @explanation [check: @moduledoc]
 

@@ -421,10 +421,70 @@ end
 def process(map), do: SharedUtils.Enum.atomize_keys(map)
 ```
 
+The shared workspace has **three divergent `SharedUtils` libraries** (one per
+umbrella app), not one. The `:functions` default targets their common core — every
+pointer is ground-truthed against all three trees, and a pointer only needs to
+resolve in at least two of them to make the default. A repo whose `SharedUtils`
+carries extra helpers, or lacks one of the defaults, should override `:functions`
+with its own pointer map; the suggested override below adds the tree-specific
+extras this package verified as real but didn't judge common enough to default on.
+
+```elixir
+functions: %{
+  # ...defaults, plus:
+  apply_defaults: "SharedUtils.Map.apply_defaults/2",
+  keys_to_strings: "SharedUtils.Map.keys_to_strings/1",
+  deep_reject_nil_values: "SharedUtils.Enum.deep_reject_nil_values/1",
+  reject_empty_values: "SharedUtils.Enum.reject_empty_values/1",
+  ensure_map: "SharedUtils.Enum.ensure_map/1",
+  intersection: "SharedUtils.Enum.intersection/2",
+  difference: "SharedUtils.Enum.difference/2",
+  map_values: "SharedUtils.Enum.map_values/2",
+  to_serializable_map: "SharedUtils.Enum.to_serializable_map/2",
+  nilify_keys: "SharedUtils.Enum.nilify_keys/2",
+  sort_by_date: "SharedUtils.Collection.sort_by_date/3",
+  from_deep_struct: "SharedUtils.Collection.from_deep_struct/1",
+  remove_spaces: "SharedUtils.String.remove_spaces/2",
+  to_lower_kebab_case: "SharedUtils.String.to_lower_kebab_case/1",
+  to_bool: "SharedUtils.String.to_bool/1",
+  to_number: "SharedUtils.String.to_number/1",
+  slugify: "SharedUtils.String.slugify/1",
+  maybe_add_port: "SharedUtils.String.maybe_add_port/2",
+  days_between: "SharedUtils.DateTime.days_between/2",
+  start_of_day: "SharedUtils.DateTime.start_of_day/1",
+  start_of_year: "SharedUtils.DateTime.start_of_year/1",
+  same_day?: "SharedUtils.DateTime.same_day?/2",
+  equal_till_second?: "SharedUtils.DateTime.equal_till_second?/2",
+  humanize: "SharedUtils.DateTime.humanize/1",
+  beginning_of_next_month: "SharedUtils.Date.beginning_of_next_month/1",
+  end_of_next_month: "SharedUtils.Date.end_of_next_month/1",
+  next_month: "SharedUtils.Date.next_month/1",
+  add_months: "SharedUtils.Date.add_months/2",
+  deep_ls: "SharedUtils.File.deep_ls/1",
+  deep_relative_ls: "SharedUtils.File.deep_relative_ls/1",
+  url_safe_encode64: "SharedUtils.Base.url_safe_encode64/1",
+  url_safe_decode64: "SharedUtils.Base.url_safe_decode64/1",
+  humanize_ms: "SharedUtils.TimeConversion.humanize_ms/1",
+  payload_keys_to_strings: "SharedUtils.Enum.stringify_keys/1"
+}
+```
+
+These extras were verified present in `trader_fira_umbrella` and
+`notification_platform_umbrella`, absent from `cheddar_flow_ex_umbrella`.
+`wrap` was deliberately left out of this list — it measured as a false positive
+against a `SharedUtils.Collection.wrap/2` in `trader_fira_umbrella` that is a
+domain-specific pivot helper, not a generic "wrap in a list" utility, so banning
+a local `wrap/N` would misdirect on unrelated code.
+
 | Param | Default | Meaning |
 |---|---|---|
-| `functions` | `%{atom_if_exists: "SharedUtils.Enum.atomize_keys/1", atomize_keys: "SharedUtils.Enum.atomize_keys/1", atomize_params: "SharedUtils.Enum.atomize_keys/1", deep_struct_to_map: "SharedUtils.Map.deep_struct_to_map/1", deep_transform: "SharedUtils.Enum.deep_transform/2", drop_nil_values: "SharedUtils.Enum.reject_nil_values/1", random_string: "SharedUtils.String.generate_random/1", reject_nil_values: "SharedUtils.Enum.reject_nil_values/1", stringify_keys: "SharedUtils.Enum.stringify_keys/1", title_case: "SharedUtils.String.title_case/1"}` | Banned local function names → the shared helper to use instead. Overriding replaces the whole map. Every pointer is ground-truthed against the real `shared_utils` source — `deep_merge`, `pluck`, and `valid_email?` were dropped from an earlier default because no such function exists in that library. |
-| `excluded_paths` | `["shared_utils"]` | Path fragments exempt from the check (segment-boundary matched) — the shared library itself defines the canonical implementations |
+| `functions` | `%{atom_if_exists: "String.to_existing_atom/1", atomize_keys: "SharedUtils.Enum.atomize_keys/1", atomize_params: "SharedUtils.Enum.atomize_keys/1", deep_merge: "SharedUtils.Map.merge_deep_left/2", deep_struct_to_map: "SharedUtils.Map.deep_struct_to_map/1", deep_transform: "SharedUtils.Enum.deep_transform/2", drop_nil_values: "SharedUtils.Enum.reject_nil_values/1", pluck: "SharedUtils.Collection.pluck/2", random_string: "SharedUtils.String.generate_random/1", reject_nil_values: "SharedUtils.Enum.reject_nil_values/1", stringify_keys: "SharedUtils.Enum.stringify_keys/1", title_case: "SharedUtils.String.title_case/1", valid_email?: "SharedUtils.String.valid_email?/1"}` | Banned local function names → the shared helper to use instead. Overriding replaces the whole map. `atom_if_exists` points at `String.to_existing_atom/1` (what `atomize_keys/1` calls internally for one key), not `atomize_keys/1` itself, which takes an enumerable. |
+| `excluded_paths` | `["shared_utils/"]` | Path fragments exempt from the check (segment-boundary matched) — the shared library itself defines the canonical implementations. The trailing `/` keeps a lookalike file, such as `apps/my_app/lib/my_app/shared_utils.ex`, covered by the check. |
+
+Only `def`/`defp` are matched — `defmacro`/`defmacrop` are not. `drop_nil_values`
+and `reject_nil_values` both point at `SharedUtils.Enum.reject_nil_values/1`, which
+is map-only in `cheddar_flow_ex_umbrella` but also accepts a list in the other two
+trees — passing a list on the map-only tree raises `FunctionClauseError`.
 
 ### `NoSingleLetterVariables`
 
