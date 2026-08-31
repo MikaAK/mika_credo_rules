@@ -87,6 +87,40 @@ defmodule MikaCredoRules.HologramCookieKeysMustBeStringsTest do
     end
   end
 
+  describe "&run/2 handles piped calls (key shifts position when the server is piped in)" do
+    test "reports a piped put_cookie whose key is an atom, Hologram's own idiom" do
+      """
+      defmodule MyApp.ProductPage do
+        use Hologram.Page
+
+        def command(:save, _params, server) do
+          server
+          |> put_action(:done)
+          |> put_cookie(:prefs, %{theme: "dark"})
+        end
+      end
+      """
+      |> to_source_file(@page_file)
+      |> run_check(HologramCookieKeysMustBeStrings)
+      |> assert_issue(fn issue -> assert issue.trigger === "put_cookie" end)
+    end
+
+    test "does not report a piped put_cookie whose value happens to be an atom" do
+      """
+      defmodule MyApp.ProductPage do
+        use Hologram.Page
+
+        def command(:save, _params, server) do
+          server |> put_cookie("theme", :dark)
+        end
+      end
+      """
+      |> to_source_file(@page_file)
+      |> run_check(HologramCookieKeysMustBeStrings)
+      |> refute_issues()
+    end
+  end
+
   describe "&run/2 leaves string keys, variable keys, and non-Hologram modules alone" do
     test "does not report a string key" do
       """

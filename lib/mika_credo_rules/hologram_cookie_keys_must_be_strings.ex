@@ -57,19 +57,39 @@ defmodule MikaCredoRules.HologramCookieKeysMustBeStrings do
   end
 
   defp collect_violations(body, functions) do
-    HologramModules.scan_own_body(body, [], &collect_node_violation(&1, &2, functions))
+    body
+    |> Macro.prewalk([], &traverse(&1, &2, functions))
+    |> elem(1)
   end
 
-  defp collect_node_violation({function, meta, args}, violations, functions)
+  defp traverse({:defmodule, _, _}, violations, _functions), do: {nil, violations}
+
+  # A piped call is consumed here: its key is the piped call's own 1st
+  # argument (`lhs |> put_cookie(key, value)`), which becomes the 2nd
+  # argument once `lhs` is prepended — the same position a standalone call
+  # checks. The call's head is rewritten to `__block__` (keeping its
+  # arguments traversable) so the standalone clause below never re-examines
+  # the same call at the wrong argument position.
+  defp traverse({:|>, pipe_meta, [lhs, {function, meta, args}]}, violations, functions)
        when is_atom(function) and is_list(args) do
+    {{:|>, pipe_meta, [lhs, {:__block__, [], args}]},
+     collect_call_violation(violations, function, [lhs | args], meta, functions)}
+  end
+
+  defp traverse({function, meta, args} = node, violations, functions)
+       when is_atom(function) and is_list(args) do
+    {node, collect_call_violation(violations, function, args, meta, functions)}
+  end
+
+  defp traverse(node, violations, _functions), do: {node, violations}
+
+  defp collect_call_violation(violations, function, args, meta, functions) do
     if function in functions and atom_key?(args) do
       [%{trigger: Atom.to_string(function), line_no: meta[:line]} | violations]
     else
       violations
     end
   end
-
-  defp collect_node_violation(_node, violations, _functions), do: violations
 
   defp atom_key?(args) do
     case Enum.at(args, 1) do
