@@ -32,9 +32,15 @@ defmodule MikaCredoRules.NoBinaryPatternForStringPrefix do
 
       def parse("GET " <> path), do: path
 
-  Only a `<<>>` pattern whose first segment is a plain string literal, and
-  whose every other segment is a bare variable or a `::binary`/`::bytes`-typed
-  variable, is flagged — genuine binary parsing is left alone:
+  Only a `<<>>` pattern with exactly two segments — a plain string literal
+  first, and a `::binary`/`::bytes`-typed variable (or `_`) second — is
+  flagged. A bare variable with no explicit type (`<<"GET ", rest>>`) binds a
+  single byte as an integer, not a string tail, so rewriting it to `<>` would
+  change what the code matches — it is left alone, same as genuine binary
+  parsing:
+
+      # GOOD — a bare variable segment binds a byte, not a string tail
+      <<"GET ", rest>> = data
 
       # GOOD — real byte-level parsing, not a string prefix match
       <<size::32, rest::binary>> = data
@@ -76,8 +82,9 @@ defmodule MikaCredoRules.NoBinaryPatternForStringPrefix do
     {ast, collect_binary_patterns(lhs, matches)}
   end
 
-  defp traverse({def_kind, _, [head | _body]} = ast, matches) when def_kind in @def_kinds do
-    {ast, head |> function_parameters() |> collect_binary_patterns(matches)}
+  defp traverse({def_kind, meta, [head | body]}, matches) when def_kind in @def_kinds do
+    new_matches = head |> function_parameters() |> collect_binary_patterns(matches)
+    {{def_kind, meta, [neutralize_pattern_assigns(head) | body]}, new_matches}
   end
 
   # `case`/`fn`/`receive`-do clause heads are patterns; `cond` heads and the
@@ -92,13 +99,15 @@ defmodule MikaCredoRules.NoBinaryPatternForStringPrefix do
     {{:receive, meta, [neutralize_arrows_under(sections, :after)]}, matches}
   end
 
-  defp traverse({:->, _, [patterns, _body]} = ast, matches) do
-    {ast, collect_binary_patterns(patterns, matches)}
+  defp traverse({:->, meta, [patterns, body]}, matches) do
+    new_matches = patterns |> strip_guard() |> collect_binary_patterns(matches)
+    {{:->, meta, [neutralize_pattern_assigns(patterns), body]}, new_matches}
   end
 
-  defp traverse({with_or_for, _, clauses} = ast, matches)
+  defp traverse({with_or_for, meta, clauses}, matches)
        when with_or_for in [:with, :for] and is_list(clauses) do
-    {ast, collect_generator_patterns(clauses, matches)}
+    new_matches = collect_generator_patterns(clauses, matches)
+    {{with_or_for, meta, neutralize_pattern_assigns(clauses)}, new_matches}
   end
 
   defp traverse(ast, matches), do: {ast, matches}
@@ -116,6 +125,23 @@ defmodule MikaCredoRules.NoBinaryPatternForStringPrefix do
   defp function_parameters({:when, _, [head | _guards]}), do: function_parameters(head)
   defp function_parameters({_name, _, parameters}) when is_list(parameters), do: parameters
   defp function_parameters(_head), do: []
+
+  # A `->` clause head with a guard (`y when y === <<...>> -> ...`) wraps the
+  # actual patterns and the guard expression together in one `:when` node —
+  # the guard is the LAST element. A `<<>>` inside the guard is a constructor
+  # (compared against, not matched on) and must never be collected.
+  defp strip_guard([{:when, _, args}]), do: Enum.drop(args, -1)
+  defp strip_guard(patterns), do: patterns
+
+  # Prevents a `<<...>> = whole` sub-pattern already collected here from
+  # being collected a second time when the outer prewalk reaches the same
+  # `:=` node and the top-level `traverse({:=, ...})` clause matches it too.
+  defp neutralize_pattern_assigns(ast) do
+    Macro.prewalk(ast, fn
+      {:=, meta, [lhs, rhs]} -> {:matched_pattern_assign, meta, [lhs, rhs]}
+      node -> node
+    end)
+  end
 
   defp collect_generator_patterns(clauses, matches) do
     Enum.reduce(clauses, matches, fn
@@ -139,13 +165,8 @@ defmodule MikaCredoRules.NoBinaryPatternForStringPrefix do
 
   defp collect_binary_pattern(node, matches), do: {node, matches}
 
-  defp string_prefix_pattern?([first | [_ | _] = rest]) do
-    is_binary(first) and Enum.all?(rest, &safe_segment?/1)
-  end
-
+  defp string_prefix_pattern?([first, second]), do: is_binary(first) and safe_segment?(second)
   defp string_prefix_pattern?(_segments), do: false
-
-  defp safe_segment?({name, _meta, context}) when is_atom(name) and is_atom(context), do: true
 
   defp safe_segment?({:"::", _meta, [{name, _meta2, context}, type]})
        when is_atom(name) and is_atom(context) do

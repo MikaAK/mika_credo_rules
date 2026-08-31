@@ -26,20 +26,6 @@ defmodule MikaCredoRules.NoBinaryPatternForStringPrefixTest do
       end)
     end
 
-    test "reports a bare-variable segment (no explicit ::binary)" do
-      """
-      defmodule MyApp.Parser do
-        def parse(str) do
-          <<"GET ", rest>> = str
-          rest
-        end
-      end
-      """
-      |> to_source_file(@lib_file)
-      |> run_check(NoBinaryPatternForStringPrefix)
-      |> assert_issue(fn issue -> assert issue.line_no === 3 end)
-    end
-
     test "reports a ::bytes-typed segment" do
       """
       defmodule MyApp.Parser do
@@ -182,6 +168,55 @@ defmodule MikaCredoRules.NoBinaryPatternForStringPrefixTest do
     end
   end
 
+  describe "&run/2 does not double-report a nested = inside an already-collected pattern" do
+    test "reports exactly once for a function-clause head with an aliasing =" do
+      """
+      defmodule MyApp.Parser do
+        def parse(<<"GET ", r::binary>> = whole) do
+          {r, whole}
+        end
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoBinaryPatternForStringPrefix)
+      |> assert_issue(fn issue -> assert issue.line_no === 2 end)
+    end
+
+    test "reports exactly once for a case clause head with an aliasing =" do
+      """
+      defmodule MyApp.Parser do
+        def parse(data) do
+          case data do
+            <<"GET ", r::binary>> = whole -> {r, whole}
+            _other -> :unknown
+          end
+        end
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoBinaryPatternForStringPrefix)
+      |> assert_issue(fn issue -> assert issue.line_no === 4 end)
+    end
+  end
+
+  describe "&run/2 does not treat a guard-head constructor as a pattern" do
+    test "does not report a <<>> constructor compared inside a case clause guard" do
+      """
+      defmodule MyApp.Parser do
+        def parse(x) do
+          case x do
+            y when y === <<"GET ", rest::binary>> -> y
+            _other -> :unknown
+          end
+        end
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoBinaryPatternForStringPrefix)
+      |> refute_issues()
+    end
+  end
+
   describe "&run/2 allows genuine binary parsing" do
     test "does not report a ::size(n)-style segment" do
       """
@@ -217,6 +252,34 @@ defmodule MikaCredoRules.NoBinaryPatternForStringPrefixTest do
         def parse(data) do
           <<byte::8, rest::binary>> = data
           {byte, rest}
+        end
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoBinaryPatternForStringPrefix)
+      |> refute_issues()
+    end
+
+    test "does not report a bare-variable segment (no explicit ::binary)" do
+      """
+      defmodule MyApp.Parser do
+        def parse(str) do
+          <<"GET ", rest>> = str
+          rest
+        end
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoBinaryPatternForStringPrefix)
+      |> refute_issues()
+    end
+
+    test "does not report a pattern with more than two segments, even when all are typed" do
+      """
+      defmodule MyApp.Parser do
+        def parse(str) do
+          <<"GET ", a::binary, b::binary>> = str
+          {a, b}
         end
       end
       """
@@ -345,6 +408,20 @@ defmodule MikaCredoRules.NoBinaryPatternForStringPrefixTest do
       """
       defmodule MyApp.Parser do
         def parse("GET " <> path), do: path
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoBinaryPatternForStringPrefix)
+      |> refute_issues()
+    end
+
+    test "moduledoc GOOD example (bare variable segment) is clean" do
+      """
+      defmodule MyApp.Parser do
+        def parse(data) do
+          <<"GET ", rest>> = data
+          rest
+        end
       end
       """
       |> to_source_file(@lib_file)
