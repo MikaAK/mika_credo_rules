@@ -131,7 +131,7 @@ defmodule MikaCredoRules.NoRepoWritesInTests do
        )
        when is_list(args) do
     if repo_module?(module, context) and function in context.functions do
-      trigger = "#{Enum.join(module, ".")}.#{function}"
+      trigger = "#{Macro.to_string({:__aliases__, [], module})}.#{function}"
       {ast, [repo_write(trigger, meta) | repo_writes]}
     else
       {ast, repo_writes}

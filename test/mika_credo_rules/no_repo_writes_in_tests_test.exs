@@ -361,6 +361,36 @@ defmodule MikaCredoRules.NoRepoWritesInTestsTest do
     end
   end
 
+  describe "&run/2 handles non-atom alias segments without raising" do
+    test "reports __MODULE__.Repo.insert! instead of crashing" do
+      """
+      defmodule MyApp.OrdersTest do
+        def seed do
+          __MODULE__.Repo.insert!(%Order{total: 10})
+        end
+      end
+      """
+      |> to_source_file(@test_file)
+      |> run_check(NoRepoWritesInTests)
+      |> assert_issue(fn issue -> assert issue.message =~ "__MODULE__.Repo.insert!" end)
+    end
+
+    test "reports unquote(mod).Repo.insert! inside a quote instead of crashing" do
+      """
+      defmodule MyApp.OrdersTest do
+        defmacro seed_via(mod) do
+          quote do
+            unquote(mod).Repo.insert!(%Order{total: 10})
+          end
+        end
+      end
+      """
+      |> to_source_file(@test_file)
+      |> run_check(NoRepoWritesInTests)
+      |> assert_issue(fn issue -> assert issue.message =~ "unquote(mod).Repo.insert!" end)
+    end
+  end
+
   describe "moduledoc examples" do
     test "moduledoc BAD example 1 fires on all three write calls" do
       """
