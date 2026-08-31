@@ -77,6 +77,7 @@ does) or these three checks will never see a file to run against.
 | [`MigrationExecuteInChange`](#migrationexecuteinchange) | `:warning` | `execute/1` inside `def change` — irreversible, Ecto cannot roll it back |
 | [`MigrationFlushBetweenExecuteAndQuery`](#migrationflushbetweenexecuteandquery) | `:warning` | A direct `repo().query` after `execute/1,2` with no `flush()` between them |
 | [`MigrationForeignKeyNeedsIndex`](#migrationforeignkeyneedsindex) | `:warning` | A `references(...)` foreign key column with no covering index in the same migration |
+| [`MonolithicTemplateComponent`](#monolithictemplatecomponent) | `:refactor` | A `~H`/`~F` body spanning too many lines — decompose into smaller function components |
 | [`NoApplicationEnvOutsideConfig`](#noapplicationenvoutsideconfig) | `:design` | Any read or write of application env outside a config module |
 | [`NoAtomStringKeyFallback`](#noatomstringkeyfallback) | `:warning` | `m["key"] \|\| m[:key]` mixed-key fallback reads — normalize keys at the boundary |
 | [`NoBarePatternMatchOnFallible`](#nobarepatternmatchonfallible) | `:warning` | `{:ok, x} = call()` — a bare match with no handling for the failure path |
@@ -90,6 +91,7 @@ does) or these three checks will never see a file to run against.
 | [`NoDirectHttpClient`](#nodirecthttpclient) | `:design` | Direct `Finch`/`HTTPoison`/`Tesla`/`Req` calls — route through your app's HTTP wrapper |
 | [`NoContinueFromLiveViewMount`](#nocontinuefromliveviewmount) | `:warning` | `mount/3` returning `{:ok, socket, {:continue, term}}` — a GenServer shape, not a LiveView one |
 | [`NoEctoSchemaInWebApp`](#noectoschemainwebapp) | `:design` | `use Ecto.Schema` inside a web app instead of the dedicated `_pg`/`schemas` app |
+| [`NoClickHandlerOnNonInteractiveElement`](#noclickhandleronnoninteractiveelement) | `:design` | A click binding on `<span>`/`<div>`/... with no `role`/`tabindex` escape hatch |
 | [`NoIdentityRewrap`](#noidentityrewrap) | `:refactor` | `case` expressions whose every clause returns its pattern unchanged |
 | [`NoInspectModuleInMigrationSql`](#noinspectmoduleinmigrationsql) | `:warning` | `inspect/1` or string interpolation of a module alias in a migration |
 | [`NoJasonDeriveOnEctoSchema`](#nojasonderiveonectoschema) | `:design` | `@derive Jason.Encoder` inside Ecto schema modules |
@@ -100,6 +102,7 @@ does) or these three checks will never see a file to run against.
 | [`NoObanInsertBang`](#nobaninsertbang) | `:warning` | `Oban.insert!`/`Oban.insert_all!` in application code — prefer the non-bang form and handle `{:error, _}` |
 | [`NoProcessSleepInTests`](#noprocesssleepintests) | `:warning` | `Process.sleep/1` and `:timer.sleep/1` in test files |
 | [`NoRawEts`](#norawets) | `:design` | Raw `:ets` calls — wrap in `Cache.ETS` from elixir_cache |
+| [`NoRawMarkupInTemplates`](#norawmarkupintemplates) | `:design` | Literal `style="..."`, hardcoded hex colors, inline `<svg>`, and banned raw tags inside `~H`/`~F` bodies |
 | [`NoReimplementedHelper`](#noreimplementedhelper) | `:design` | Local re-implementations of shared library helpers |
 | [`NoRepoWritesInTests`](#norepowritesintests) | `:design` | Write-side `Repo` calls (`insert!`, `update!`, `delete!`, ...) in test files — use `FactoryEx` |
 | [`NoSelfSendZeroDelay`](#noselfsendzerodelay) | `:refactor` | `Process.send_after(self(), _, 0)` and `send(self(), _)` in `init/1` — use `{:continue, term}` instead |
@@ -113,6 +116,7 @@ does) or these three checks will never see a file to run against.
 | [`NoUnsupervisedTaskStart`](#nounsupervisedtaskstart) | `:warning` | `Task.start` — a crash inside it is silently discarded |
 | [`NoTelemetrySupervisorModule`](#notelemetrysupervisormodule) | `:design` | A `*Telemetry` module using `Supervisor` — add a `PrometheusTelemetry` child spec instead |
 | [`PrometheusExporterMustBeGated`](#prometheusexportermustbegated) | `:warning` | `exporter: [enabled?: true]` — the metrics endpoint must be gated to prod |
+| [`PhxValueNoDashes`](#phxvaluenodashes) | `:warning` | A dashed multiword `phx-value-*` key — LiveView never converts it, so a `%{"foo_bar" => _}` handler clause won't match |
 | [`RefuteOverAssertNot`](#refuteoverassertnot) | `:readability` | `assert !expr` / `assert not expr` — use `refute` |
 | [`SingleModulePerFile`](#singlemoduleperfile) | `:design` | More than one top-level `defmodule` per file (nested modules allowed) |
 | [`SqlSandboxPlugMustBeCompileGated`](#sqlsandboxplugmustbecompilegated) | `:warning` | `plug Phoenix.Ecto.SQL.Sandbox` not gated on `Application.compile_env/2,3` |
@@ -717,6 +721,50 @@ invisible to this check.
 | `migration_paths` | `["migrations/"]` | Path fragments (segment-boundary match) treated as migration directories |
 | `index_functions` | `[:index, :unique_index]` | `create`/`create_if_not_exists` functions that count as an index |
 
+### `MonolithicTemplateComponent`
+
+A `~H`/`~F` template body that spans too many lines almost certainly contains
+multiple logical phases that should be their own function components. A single
+sprawling template is harder to read top-to-bottom and hides how many distinct
+concerns it actually renders.
+
+```elixir
+# BAD — one sigil, three phases (header / groups / rows), 90 lines
+def progress(assigns), do: ~H"""
+  ...90 lines...
+"""
+
+# GOOD
+def progress(assigns) do
+  ~H"""
+  <.progress_header {assigns} />
+  <.lesson_group_card :for={g <- @groups} group={g} />
+  """
+end
+```
+
+This is a decomposition nudge, not a strict correctness rule. `max_lines`
+defaults to 60, buying headroom over a stricter "over ~40 lines with 2+ phases"
+prose guideline — only the line-count half of that is mechanically checkable.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `max_lines` | `60` | Physical lines a `~H`/`~F` body may span before it is flagged |
+| `sigils` | `[:sigil_H, :sigil_F]` | Which sigil names count as template bodies |
+| `excluded_paths` | `[]` | Path fragments whose files are skipped entirely |
+
+**Limitations.** Same as `NoRawMarkupInTemplates` — only `~H`/`~F` sigils
+colocated inside a `.ex`/`.exs` module are covered; a `.html.heex` file is never
+read by Credo (which also means a legitimately long, single-purpose whole-page
+`.html.heex` template isn't the false-positive risk it would otherwise be). The
+issue is reported at the sigil's own opening line, and `trigger:` reflects the
+actual sigil letter matched (`~H` or `~F`). Because of that, this check
+suppresses with an ordinary `# credo:disable-for-next-line` placed directly
+above the `~H`/`~F` line — unlike the other sigil checks, whose issues report
+from inside the body and need `# credo:disable-for-lines:N` or
+`# credo:disable-for-this-file` (see `NoRawMarkupInTemplates`'s Limitations
+section).
+
 ### `NoApplicationEnvOutsideConfig`
 
 Application environment must only be read or written from a config module. Scattered
@@ -1194,6 +1242,50 @@ matches.
 Include the leading underscore in `banned_path_fragments` — `"web"` (no
 underscore) is a segment-suffix match and over-matches `apps/cobweb/...`.
 
+### `NoClickHandlerOnNonInteractiveElement`
+
+A click binding on a non-interactive element (`<span>`, `<div>`, ...) must use a
+native interactive element instead, unless it also carries the ARIA attributes
+that make it keyboard- and screen-reader-accessible. A `<span phx-click="...">`
+is invisible to keyboard navigation and assistive tech — it never receives
+focus, has no default role, and `Tab`/`Enter` do nothing.
+
+```elixir
+# BAD
+~H"""
+<span class="pill" phx-click="show_findings">click</span>
+"""
+
+# GOOD
+~H"""
+<button type="button" aria-label="Show findings" phx-click="show_findings">click</button>
+"""
+```
+
+An element that legitimately needs the click binding (a full-card click target)
+is not flagged once it carries BOTH `role=` and `tabindex=` — the escape hatch
+is a conjunction, not a flat ban. An `aria-hidden="true"` element (e.g. a modal
+backdrop) is exempted independently of `role`/`tabindex` — pairing
+`role`+`tabindex` with `aria-hidden="true"` would itself be a WCAG violation.
+An opening tag may span multiple lines; the check scans from `<tag` to its
+matching `>` regardless of how many lines that spans.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `non_interactive_tags` | `["span", "div", "p", "li", "td", "th", "h1", "h2", "h3", "h4", "h5", "h6"]` | Tag names with no native click semantics |
+| `bindings` | `["phx-click"]` | Attribute names that count as a click handler. A Hologram repo must set BOTH `sigils: [:sigil_HOLO]` and `bindings: ["$click"]` together — the defaults never combine to scan Hologram templates |
+| `escape_attributes` | `["role", "tabindex"]` | Attributes that, when ALL present, exempt the tag |
+| `sigils` | `[:sigil_H, :sigil_F]` | Which sigil names count as template bodies |
+| `excluded_paths` | `[]` | Path fragments whose files are skipped entirely |
+
+**Limitations.** Same as `NoRawMarkupInTemplates` — only `~H`/`~F` sigils
+colocated inside a `.ex`/`.exs` module are covered; a `.html.heex` file is never
+read by Credo. A `>` character inside a quoted attribute value (e.g.
+`title="a > b"`) would incorrectly end the tag scan early — accepted as a rare
+edge case rather than handled with a full attribute parser. Suppressing an
+issue inside a sigil body also works the same as `NoRawMarkupInTemplates` —
+see its Limitations section for the two escapes that actually work.
+
 ### `NoIdentityRewrap`
 
 A `case` whose every clause returns its pattern unchanged is a no-op re-wrap —
@@ -1499,6 +1591,92 @@ dot-call is matched.
 | `erlang_modules` | `[:ets]` | Erlang modules banned as raw in-memory stores — add `:dets` or `:persistent_term` to widen the ban |
 | `allowed_functions` | `[:info, :whereis, :all]` | Functions on a banned module that are never flagged |
 | `excluded_paths` | `["elixir_cache/"]` | Path fragments naming files exempt from the check (matched on segment boundaries) |
+
+### `NoRawMarkupInTemplates`
+
+Raw HTML primitives inside a `~H`/`~F` template body must go through the project's
+design system instead of being hand-rolled. A literal `style="..."` attribute, a
+hardcoded hex color, or an inline `<svg>` bypasses the Tailwind theme / design
+tokens / icon component the rest of the app relies on.
+
+```elixir
+# BAD
+~H"""
+<div style="width: 30%">
+  <svg viewBox="0 0 24 24"><path d="M0 0"/></svg>
+  <span class="bg-[#1d4ed8]">badge</span>
+</div>
+"""
+
+# GOOD
+~H"""
+<div class="w-1/3">
+  <.icon name="check" />
+  <.badge tone="info">badge</.badge>
+</div>
+"""
+```
+
+Four independent rules toggle via `:rules`: `:inline_style` (a literal
+`style="..."` — a dynamic `style={...}` expression is allowed by default),
+`:hex_color` (a 6-digit hex color — 3-digit is deliberately not matched, since
+`href="#abc"` anchor fragments are indistinguishable from it; a `#` preceded
+by `"` or `=` is also excluded, so `href="#abcdef"` doesn't fire either),
+`:inline_svg` (a literal `<svg` tag), and `:raw_tag` (any tag name in
+`:banned_tags`, empty by default so it is a no-op until a repo opts specific
+tags in).
+
+| Param | Default | Meaning |
+|---|---|---|
+| `rules` | `[:inline_style, :hex_color, :inline_svg, :raw_tag]` | Which markup rules run |
+| `banned_tags` | `[]` | Raw tag names flagged by `:raw_tag` (e.g. `["button"]`) |
+| `allow_dynamic_style` | `true` | When `true`, a dynamic `style={...}` expression is allowed |
+| `sigils` | `[:sigil_H, :sigil_F]` | Which sigil names count as template bodies |
+| `excluded_paths` | `["icons/"]` | Path fragments whose files are skipped entirely |
+| `excluded_app_suffixes` | `["_icons"]` | App directory NAME suffixes, matched per path segment (e.g. `apps/tiingo_icons/`) — the app that legitimately owns raw `<svg>` markup |
+
+**Limitations.** Credo only lints `.ex`/`.exs` files — **a `.html.heex` template
+file is never read by Credo** (`Credo.Sources.@default_sources_glob` is
+`~w(** *.{ex,exs})`), so this check is blind to every `.html.heex` file. Only
+`~H`/`~F` sigils colocated inside a `.ex`/`.exs` module are covered.
+
+Every rule scans the raw template body text — there is no HTML parser, so
+matches have no notion of markup structure. Measured false positives: `<svg`
+inside an HTML comment still fires (`<!-- <svg>...</svg> -->` reads as
+markup, not a comment), and `style="` appearing inside prose text still
+fires (`<p>Use the style="..." attribute.</p>`). Measured false negative: an
+8-digit CSS4 alpha hex color (`#1d4ed8ff`) does not fire — the trailing `\b`
+after the 6 captured digits requires a non-word character next, and the
+extra two hex digits are themselves word characters.
+
+A `#` inside a `~H`/`~F` heredoc is template string content, not a comment
+token, so neither a HEEx-comment-wrapped pragma inside the sigil nor a plain
+`# credo:disable-for-next-line` placed directly above the `~H"""` line ever
+suppresses an issue reported from inside the body — the issue's line is
+inside the template, past both anchors. This is measured, not theoretical:
+both forms below still fire.
+
+```heex
+<%!-- # credo:disable-for-next-line MikaCredoRules.NoRawMarkupInTemplates --%>
+<svg viewBox="0 0 24 24">...</svg>
+```
+
+Suppress an issue reported inside a sigil with one of the two mechanisms that
+scope by line count or by file, placed above the enclosing `def`:
+
+```elixir
+# credo:disable-for-lines:5 MikaCredoRules.NoRawMarkupInTemplates
+def render(assigns) do
+  ~H"""
+  <svg viewBox="0 0 24 24">...</svg>
+  """
+end
+```
+
+or, for a whole file, `# credo:disable-for-this-file MikaCredoRules.NoRawMarkupInTemplates`.
+This applies to every check that scans a `~H`/`~F` body, not just this one —
+`MonolithicTemplateComponent`, `NoClickHandlerOnNonInteractiveElement`, and
+`PhxValueNoDashes` share the same suppression behavior.
 
 ### `NoReimplementedHelper`
 
@@ -1996,6 +2174,40 @@ assigned to a variable before being referenced (`conf = [enabled?: true];
 exporter: conf`) all evade the check — the last is the realistic way a
 hardcoded flag survives review, since the literal and the flagged key end up
 on different lines.
+
+### `PhxValueNoDashes`
+
+A multiword `phx-value-*` attribute key must use underscores, never dashes.
+LiveView takes the text after `phx-value-` verbatim as the param key —
+`phx-value-group-id` becomes `%{"group-id" => ...}`, the dash is kept, not
+converted. This never matches a `%{"group_id" => _}` clause; a handler
+written the natural way, with underscored keys, raises a
+`FunctionClauseError` when it receives the dashed key instead.
+
+```elixir
+# BAD — never matches a %{"group_id" => _} handler clause
+~H"""
+<button phx-click="delete" phx-value-group-id={@id}>Delete</button>
+"""
+
+# GOOD
+~H"""
+<button phx-click="delete" phx-value-group_id={@id}>Delete</button>
+"""
+```
+
+Single-word keys (`phx-value-id`, `phx-value-kind`) are unaffected.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `sigils` | `[:sigil_H, :sigil_F]` | Which sigil names count as template bodies |
+| `excluded_paths` | `[]` | Path fragments whose files are skipped entirely |
+
+**Limitations.** Same as `NoRawMarkupInTemplates` — only `~H`/`~F` sigils
+colocated inside a `.ex`/`.exs` module are covered; a `.html.heex` file is
+never read by Credo. Suppressing an issue inside a sigil body also works the
+same as `NoRawMarkupInTemplates` — see its Limitations section for the two
+escapes that actually work.
 
 ### `RefuteOverAssertNot`
 
