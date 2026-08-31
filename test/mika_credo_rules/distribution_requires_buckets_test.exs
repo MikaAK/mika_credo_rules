@@ -21,6 +21,21 @@ defmodule MikaCredoRules.DistributionRequiresBucketsTest do
       |> assert_issue(fn issue -> assert issue.message =~ "reporter_options" end)
     end
 
+    test "reports reporter_options present but missing :buckets" do
+      """
+      defmodule MyApp.Metrics do
+        import Telemetry.Metrics, only: [distribution: 2]
+
+        def metrics do
+          [distribution("my_app.job.duration.microseconds", event_name: [:job, :stop], reporter_options: [])]
+        end
+      end
+      """
+      |> to_source_file(@metrics_file)
+      |> run_check(DistributionRequiresBuckets)
+      |> assert_issue(fn issue -> assert issue.message =~ "buckets" end)
+    end
+
     test "reports the qualified call" do
       """
       defmodule MyApp.Metrics do
@@ -61,6 +76,34 @@ defmodule MikaCredoRules.DistributionRequiresBucketsTest do
 
         def metrics do
           [distribution("my_app.job.duration.microseconds", event_name: [:job, :stop])]
+        end
+      end
+      """
+      |> to_source_file(@metrics_file)
+      |> run_check(DistributionRequiresBuckets)
+      |> refute_issues()
+    end
+
+    test "does not report a distribution/2 function definition head" do
+      """
+      defmodule MyApp.Metrics do
+        import Telemetry.Metrics
+
+        defp distribution(name, [foo: 1]), do: name
+      end
+      """
+      |> to_source_file(@metrics_file)
+      |> run_check(DistributionRequiresBuckets)
+      |> refute_issues()
+    end
+
+    test "does not report a distribution/2 function definition head with a do block" do
+      """
+      defmodule MyApp.Metrics do
+        import Telemetry.Metrics
+
+        def distribution(name, opts) do
+          {name, opts}
         end
       end
       """

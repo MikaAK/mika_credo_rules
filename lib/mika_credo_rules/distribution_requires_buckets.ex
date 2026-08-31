@@ -62,6 +62,14 @@ defmodule MikaCredoRules.DistributionRequiresBuckets do
   helper function or held in a variable are invisible to a static check and
   silently skipped rather than guessed at. `distribution/1` (no opts argument
   at all) is out of scope; only the two-argument form is checked.
+
+  The `import Telemetry.Metrics` scan is whole-file, not scoped to the
+  enclosing module — an import inside a `quote` block or a sibling module
+  defined in the same file arms the local/imported clause for the entire
+  file. A piped call (`"x" |> distribution(foo: 1)`) is a false negative:
+  the pipe leaves `distribution/2` at arity 1 in the AST (the piped value
+  fills the missing argument at macro-expansion time, which Credo does not
+  perform), so it never matches either traverse clause.
   """
   @explanation [check: @moduledoc]
 
@@ -111,6 +119,21 @@ defmodule MikaCredoRules.DistributionRequiresBuckets do
   defp strip_elixir_prefix([Elixir | segments]), do: segments
   defp strip_elixir_prefix(segments), do: segments
 
+  # A `def`/`defp`/`defmacro`/`defmacrop` head is never a call — its name is
+  # always the function's own name, never a reference to another function.
+  # Neutralizing only the head (keeping its args traversable inside a block)
+  # stops the local/imported clause below from misreading a literal-keyword
+  # head like `defp distribution(name, [foo: 1])` as a real distribution/2
+  # call, while the body is still visited normally.
+  defp traverse(
+         {def_kind, def_meta, [{_function, _head_meta, args}, body]},
+         missing,
+         _context
+       )
+       when def_kind in [:def, :defp, :defmacro, :defmacrop] and is_list(args) do
+    {{def_kind, def_meta, [{:__block__, [], args}, body]}, missing}
+  end
+
   # Qualified: Telemetry.Metrics.distribution(name, opts) — or an alias of it.
   defp traverse(
          {{:., _, [{:__aliases__, _, module}, function]}, meta, [_name, opts]} = ast,
@@ -145,7 +168,30 @@ defmodule MikaCredoRules.DistributionRequiresBuckets do
   end
 
   defp missing_keys(opts, required_keys) do
-    Enum.filter(required_keys, &(AstHelpers.keyword_literal_has_key?(opts, &1) === false))
+    top_level_missing =
+      Enum.filter(required_keys, &(AstHelpers.keyword_literal_has_key?(opts, &1) === false))
+
+    if :reporter_options in required_keys and reporter_options_present?(opts) do
+      top_level_missing ++ missing_buckets(opts)
+    else
+      top_level_missing
+    end
+  end
+
+  defp reporter_options_present?(opts) do
+    AstHelpers.keyword_literal_has_key?(opts, :reporter_options) === true
+  end
+
+  # :reporter_options is present (checked by the caller) — verify its own
+  # value carries :buckets. A histogram with `reporter_options: []` has
+  # nowhere to sort observations into, same as no `:reporter_options` at all.
+  defp missing_buckets(opts) do
+    case opts
+         |> Keyword.get(:reporter_options)
+         |> AstHelpers.keyword_literal_has_key?(:buckets) do
+      false -> [:buckets]
+      _present_or_not_literal -> []
+    end
   end
 
   defp distribution_call(function, missing_keys, meta) do
@@ -154,7 +200,7 @@ defmodule MikaCredoRules.DistributionRequiresBuckets do
 
   defp issue_for(distribution_call, issue_meta) do
     trigger = to_string(distribution_call.function)
-    missing = distribution_call.missing_keys |> Enum.map_join(", ", &inspect/1)
+    missing = Enum.map_join(distribution_call.missing_keys, ", ", &inspect/1)
 
     format_issue(issue_meta,
       message:
