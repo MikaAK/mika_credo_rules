@@ -198,6 +198,48 @@ defmodule MikaCredoRules.NoObanInsertBangTest do
       |> assert_issue()
     end
 
+    test "still reports a lib module whose name merely contains the seeds substring" do
+      """
+      defmodule MyApp.Seedstore do
+        def enqueue(id), do: Oban.insert!(MyApp.Workers.Sync.new(%{id: id}))
+      end
+      """
+      |> to_source_file("apps/my_app/lib/my_app/seedstore.ex")
+      |> run_check(NoObanInsertBang)
+      |> assert_issue()
+    end
+
+    test "still reports a lib file literally named seeds_helper.ex" do
+      """
+      defmodule MyApp.SeedsHelper do
+        def enqueue(id), do: Oban.insert!(MyApp.Workers.Sync.new(%{id: id}))
+      end
+      """
+      |> to_source_file("apps/my_app/lib/seeds_helper.ex")
+      |> run_check(NoObanInsertBang)
+      |> assert_issue()
+    end
+
+    test "still reports a lib file literally named seeds.ex" do
+      """
+      defmodule MyApp.Seeds do
+        def enqueue(id), do: Oban.insert!(MyApp.Workers.Sync.new(%{id: id}))
+      end
+      """
+      |> to_source_file("apps/my_app/lib/my_app/seeds.ex")
+      |> run_check(NoObanInsertBang)
+      |> assert_issue()
+    end
+
+    test "does not report a bang insert in a nested seeds script" do
+      """
+      Oban.insert!(MyApp.Workers.Sync.new(%{id: 1}))
+      """
+      |> to_source_file("apps/my_app/priv/repo/seeds/prod.exs")
+      |> run_check(NoObanInsertBang)
+      |> refute_issues()
+    end
+
     test "honours a custom :excluded_paths list" do
       """
       defmodule MyApp.Worker do

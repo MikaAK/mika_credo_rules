@@ -4,7 +4,7 @@ defmodule MikaCredoRules.NoObanInsertBang do
     category: :warning,
     param_defaults: [
       functions: [:insert!, :insert_all!],
-      excluded_paths: ["_test.exs", "test/", "seeds"]
+      excluded_paths: ["_test.exs", "test/", "priv/repo/seeds"]
     ],
     explanations: [
       params: [
@@ -17,9 +17,14 @@ defmodule MikaCredoRules.NoObanInsertBang do
         matches when the source file's path starts with it, ends with it, or
         contains it after a directory separator.
 
-        Defaults to `["_test.exs", "test/", "seeds"]` — a bang insert that
-        crashes its caller is legitimate as a test setup assertion or in a
-        one-shot seed script, where crashing loudly on bad data is the point.
+        Defaults to `["_test.exs", "test/", "priv/repo/seeds"]` — a bang
+        insert that crashes its caller is legitimate as a test setup
+        assertion or in a one-shot seed script, where crashing loudly on bad
+        data is the point. The fragment is scoped to `priv/repo/seeds`
+        specifically (not a bare `"seeds"`) — a bare fragment matches any
+        path containing that substring after a `/`, which silently exempted
+        real lib files such as `lib/my_app/seedstore.ex`,
+        `lib/seeds_helper.ex`, and `lib/my_app/seeds.ex`.
         """
       ]
     ]
@@ -57,10 +62,17 @@ defmodule MikaCredoRules.NoObanInsertBang do
 
   ## Known limitations
 
-  `Oban.insert_all!/1,2,3` is not part of Oban's public API as of Oban
-  2.19–2.22 (verified against local dependency checkouts) — it is kept in the
-  default `:functions` list defensively, for a future Oban release or an
-  `Oban.Pro` extension that adds it. The entry never matches today's Oban.
+  `Oban.insert_all!/1,2,3` does not exist on Oban 2.19–2.22 (verified against
+  local dependency checkouts) — `Oban.insert_all/1..3` has no bang variant.
+  It raises by design instead: the moduledoc documents this explicitly as
+  useful inside `Repo.transaction/2` for rollback-on-error. That entry is
+  kept in the default `:functions` list only so a future Oban release that
+  adds a real bang variant is caught without a config change; it never
+  matches today's Oban and `Oban.insert_all/1..3` itself is deliberately not
+  flagged.
+
+  Mix tasks (`lib/mix/tasks/*.ex`) are in scope by default and will fire —
+  `excluded_paths` does not exempt them.
   """
   @explanation [check: @moduledoc]
 
