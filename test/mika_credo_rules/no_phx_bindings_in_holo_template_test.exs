@@ -147,6 +147,19 @@ defmodule MikaCredoRules.NoPhxBindingsInHoloTemplateTest do
       |> refute_issues()
     end
 
+    test "does not report a data-phx-* attribute (not a phx-* binding)" do
+      """
+      defmodule MyApp.ProductPage do
+        use Hologram.Page
+
+        def template, do: ~HOLO"<div data-phx-foo=\\"1\\">Hi</div>"
+      end
+      """
+      |> to_source_file(@page_file)
+      |> run_check(NoPhxBindingsInHoloTemplate)
+      |> refute_issues()
+    end
+
     test "does not scan a ~H sigil (not ~HOLO)" do
       """
       defmodule MyApp.ProductPage do

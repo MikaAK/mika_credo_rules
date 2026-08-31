@@ -487,6 +487,11 @@ Scoped per module, not per file — only a `defmodule` whose own body contains
 reported per offending match, at the line inside the template where it
 occurs — not the line of the `~HOLO` sigil itself.
 
+A valueless binding (`<div phx-no-format>`, with no trailing `=`) is not
+detected, and colocated `.holo` template files get zero coverage — Credo
+parses only `.ex`/`.exs` files, and Hologram supports `.holo` files as a
+first-class alternative to `def template`.
+
 | Param | Default | Meaning |
 |---|---|---|
 | `hologram_modules` | `[Hologram.Page, Hologram.Component]` | Modules whose `use` marks a `defmodule` as a Hologram module |

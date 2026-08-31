@@ -53,10 +53,22 @@ defmodule MikaCredoRules.NoPhxBindingsInHoloTemplate do
 
   One issue is reported per offending match, at the line inside the template
   where it occurs — not the line of the `~HOLO` sigil itself.
+
+  ## Limitations
+
+    * A valueless binding (`<div phx-no-format>`, with no trailing `=`)
+      is not detected — the regex requires an `=` to avoid matching plain
+      text that happens to start with `phx-`.
+    * Colocated `.holo` template files get zero coverage — Credo parses
+      only `.ex`/`.exs` files, and Hologram supports `.holo` files as a
+      first-class alternative to `def template`.
   """
   @explanation [check: @moduledoc]
 
-  @phx_binding_regex ~r/\bphx-[a-z-]+=/
+  # Anchored to an attribute-start boundary (whitespace, a quote, or the
+  # start of the sigil content) rather than `\b` — a bare word boundary also
+  # matches inside `data-phx-foo=`, since `\b` fires right after the hyphen.
+  @phx_binding_regex ~r/(?:^|(?<=[\s"']))phx-[a-z-]+=/
   @eex_tag_regex ~r/<%=?/
 
   @doc false
