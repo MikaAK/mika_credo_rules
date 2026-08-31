@@ -2,14 +2,16 @@ defmodule MikaCredoRules.NoForWithDiscardedResult do
   use Credo.Check,
     base_priority: :high,
     category: :warning,
-    param_defaults: [excluded_paths: []],
+    param_defaults: [excluded_paths: ["_test.exs", "test/"]],
     explanations: [
       params: [
         excluded_paths: """
         A list of path fragments exempt from the check, matched at a path-segment
         boundary.
 
-        Defaults to `[]`.
+        Defaults to `["_test.exs", "test/"]` — setup loops dominate the
+        for-in-statement-position shape in tests, and the throwaway list costs
+        nothing there.
         """
       ]
     ]
@@ -56,6 +58,12 @@ defmodule MikaCredoRules.NoForWithDiscardedResult do
   `for ... into: ...` and `for ... reduce: ...` are flagged the same as a plain
   `for` when they sit in statement position — the accumulated value is still
   built and discarded.
+
+  ## Limitations
+
+  A `for` inside a `quote do ... end` body is indistinguishable from real code
+  to this check and is flagged even though it is macro-generated AST, not a
+  runtime comprehension.
   """
   @explanation [check: @moduledoc]
 
@@ -94,13 +102,26 @@ defmodule MikaCredoRules.NoForWithDiscardedResult do
   defp for_node?({:for, _meta, args}), do: is_list(args)
   defp for_node?(_expr), do: false
 
-  defp for_match({:for, meta, _args}) do
-    %{line_no: meta[:line], column: meta[:column]}
+  defp for_match({:for, meta, args}) do
+    %{line_no: meta[:line], column: meta[:column], replacement: for_replacement(args)}
   end
+
+  defp for_replacement(args) do
+    args
+    |> Enum.filter(&Keyword.keyword?/1)
+    |> Enum.flat_map(& &1)
+    |> Keyword.take([:into, :reduce])
+    |> replacement_for_options()
+  end
+
+  defp replacement_for_options([{:reduce, _} | _]), do: "Enum.reduce/3"
+  defp replacement_for_options([{:into, _} | _]), do: "Enum.into/3"
+  defp replacement_for_options([]), do: "Enum.each/2"
 
   defp issue_for(match, issue_meta) do
     format_issue(issue_meta,
-      message: "for comprehension with discarded result found — use Enum.each/2 for side effects",
+      message:
+        "for comprehension with discarded result found — use #{match.replacement} for side effects",
       trigger: "for",
       line_no: match.line_no,
       column: match.column

@@ -43,7 +43,7 @@ defmodule MikaCredoRules.NoForWithDiscardedResultTest do
       |> assert_issue(fn issue -> assert issue.line_no === 3 end)
     end
 
-    test "reports a for with into: in statement position" do
+    test "reports a for with into: in statement position, naming Enum.into/3" do
       """
       defmodule MyApp.Sync do
         def sync(items) do
@@ -54,10 +54,15 @@ defmodule MikaCredoRules.NoForWithDiscardedResultTest do
       """
       |> to_source_file(@lib_file)
       |> run_check(NoForWithDiscardedResult)
-      |> assert_issue(fn issue -> assert issue.line_no === 3 end)
+      |> assert_issue(fn issue ->
+        assert issue.line_no === 3
+
+        assert issue.message ===
+                 "for comprehension with discarded result found — use Enum.into/3 for side effects"
+      end)
     end
 
-    test "reports a for with reduce: in statement position" do
+    test "reports a for with reduce: in statement position, naming Enum.reduce/3" do
       """
       defmodule MyApp.Sync do
         def sync(items) do
@@ -71,7 +76,12 @@ defmodule MikaCredoRules.NoForWithDiscardedResultTest do
       """
       |> to_source_file(@lib_file)
       |> run_check(NoForWithDiscardedResult)
-      |> assert_issue(fn issue -> assert issue.line_no === 3 end)
+      |> assert_issue(fn issue ->
+        assert issue.line_no === 3
+
+        assert issue.message ===
+                 "for comprehension with discarded result found — use Enum.reduce/3 for side effects"
+      end)
     end
 
     test "reports a for inside an if branch, followed by another statement" do
@@ -212,6 +222,20 @@ defmodule MikaCredoRules.NoForWithDiscardedResultTest do
   end
 
   describe "&run/2 respects the excluded_paths param" do
+    test "does not report a discarded for in a test file by default" do
+      """
+      defmodule MyApp.SyncTest do
+        setup do
+          for item <- items, do: Cache.put(item)
+          :ok
+        end
+      end
+      """
+      |> to_source_file("apps/my_app/test/my_app/sync_test.exs")
+      |> run_check(NoForWithDiscardedResult)
+      |> refute_issues()
+    end
+
     test "does not report a discarded for in an excluded path" do
       """
       defmodule MyApp.Sync do
