@@ -10,6 +10,19 @@ defmodule MikaCredoRules.MixDepsAst do
   concatenating lists, etc.) yields no entries — dynamic composition is out
   of scope, not a false positive risk.
 
+  ## Limitations
+
+  `collect_deps_function/2` matches on the function name `deps` only — its
+  argument list is an unchecked wildcard, so a `defp deps(:prod) do ... end`
+  clause (or any other arity/argument) is parsed exactly like `deps/0`.
+
+  A package declared with a quoted atom name (`{:"my-tool", path: "x"}`)
+  is still recognised as a dependency, but `line_no/2` cannot locate it: the
+  regex it builds from the package name can't tell a quoted-atom token from
+  a string literal once source cleaning has blanked both, so it returns
+  `nil`. A `nil` line number is not a formatter hazard — Credo's own output
+  renders such an issue without a line/column reference rather than raising.
+
   ## Line numbers
 
   A 3-tuple dep is quoted as `{:{}, meta, [pkg, requirement, opts]}` and

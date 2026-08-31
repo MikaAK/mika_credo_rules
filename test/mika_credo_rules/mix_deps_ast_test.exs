@@ -72,6 +72,19 @@ defmodule MikaCredoRules.MixDepsAstTest do
                """)
     end
 
+    test "documented limitation: a deps/1 of any arity is parsed as the dep list" do
+      assert [%{pkg: :credo}] =
+               deps_from("""
+               defmodule Sample.MixProject do
+                 defp deps(:prod) do
+                   [
+                     {:credo, "~> 1.7"}
+                   ]
+                 end
+               end
+               """)
+    end
+
     test "extracts every entry in a multi-dep list" do
       assert [%{pkg: :credo}, %{pkg: :dialyxir}, %{pkg: :ex_doc}] =
                deps_from("""
@@ -165,6 +178,27 @@ defmodule MikaCredoRules.MixDepsAstTest do
       [dep] = MixDepsAst.deps(source)
 
       assert MixDepsAst.line_no(dep, source) === 5
+    end
+
+    test "documented limitation: a quoted atom package name resolves to nil" do
+      source =
+        Credo.SourceFile.parse(
+          """
+          defmodule Sample.MixProject do
+            defp deps do
+              [
+                {:"my-tool", path: "../my-tool"}
+              ]
+            end
+          end
+          """,
+          "mix.exs"
+        )
+
+      [dep] = MixDepsAst.deps(source)
+
+      assert dep.pkg === :"my-tool"
+      assert is_nil(MixDepsAst.line_no(dep, source))
     end
   end
 
