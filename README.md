@@ -99,9 +99,12 @@ Both the imported local call (behind `import Telemetry.Metrics` in the same file
 and the qualified `Telemetry.Metrics.distribution(...)` are caught, including
 aliases of the module. A bare local `distribution/2` call with no
 `import Telemetry.Metrics` in the file is left alone — a local function that
-happens to share the name is not this library's `distribution/2`. Only a literal
-opts keyword list is inspected; opts built by a helper or held in a variable are
-silently skipped.
+happens to share the name is not this library's `distribution/2`, and a
+`distribution/2` function definition head is never mistaken for a call. Only a
+literal opts keyword list is inspected; opts built by a helper or held in a
+variable are silently skipped. `reporter_options: [buckets: [...]]` is checked
+too — `reporter_options: []` still fires, since a histogram with no buckets
+emits no usable data either way.
 
 | Param | Default | Meaning |
 |---|---|---|
@@ -134,7 +137,7 @@ accepted to avoid flagging an unrelated module that happens to be named `Ecto`.
 
 | Param | Default | Meaning |
 |---|---|---|
-| `functions` | `[{PrometheusTelemetry.Metrics.Ecto, :metrics}]` | `{module, function}` pairs whose zero-arity call is banned |
+| `module_functions` | `[{PrometheusTelemetry.Metrics.Ecto, :metrics}]` | `{module, function}` pairs whose zero-arity call is banned |
 | `excluded_paths` | `[]` | Path fragments exempt from the check |
 
 ### `ErrorMessageRequired`
@@ -461,14 +464,17 @@ end
 ```
 
 Every spelling of the module is caught, including `alias Oban, as: MyOban` and the
-fully-qualified `Elixir.Oban.insert!(...)`. `Oban.insert_all!/1,2,3` is not part of
-Oban's public API as of Oban 2.19–2.22 — it is kept in the default `:functions`
-list defensively and currently never matches real Oban.
+fully-qualified `Elixir.Oban.insert!(...)`, and Mix tasks are in scope. `Oban.insert_all!/1,2,3`
+does not exist on Oban 2.19–2.22 — `Oban.insert_all/1..3` has no bang variant and
+raises by design instead (documented for use inside `Repo.transaction/2` rollback),
+so it is deliberately not flagged. The entry stays in the default `:functions` list
+only so a future Oban release adding a real bang variant is caught without a config
+change.
 
 | Param | Default | Meaning |
 |---|---|---|
 | `functions` | `[:insert!, :insert_all!]` | `Oban` functions that count as a raising insert |
-| `excluded_paths` | `["_test.exs", "test/", "seeds"]` | Path fragments exempt from the check — a bang insert is legitimate test/seed setup |
+| `excluded_paths` | `["_test.exs", "test/", "priv/repo/seeds"]` | Path fragments exempt from the check (segment-boundary matched) — a bang insert is legitimate test/seed setup |
 
 ### `NoProcessSleepInTests`
 
@@ -560,7 +566,8 @@ fully-qualified `Elixir.Oban.Worker`. `:unique` is deliberately not required by
 default — pick it per worker, not by blanket rule. Only a literal keyword list in
 the `use` clause is inspected; a non-literal option list (a module attribute or a
 call that builds the options) is invisible to a static check and is silently
-skipped rather than guessed at.
+skipped rather than guessed at. `use Oban.Pro.Worker, ...` is a different module
+and is invisible to this check.
 
 | Param | Default | Meaning |
 |---|---|---|
