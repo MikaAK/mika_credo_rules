@@ -64,10 +64,12 @@ does) or these three checks will never see a file to run against.
 | [`DistributionRequiresBuckets`](#distributionrequiresbuckets) | `:warning` | `distribution/2` whose literal opts omit `:reporter_options` |
 | [`EctoMetricsRequiresAppAtom`](#ectometricsrequiresappatom) | `:warning` | `PrometheusTelemetry.Metrics.Ecto.metrics/0` — pass the app atom |
 | [`CredoConfigNamedDefault`](#credoconfignameddefault) | `:warning` | A `.credo.exs` with no config named `"default"` — Credo silently falls back to its own stock checks |
+| [`AbsintheDataloaderPluginRequired`](#absinthedataloaderpluginrequired) | `:warning` | A schema that builds a `Dataloader` but omits `Absinthe.Middleware.Dataloader` from `plugins/0` |
 | [`ErrorMessageRequired`](#errormessagerequired) | `:design` | `{:error, "string literal"}` tuples — use `%ErrorMessage{}` |
 | [`ExceptionNamesEndInError`](#exceptionnamesendinerror) | `:readability` | An exception module whose name does not end in `Error` |
 | [`GenServerRequiresHandleContinue`](#genserverrequireshandlecontinue) | `:refactor` | Real work in `init/1` instead of `handle_continue/2` |
 | [`InUmbrellaDepsNoVersion`](#inumbrelladepsnoversion) | `:readability` | `{:app, "~> x", in_umbrella: true}` — a version requirement on an in_umbrella dep |
+| [`LiveViewSubscribeRequiresConnected`](#liveviewsubscriberequiresconnected) | `:warning` | A PubSub subscribe in `mount/3` not guarded by `connected?/1` |
 | [`LoggerModulePrefixAndInspect`](#loggermoduleprefixandinspect) | `:warning` | Logger messages missing the `#{__MODULE__}: ` prefix or interpolating values without `inspect/1` |
 | [`NoAccessOnStructSubject`](#noaccessonstructsubject) | `:warning` | `changeset[:name]` — `Access` on a struct raises `UndefinedFunctionError` |
 | [`MigrationExecuteInChange`](#migrationexecuteinchange) | `:warning` | `execute/1` inside `def change` — irreversible, Ecto cannot roll it back |
@@ -84,6 +86,8 @@ does) or these three checks will never see a file to run against.
 | [`NoForWithDiscardedResult`](#noforwithdiscardedresult) | `:warning` | A `for` comprehension in statement position whose built result is thrown away |
 | [`NoDirectErlangRpc`](#nodirecterlangrpc) | `:design` | Direct `:rpc`/`:erpc` calls and `Node.spawn*` — route through your app's RPC wrapper |
 | [`NoDirectHttpClient`](#nodirecthttpclient) | `:design` | Direct `Finch`/`HTTPoison`/`Tesla`/`Req` calls — route through your app's HTTP wrapper |
+| [`NoContinueFromLiveViewMount`](#nocontinuefromliveviewmount) | `:warning` | `mount/3` returning `{:ok, socket, {:continue, term}}` — a GenServer shape, not a LiveView one |
+| [`NoEctoSchemaInWebApp`](#noectoschemainwebapp) | `:design` | `use Ecto.Schema` inside a web app instead of the dedicated `_pg`/`schemas` app |
 | [`NoIdentityRewrap`](#noidentityrewrap) | `:refactor` | `case` expressions whose every clause returns its pattern unchanged |
 | [`NoInspectModuleInMigrationSql`](#noinspectmoduleinmigrationsql) | `:warning` | `inspect/1` or string interpolation of a module alias in a migration |
 | [`NoJasonDeriveOnEctoSchema`](#nojasonderiveonectoschema) | `:design` | `@derive Jason.Encoder` inside Ecto schema modules |
@@ -107,6 +111,7 @@ does) or these three checks will never see a file to run against.
 | [`NoUnsupervisedTaskStart`](#nounsupervisedtaskstart) | `:warning` | `Task.start` — a crash inside it is silently discarded |
 | [`RefuteOverAssertNot`](#refuteoverassertnot) | `:readability` | `assert !expr` / `assert not expr` — use `refute` |
 | [`SingleModulePerFile`](#singlemoduleperfile) | `:design` | More than one top-level `defmodule` per file (nested modules allowed) |
+| [`SqlSandboxPlugMustBeCompileGated`](#sqlsandboxplugmustbecompilegated) | `:warning` | `plug Phoenix.Ecto.SQL.Sandbox` not gated on `Application.compile_env/2,3` |
 | [`StrictEquality`](#strictequality) | `:warning` | `==`/`!=` — use `===`/`!==` (Ecto query DSL exempt) |
 | [`TestOnlyDepsScoped`](#testonlydepsscoped) | `:warning` | A dev/test-only mix.exs dep missing `only:` or `runtime: false` |
 | [`TaskAsyncStreamRequiresTimeout`](#taskasyncstreamrequirestimeout) | `:warning` | `Task.async_stream`/`Task.Supervisor.async_stream` missing an explicit `:timeout` |
@@ -262,6 +267,40 @@ one even though it isn't — write `configs:` as a plain list literal.
 | `config_files` | `[".credo.exs"]` | Path suffixes treated as Credo config files |
 | `allowed_names` | `["default"]` | Config names Credo will actually select without `--config-name` |
 
+### `AbsintheDataloaderPluginRequired`
+
+A `use Absinthe.Schema` module that builds a `Dataloader` must list
+`Absinthe.Middleware.Dataloader` in `plugins/0`. Absinthe never runs the
+Dataloader batches unless the middleware is registered — without it, every
+`dataloader/1,2` field compiles and runs fine but silently returns `nil`.
+
+```elixir
+# BAD — no plugins/0, so the loader never batches
+defmodule MyAppWeb.Schema do
+  use Absinthe.Schema
+
+  def context(ctx) do
+    loader = Dataloader.new() |> Dataloader.add_source(MyApp.Accounts, source())
+    Map.put(ctx, :loader, loader)
+  end
+end
+
+# GOOD — the plugin is registered alongside the framework defaults
+def plugins, do: [Absinthe.Middleware.Dataloader] ++ Absinthe.Plugin.defaults()
+```
+
+Only fires when the module actually builds a loader (`Dataloader.new` or
+`Dataloader.add_source`, alias-aware) — a schema with no Dataloader usage is
+left alone regardless of `plugins/0`. `plugins/0` is accepted in any shape as
+long as every required module appears somewhere in its body — a bare list or a
+`++` chain in either order. Scoped per module, not per file, the same way as
+[`NoJasonDeriveOnEctoSchema`](#nojasonderiveonectoschema).
+
+| Param | Default | Meaning |
+|---|---|---|
+| `required_plugins` | `[Absinthe.Middleware.Dataloader]` | Modules that must all appear in `plugins/0` when the schema builds a Dataloader |
+| `excluded_paths` | `[]` | Path fragments naming files this check skips |
+
 ### `ErrorMessageRequired`
 
 Error tuples must carry a structured `%ErrorMessage{}`
@@ -371,6 +410,50 @@ suffix, so `lib/remix.exs` is never mistaken for a project file.
 | Param | Default | Meaning |
 |---|---|---|
 | `mix_files` | `["mix.exs"]` | Filenames (matched by basename) treated as mix.exs files |
+
+Cross-reference: [`NoContinueFromLiveViewMount`](#nocontinuefromliveviewmount)
+covers the same `{:continue, term}` shape from the opposite side — it *forbids*
+that return from LiveView's `mount/3`, a different callback this check has
+nothing to do with.
+
+### `LiveViewSubscribeRequiresConnected`
+
+A PubSub subscribe inside `mount/3` must be guarded by `connected?/1`. LiveView
+calls `mount/3` twice per navigation — once for the static render, once for the
+live render after the socket upgrades — so an unguarded subscribe leaks a
+subscription from the discarded static render.
+
+```elixir
+# BAD — subscribes on the static render too
+def mount(_params, _session, socket) do
+  MyApp.PubSub.subscribe("topic")
+  {:ok, socket}
+end
+
+# GOOD — only the live render subscribes
+def mount(_params, _session, socket) do
+  if connected?(socket), do: MyApp.PubSub.subscribe("topic")
+  {:ok, socket}
+end
+```
+
+Only presence of the guard call is checked, not its polarity — `if`, `unless`,
+`case`, `cond`, `&&` and `and` are all recognised as guards as long as their
+condition (or left side) calls a `guard_functions` entry somewhere in it. Only
+`def mount/3` clauses are inspected; `mount/2` is not a LiveView callback and is
+left alone.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `subscribe_functions` | `[:subscribe]` | Function names that count as a PubSub subscribe (local or any-module remote) |
+| `subscribe_modules` | `[]` | Modules a *remote* call must resolve to in order to count (alias-aware); `[]` means any module. Local calls are unaffected |
+| `guard_functions` | `[:connected?]` | Function names that count as guarding the subscribe when called in the condition |
+| `excluded_paths` | `[]` | Path fragments naming files this check skips |
+
+Scoping is by function head shape only — any `def mount/3` calling a
+subscribe-named function fires whether or not the enclosing module actually
+`use`s `Phoenix.LiveView`. `apply(Phoenix.PubSub, :subscribe, [pubsub, topic])`
+is undetected — only a literal remote or local call shape is matched.
 
 ### `LoggerModulePrefixAndInspect`
 
@@ -945,6 +1028,77 @@ single-segment entries for `Finch` itself, never for a two-segment submodule
 spelling. Same gap for `alias HTTPoison.Base`. A locally nested
 `defmodule Req do ... end` is not treated as shadowing, so `Req.get(url)`
 inside such a module can still fire.
+
+### `NoContinueFromLiveViewMount`
+
+`mount/3` must not return `{:ok, socket, {:continue, term}}`. `{:continue, term}`
+is a `GenServer.init/1` return value — LiveView's `mount/3` does not implement
+that protocol, so returning it either does nothing or crashes depending on the
+LiveView version.
+
+```elixir
+# BAD — {:continue, _} is GenServer-only; mount/3 does not implement it
+def mount(_params, _session, socket), do: {:ok, socket, {:continue, :load}}
+
+# GOOD — gate the deferred load on connected?/1 and message yourself
+def mount(_params, _session, socket) do
+  if connected?(socket), do: send(self(), :load)
+  {:ok, socket}
+end
+```
+
+Only the clause's own last expression is inspected — a continue tuple produced
+inside a `case`/`cond` branch that isn't literally the trailing expression of
+the `def` body is not flagged. Mirror image of
+[`GenServerRequiresHandleContinue`](#genserverrequireshandlecontinue), which
+*requires* `{:continue, term}` from a GenServer's `init/1` — same shape,
+opposite callback, opposite advice.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `excluded_paths` | `[]` | Path fragments naming files this check skips |
+
+### `NoEctoSchemaInWebApp`
+
+`use Ecto.Schema` must not appear in a web app — schemas belong in a dedicated
+database-layer app (conventionally `_pg` or `schemas`). A schema inside the web
+app couples the wire/UI layer to the database layer, forcing every other app
+that wants the schema to depend on the whole web app.
+
+```elixir
+# BAD — apps/my_web/lib/my_web/user.ex
+defmodule MyWeb.User do
+  use Ecto.Schema
+
+  schema "users" do
+    field :name, :string
+  end
+end
+
+# GOOD — apps/my_pg/lib/my_pg/user.ex
+defmodule MyApp.User do
+  use Ecto.Schema
+
+  schema "users" do
+    field :name, :string
+  end
+end
+```
+
+`embedded_schema` is caught too — it's a macro `use Ecto.Schema` itself
+provides. In scope: any file with a directory segment ending in a
+`banned_path_fragments` entry (default `_web`, matching Phoenix's `<name>_web`
+convention), matched at a segment boundary — `lib/cobweb/user.ex` never
+matches.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `modules` | `[Ecto.Schema]` | Modules whose `use` counts as declaring a schema |
+| `banned_path_fragments` | `["_web/"]` | Directory-name suffixes that mark a web app |
+| `excluded_paths` | `[]` | Path fragments naming files this check skips even inside a banned directory |
+
+Include the leading underscore in `banned_path_fragments` — `"web"` (no
+underscore) is a segment-suffix match and over-matches `apps/cobweb/...`.
 
 ### `NoIdentityRewrap`
 
@@ -1731,6 +1885,36 @@ at the call site. Test files are excluded by default.
 | Param | Default | Meaning |
 |---|---|---|
 | `excluded_paths` | `["test/", "test/support/", "_test.exs"]` | Path fragments and filename suffixes exempt from the check (segment-boundary matched) |
+
+### `SqlSandboxPlugMustBeCompileGated`
+
+`plug Phoenix.Ecto.SQL.Sandbox` must be compile-gated — never shipped unguarded.
+The sandbox plug hands any client that knows the header format control over the
+request's database connection; it exists purely so feature tests can share a
+transaction with the test process.
+
+```elixir
+# BAD — ships to prod
+plug Phoenix.Ecto.SQL.Sandbox
+
+# GOOD — gated on a flag only config/test.exs ever sets
+if Application.compile_env(:my_web, :sql_sandbox, false) do
+  plug Phoenix.Ecto.SQL.Sandbox
+end
+```
+
+Every spelling of the module is caught, including a prefix alias (`alias
+Phoenix.Ecto.SQL` then `plug SQL.Sandbox`). The gate's module is resolved the
+same alias-aware way, so a shadowing `alias MyApp.Application` correctly stops
+`if Application.compile_env(...)` from counting as a gate. A gate expressed
+through a module attribute (`if @sandbox?`) is **not** recognised — see the
+moduledoc's `## Known limitations` for the `# credo:disable-for-next-line`
+escape.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `gate_functions` | `[{Application, :compile_env}]` | `{module, function}` pairs whose call, found in an enclosing `if`'s condition, counts as gating the plug |
+| `excluded_paths` | `[]` | Path fragments naming files this check skips |
 
 ### `StrictEquality`
 
