@@ -514,10 +514,11 @@ Enum.map(users, fn user -> user.name end)
 
 ### `NoTruthyAndOr`
 
-`and`/`or`/`not` must not be used on a provably-nilable operand. `and`, `or`, and
-`not` require a strictly boolean operand and raise `BadBooleanError` the moment
-either side is `nil` — `opts[:key]`, `Map.get/2`, `Keyword.get/2`, and
-`List.first/1` all evaluate to `nil` when the value is absent.
+`and`/`or`/`not` must not be used on a provably-nilable operand. `and` and `or`
+require a strictly boolean operand and raise `BadBooleanError` the moment either
+side is `nil`; `not` requires the same and raises `ArgumentError` instead.
+`opts[:key]`, `Map.get/2`, `Keyword.get/2`, and `List.first/1` all evaluate to
+`nil` when the value is absent.
 
 ```elixir
 # BAD — crashes with BadBooleanError when opts[:key] is nil
@@ -530,12 +531,18 @@ if opts[:llm_merge] || opts[:ai_review], do: ...
 `Map.get/3`/`Keyword.get/3` are only flagged when the default argument is the
 literal `nil` — a non-nil default means the result can never be `nil` and is not
 flagged. Plain variables, ordinary function calls, and comparisons are never
-flagged.
+flagged. One issue is emitted per `and`/`or`/`not` node, not per nilable
+operand — `opts[:a] and opts[:b]` reports once, `a and b and c` reports twice.
+
+`test/support/` is excluded by default — Phoenix/Ecto generator files
+(`data_case.ex`, `conn_case.ex`, `feature_case.ex`) commonly write `shared: not
+tags[:async]`, and ExUnit guarantees `:async` is always a boolean by the time
+this runs, so that specific shape can never raise there.
 
 | Param | Default | Meaning |
 |---|---|---|
 | `nilable_functions` | `[{Access, :get, 2}, {Map, :get, 2}, {Keyword, :get, 2}, {List, :first, 1}, {Map, :get, 3}, {Keyword, :get, 3}]` | `{module, function, arity}` shapes that count as provably nilable — `{Access, :get, 2}` also covers `x[:k]` bracket syntax |
-| `excluded_paths` | `[]` | Path fragments exempt from the check (segment-boundary matched) |
+| `excluded_paths` | `["test/support/"]` | Path fragments exempt from the check (segment-boundary matched) |
 
 ### `RefuteOverAssertNot`
 

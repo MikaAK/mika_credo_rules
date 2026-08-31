@@ -236,6 +236,34 @@ defmodule MikaCredoRules.NoTruthyAndOrTest do
     end
   end
 
+  describe "&run/2 excludes test/support/ by default" do
+    test "does not report Phoenix/Ecto generator boilerplate under test/support/" do
+      """
+      defmodule MyApp.DataCase do
+        def setup_sandbox(tags) do
+          [shared: not tags[:async]]
+        end
+      end
+      """
+      |> to_source_file("test/support/data_case.ex")
+      |> run_check(NoTruthyAndOr)
+      |> refute_issues()
+    end
+
+    test "still reports the same shape under a lookalike test/supporting/ path" do
+      """
+      defmodule MyApp.Supporting.Helper do
+        def setup_sandbox(tags) do
+          [shared: not tags[:async]]
+        end
+      end
+      """
+      |> to_source_file("test/supporting/helper.ex")
+      |> run_check(NoTruthyAndOr)
+      |> assert_issue(fn issue -> assert issue.trigger === "not" end)
+    end
+  end
+
   describe "moduledoc examples" do
     test "moduledoc BAD example fires" do
       """

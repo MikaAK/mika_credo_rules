@@ -11,7 +11,7 @@ defmodule MikaCredoRules.NoTruthyAndOr do
         {Map, :get, 3},
         {Keyword, :get, 3}
       ],
-      excluded_paths: []
+      excluded_paths: ["test/support/"]
     ],
     explanations: [
       params: [
@@ -23,6 +23,7 @@ defmodule MikaCredoRules.NoTruthyAndOr do
         """,
         excluded_paths: """
         A list of path fragments exempt from the check (segment-boundary matched).
+        Defaults to `["test/support/"]` — see the moduledoc for why.
         """
       ]
     ]
@@ -33,15 +34,17 @@ defmodule MikaCredoRules.NoTruthyAndOr do
   @moduledoc """
   `and`/`or`/`not` must not be used on a provably-nilable operand.
 
-  `and`, `or`, and `not` require a strictly boolean operand — `BadBooleanError`
-  is raised the moment either side is `nil`. `opts[:key]`, `Map.get/2`,
-  `Keyword.get/2`, and `List.first/1` all evaluate to `nil` when the value is
-  absent, so combining them with `and`/`or`/`not` is a crash waiting on a
-  missing key.
+  `and` and `or` require a strictly boolean operand and raise `BadBooleanError`
+  the moment either side is `nil`; `not` requires the same and raises
+  `ArgumentError` instead. `opts[:key]`, `Map.get/2`, `Keyword.get/2`, and
+  `List.first/1` all evaluate to `nil` when the value is absent, so combining
+  them with `and`/`or`/`not` is a crash waiting on a missing key.
 
-      # BAD — crashes with BadBooleanError when opts[:key] is nil
+      # BAD — crashes with BadBooleanError when opts[:key]/config is nil
       if opts[:llm_merge] or opts[:ai_review], do: ...
       if Map.get(config, :enabled) and ready?(), do: ...
+
+      # BAD — crashes with ArgumentError when the operand is nil
       if not Keyword.get(opts, :skip), do: ...
 
       # GOOD — &&/||/! handle nil/falsy operands
@@ -59,6 +62,17 @@ defmodule MikaCredoRules.NoTruthyAndOr do
   only the specific shapes in `:nilable_functions` are provably nilable enough
   to warrant a warning. A boolean literal on either side, `Enum.all?/2`
   results, and other guaranteed-boolean expressions are all left alone.
+
+  One issue is emitted per `and`/`or`/`not` node, not per nilable operand —
+  `opts[:a] and opts[:b]` (both operands nilable) reports once, while
+  `a and b and c` (two `and` nodes) reports twice.
+
+  `test/support/` is excluded by default: Phoenix/Ecto generator boilerplate
+  (`data_case.ex`, `conn_case.ex`, `feature_case.ex`) commonly writes `shared:
+  not tags[:async]` / `not context[:async]`, and ExUnit merges `async: async ||
+  false` into every test's tags before this runs, so the operand is always a
+  genuine boolean and this specific shape can never raise in practice —
+  contract-correct, but not a real risk at that path.
   """
   @explanation [check: @moduledoc]
 
