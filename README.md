@@ -96,16 +96,20 @@ does) or these three checks will never see a file to run against.
 | [`NoRawEts`](#norawets) | `:design` | Raw `:ets` calls — wrap in `Cache.ETS` from elixir_cache |
 | [`NoReimplementedHelper`](#noreimplementedhelper) | `:design` | Local re-implementations of shared library helpers |
 | [`NoRepoWritesInTests`](#norepowritesintests) | `:design` | Write-side `Repo` calls (`insert!`, `update!`, `delete!`, ...) in test files — use `FactoryEx` |
+| [`NoSelfSendZeroDelay`](#noselfsendzerodelay) | `:refactor` | `Process.send_after(self(), _, 0)` and `send(self(), _)` in `init/1` — use `{:continue, term}` instead |
 | [`NoSingleLetterVariables`](#nosinglelettervariables) | `:readability` | Single-letter variable bindings |
 | [`NoVacuousAssert`](#novacuousassert) | `:warning` | `assert true` / `assert <literal>` / `refute false` / `assert x === x` — placeholder assertions that can never fail |
 | [`NoWordSigilLists`](#nowordsigillists) | `:readability` | `~w`/`~W` sigils — use a list literal instead |
 | [`NoTruthyAndOr`](#notruthyandor) | `:warning` | `and`/`or`/`not` on a provably-nilable operand (`opts[:key]`, `Map.get/2`, ...) — use `&&`/`\|\|`/`!` |
 | [`ObanWorkerRequiresMaxAttempts`](#obanworkerrequiresmaxattempts) | `:design` | `use Oban.Worker` whose literal opts omit `:max_attempts` |
 | [`NoStaticNotLoadedDropList`](#nostaticnotloadeddroplist) | `:design` | `Map.drop(map, [:__meta__, ...])` — a static drop-list scrubbing `%Ecto.Association.NotLoaded{}` |
+| [`NoTaskAsyncInGenServer`](#notaskasyncingenserver) | `:warning` | `Task.async`/`Task.Supervisor.async` inside a GenServer/GenStage callback — a crashing task takes the server down |
+| [`NoUnsupervisedTaskStart`](#nounsupervisedtaskstart) | `:warning` | `Task.start` — a crash inside it is silently discarded |
 | [`RefuteOverAssertNot`](#refuteoverassertnot) | `:readability` | `assert !expr` / `assert not expr` — use `refute` |
 | [`SingleModulePerFile`](#singlemoduleperfile) | `:design` | More than one top-level `defmodule` per file (nested modules allowed) |
 | [`StrictEquality`](#strictequality) | `:warning` | `==`/`!=` — use `===`/`!==` (Ecto query DSL exempt) |
 | [`TestOnlyDepsScoped`](#testonlydepsscoped) | `:warning` | A dev/test-only mix.exs dep missing `only:` or `runtime: false` |
+| [`TaskAsyncStreamRequiresTimeout`](#taskasyncstreamrequirestimeout) | `:warning` | `Task.async_stream`/`Task.Supervisor.async_stream` missing an explicit `:timeout` |
 | [`TodosNeedTickets`](#todosneedtickets) | `:design` | TODO/FIXME comments without an adjacent ticket URL |
 
 ---
@@ -1377,6 +1381,35 @@ directly there is legitimate. Only a literal alias at the call site is
 recognised: `@repo.insert!()`, `repo().insert!()`, `apply(Repo, :insert!, [x])`,
 and `Ecto.Adapters.SQL.query!(Repo, "DELETE ...", [])` are all undetected.
 
+### `NoSelfSendZeroDelay`
+
+`Process.send_after(self(), _, 0)` and `send(self(), _)` in `init/1` schedule a
+message to yourself with no delay so a later callback can do the real work — that
+is exactly what `{:continue, term}` is for. `GenServerRequiresHandleContinue`
+allow-lists `Process.send_after` in `init/1` because a *nonzero* delay is a
+genuine timer; this check closes the zero-delay gap that allowance leaves open.
+
+```elixir
+# BAD — indirection for exactly what a continue does directly
+def init(opts) do
+  Process.send_after(self(), :load, 0)
+  {:ok, opts}
+end
+
+# GOOD
+def init(opts), do: {:ok, opts, {:continue, :load}}
+def handle_continue(:load, state), do: {:noreply, do_load(state)}
+```
+
+`Process.send_after(self(), _, 0)` is flagged everywhere it appears, regardless
+of whether the file uses GenServer. `send(self(), _)` in `init/1` is scoped to
+`use GenServer` modules and gated behind `:also_flag_send_self_in_init`.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `also_flag_send_self_in_init` | `true` | Also flag `send(self(), _)` inside `init/1` of a `use GenServer` module |
+| `excluded_paths` | `[]` | Path fragments naming files to skip entirely (segment-boundary matched) |
+
 ### `NoSingleLetterVariables`
 
 Variables must not be named with a single letter — the name should say what the
@@ -1577,6 +1610,72 @@ matched alias-aware.
 | `marker_key` | `:__meta__` | The atom that marks a drop-list as an association-scrubbing list |
 | `excluded_paths` | `[]` | Path fragments (segment-boundary match) exempt from the check |
 
+### `NoTaskAsyncInGenServer`
+
+`Task.async` and `Task.Supervisor.async` must not be called from inside a
+GenServer or GenStage callback. `Task.async/1,3` links the new task to the process
+that calls it — inside a callback, that process IS the server, so a crashing task
+takes the whole server down with it.
+
+```elixir
+# BAD — a crashing task takes the GenServer down with it
+def handle_continue(:init_work, state) do
+  task = Task.async(fn -> expensive_fetch(state.config) end)
+  {:noreply, %{state | task_ref: task.ref}}
+end
+
+# GOOD — isolate the crash, handle it explicitly
+def handle_continue(:init_work, state) do
+  task = Task.Supervisor.async_nolink(MyApp.TaskSupervisor, fn -> expensive_fetch(state.config) end)
+  {:noreply, %{state | task_ref: task.ref}}
+end
+
+def handle_info({ref, result}, %{task_ref: ref} = state) do
+  Process.demonitor(ref, [:flush])
+  {:noreply, %{state | task_ref: nil, data: result}}
+end
+```
+
+There is no bare `Task.async_nolink/1,2` — only the supervised
+`Task.Supervisor.async_nolink/2,3,4` exists, which needs a `Task.Supervisor`
+already running in the app's supervision tree.
+
+Only the bodies of callbacks are inspected — a public client-side function
+defined in the same module runs in the caller's process, not the server's, and
+may legitimately want the link `Task.async` provides, so it is never scanned.
+`async` is matched by exact function name, never a prefix — `Task.async_stream/2`
+is a different, unlinked API and is never flagged here.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `banned` | `[{Task, :async}, {Task.Supervisor, :async}]` | `{module, function}` pairs banned inside a callback body |
+| `callbacks` | `[:init, :handle_call, :handle_cast, :handle_info, :handle_continue, :handle_events, :handle_demand, :terminate]` | Function names whose bodies are inspected |
+| `behaviour_modules` | `[GenServer, GenStage]` | Modules whose `use` marks a file as worth scanning at all (alias-aware) |
+
+### `NoUnsupervisedTaskStart`
+
+`Task.start/1,3` must not be used — a crash inside the task is silently
+discarded. Nothing supervises it and nothing is linked to it, so the failure
+disappears with no log, no restart and no trace.
+
+```elixir
+# BAD — a crash here is silently lost
+def notify(payload), do: Task.start(fn -> send_webhook(payload) end)
+
+# GOOD — supervised; a crash is visible and can be handled
+def notify(payload) do
+  Task.Supervisor.start_child(MyApp.TaskSupervisor, fn -> send_webhook(payload) end)
+end
+```
+
+`Task.start_link/1,3` links the caller instead of losing the crash silently — a
+different, often intentional trade-off — so it is left alone by default.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `also_flag_start_link` | `false` | Also flag `Task.start_link/1,3` |
+| `excluded_paths` | `["_test.exs", "test/"]` | Path fragments naming files to skip (segment-boundary matched) |
+
 ### `RefuteOverAssertNot`
 
 Negated assertions must use `refute`, not `assert !` or `assert not`. `refute expr`
@@ -1706,6 +1805,33 @@ is the correct scoping here, unlike for a normal consumer.
 | `mix_files` | `["mix.exs"]` | Filenames (matched by basename) treated as mix.exs files |
 | `test_only_packages` | `[:wallaby, :credo, :dialyxir, :mix_test_watch, :excoveralls, :ex_doc, :mika_credo_rules]` | Packages that must carry an `only:` option |
 | `require_runtime_false` | `[:wallaby, :credo, :dialyxir, :ex_doc, :mika_credo_rules]` | Packages that must carry `runtime: false` |
+
+### `TaskAsyncStreamRequiresTimeout`
+
+`Task.async_stream/2,3` and `Task.Supervisor.async_stream/3,4` (and its
+`async_stream_nolink` sibling) default to a 5-second-per-item timeout when no
+`:timeout` option is given. One slow item then crashes the whole stream — pass
+`timeout:` explicitly, even when the value is `:infinity`.
+
+```elixir
+# BAD — silently uses the 5s default and kills long batches
+Task.async_stream(symbols, &process_one/1, max_concurrency: 5)
+
+# BAD — no options argument at all
+Task.async_stream(symbols, &process_one/1)
+
+# GOOD
+Task.async_stream(symbols, &process_one/1, max_concurrency: 5, timeout: 35_000)
+```
+
+Only a literal trailing options keyword list is inspected — options built by a
+helper or held in a variable are invisible to this check, an accepted false
+negative rather than a guess in either direction.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `functions` | `[{Task, :async_stream}, {Task.Supervisor, :async_stream}, {Task.Supervisor, :async_stream_nolink}]` | `{module, function}` pairs whose trailing options are checked |
+| `excluded_paths` | `[]` | Path fragments naming files to skip (segment-boundary matched) |
 
 ### `TodosNeedTickets`
 

@@ -319,6 +319,78 @@ defmodule MikaCredoRules.GenServerRequiresHandleContinueTest do
     end
   end
 
+  describe "&run/2 only inspects the init/1 OTP callback, not same-named public helpers" do
+    test "does not report a public def init/2 helper with a blocking call" do
+      """
+      defmodule MyApp.Server do
+        use GenServer
+
+        def init(conn, opts) do
+          rows = MyApp.Repo.all(MyApp.Row)
+          {:ok, conn, %{rows: rows, opts: opts}}
+        end
+      end
+      """
+      |> to_source_file()
+      |> run_check(GenServerRequiresHandleContinue)
+      |> refute_issues()
+    end
+
+    test "does not report a public def init/3 helper with a blocking call" do
+      """
+      defmodule MyApp.Server do
+        use GenServer
+
+        def init(conn, opts, extra) do
+          rows = MyApp.Repo.all(MyApp.Row)
+          {:ok, conn, %{rows: rows, opts: opts, extra: extra}}
+        end
+      end
+      """
+      |> to_source_file()
+      |> run_check(GenServerRequiresHandleContinue)
+      |> refute_issues()
+    end
+
+    test "still reports the real init/1 callback alongside a clean init/2 helper" do
+      """
+      defmodule MyApp.Server do
+        use GenServer
+
+        def init(conn, opts), do: {:ok, conn, opts}
+
+        def init(opts) do
+          rows = MyApp.Repo.all(MyApp.Row)
+          {:ok, %{rows: rows, opts: opts}}
+        end
+      end
+      """
+      |> to_source_file()
+      |> run_check(GenServerRequiresHandleContinue)
+      |> assert_issue(fn issue -> assert issue.trigger === "MyApp.Repo.all" end)
+    end
+  end
+
+  describe "&run/2 is alias-aware for the use GenServer detection" do
+    test "does not treat `alias MyApp.GenServer` + `use GenServer` as an OTP GenServer" do
+      """
+      defmodule MyApp.Server do
+        alias MyApp.GenServer
+
+        use GenServer
+
+        def init(opts) do
+          rows = MyApp.Repo.all(MyApp.Row)
+          {:ok, %{rows: rows, opts: opts}}
+        end
+      end
+      """
+      |> to_source_file()
+      |> run_check(GenServerRequiresHandleContinue)
+      |> refute_issues()
+    end
+  end
+
   describe "&run/2 honours the :allowed_modules param" do
     test "does not report calls to modules added to the list" do
       """

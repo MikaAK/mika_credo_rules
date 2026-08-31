@@ -48,12 +48,15 @@
         {MikaCredoRules.NoRawEts, []},
         {MikaCredoRules.NoReimplementedHelper, []},
         {MikaCredoRules.NoRepoWritesInTests, []},
+        {MikaCredoRules.NoSelfSendZeroDelay, []},
         {MikaCredoRules.NoSingleLetterVariables, []},
         {MikaCredoRules.NoVacuousAssert, []},
         {MikaCredoRules.NoWordSigilLists, []},
         {MikaCredoRules.NoTruthyAndOr, []},
         {MikaCredoRules.ObanWorkerRequiresMaxAttempts, []},
         {MikaCredoRules.NoStaticNotLoadedDropList, []},
+        {MikaCredoRules.NoTaskAsyncInGenServer, []},
+        {MikaCredoRules.NoUnsupervisedTaskStart, []},
         {MikaCredoRules.RefuteOverAssertNot, []},
         {MikaCredoRules.SingleModulePerFile, []},
         {MikaCredoRules.StrictEquality, []},
@@ -72,6 +75,7 @@
              :mika_credo_rules
            ]
          ]},
+        {MikaCredoRules.TaskAsyncStreamRequiresTimeout, []},
         {MikaCredoRules.TodosNeedTickets, []}
       ]
     }

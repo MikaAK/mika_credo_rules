@@ -260,4 +260,80 @@ defmodule MikaCredoRules.AstHelpers do
   @spec block_statements(Macro.t()) :: [Macro.t()]
   def block_statements({:__block__, _, statements}), do: statements
   def block_statements(statement), do: [statement]
+
+  @doc """
+  True when `source_file` has a literal `use <module>` for any of `modules`.
+
+  Alias-aware via `resolve_aliases/2` — an alias that shadows one of `modules` (or
+  renames another module onto its bare name) is honoured the same way a remote-call
+  matcher honours it. In the common case (no aliasing) this matches the literal
+  name.
+
+  FILE-scoped, not `defmodule`-scoped — a `use GenServer` inside a nested
+  `defmodule Inner do ... end` returns `true` for the whole file, including
+  code in an outer, non-GenServer module. Not a regression: the check this
+  guards (`GenServerRequiresHandleContinue`) was file-wide before this helper
+  existed too. See `callback_clauses/2` for the same caveat on the other half
+  of a typical caller pairing.
+  """
+  @spec uses_module?(Credo.SourceFile.t(), [module()]) :: boolean()
+  def uses_module?(source_file, modules) do
+    resolved = resolve_aliases(source_file, modules)
+
+    Credo.Code.prewalk(source_file, &detect_use(&1, &2, resolved), false)
+  end
+
+  defp detect_use({:use, _, [{:__aliases__, _, path} | _]} = ast, found, resolved) do
+    {ast, found or path in resolved}
+  end
+
+  defp detect_use(ast, found, _resolved), do: {ast, found}
+
+  @doc """
+  Every `def name(...)` clause in `source_file` whose name is in `entries`.
+
+  FILE-scoped, not `defmodule`-scoped — the same as `uses_module?/2`'s `use`
+  scan. A `def init(...)` inside a nested `defmodule Inner do ... end` is
+  collected too, so a caller pairing this with `uses_module?/2` treats the
+  OUTER module's `use GenServer` as covering the inner module's callback.
+
+  Each entry in `entries` is either a bare atom (matches the name at any arity,
+  any `when` guard) or a `{name, arity}` tuple (matches only that exact arity).
+  Callers own a fixed set of callback names; most GenServer/GenStage callbacks
+  (`handle_call/3`, `handle_info/2`, ...) have one real arity in practice, so
+  name-only matching is the safe default — a stray same-named local helper of a
+  different arity is matched too. `init/1` is the exception: `init` is common
+  enough as a public helper name at OTHER arities that name-only matching
+  creates false positives, so callers guarding `init/1` specifically should pass
+  `init: 1` to pin the arity.
+  """
+  @spec callback_clauses(Credo.SourceFile.t(), [atom() | {atom(), pos_integer()}]) :: [Macro.t()]
+  def callback_clauses(source_file, entries) do
+    Credo.Code.prewalk(source_file, &collect_callback_clause(&1, &2, entries))
+  end
+
+  defp collect_callback_clause({:def, _, [head, _body]} = ast, clauses, entries) do
+    if callback_head?(head, entries) do
+      {ast, [ast | clauses]}
+    else
+      {ast, clauses}
+    end
+  end
+
+  defp collect_callback_clause(ast, clauses, _entries), do: {ast, clauses}
+
+  defp callback_head?({:when, _, [head | _guards]}, entries), do: callback_head?(head, entries)
+
+  defp callback_head?({name, _, args}, entries) when is_atom(name) and is_list(args) do
+    matches_callback_entry?(name, length(args), entries)
+  end
+
+  defp callback_head?(_head, _entries), do: false
+
+  defp matches_callback_entry?(name, arity, entries) do
+    Enum.any?(entries, fn
+      {entry_name, entry_arity} -> entry_name === name and entry_arity === arity
+      entry_name when is_atom(entry_name) -> entry_name === name
+    end)
+  end
 end
