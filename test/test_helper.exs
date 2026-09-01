@@ -14,14 +14,25 @@ defmodule MikaCredoRules.DocExamples do
     text
   end
 
-  @doc "Fetches the raw text of a README `### `Name`` section, up to the next `###`."
+  @doc """
+  Fetches the raw text of a README `### `Name`` section, up to the next `###`.
+
+  Returns `""` when the section does not exist yet, so a check built before its
+  README section is merged generates zero README-gate tests instead of crashing.
+  The integration gate greps the README for every registered check's section, so
+  a typo'd name cannot stay silently vacuous.
+  """
   def readme_section(name) do
-    "README.md"
-    |> File.read!()
-    |> String.split("### `#{name}`")
-    |> Enum.at(1)
-    |> String.split("\n### ")
-    |> List.first()
+    section_and_rest =
+      "README.md"
+      |> File.read!()
+      |> String.split("### `#{name}`")
+      |> Enum.at(1)
+
+    case section_and_rest do
+      nil -> ""
+      section -> section |> String.split("\n### ") |> List.first()
+    end
   end
 
   @doc "Extracts fenced ```elixir blocks from README markdown text."
