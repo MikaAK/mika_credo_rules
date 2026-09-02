@@ -53,6 +53,35 @@ defmodule MikaCredoRules.AstHelpersTest do
       refute [:Changeset] in paths
     end
 
+    test "ADD: a namespace alias expands to the qualified remainder" do
+      paths =
+        resolve("defmodule Sample do\n  alias Tesla.Adapter\nend", [Tesla.Adapter.Finch])
+
+      assert [:Adapter, :Finch] in paths
+      assert [:Tesla, :Adapter, :Finch] in paths
+    end
+
+    test "ADD: a namespace alias two levels up expands the full remainder" do
+      paths = resolve("defmodule Sample do\n  alias Ecto\nend", [Ecto.Adapters.SQL])
+
+      assert [:Ecto, :Adapters, :SQL] in paths
+    end
+
+    test "ADD: an as: rename expands the qualified remainder under the renamed name" do
+      paths =
+        resolve("defmodule Sample do\n  alias Tesla.Adapter, as: A\nend", [Tesla.Adapter.Finch])
+
+      assert [:A, :Finch] in paths
+      refute [:Adapter, :Finch] in paths
+    end
+
+    test "REMOVE: a project alias shadows the qualified extensions of a base name" do
+      paths = resolve("defmodule Sample do\n  alias MyApp.Ecto\nend", [Ecto.Query])
+
+      refute [:Ecto, :Query] in paths
+      assert [Elixir, :Ecto, :Query] in paths
+    end
+
     test "REMOVE: a project alias shadows a single-segment base name" do
       paths = resolve("defmodule Sample do\n  alias MyApp.Application\nend", [Application])
 

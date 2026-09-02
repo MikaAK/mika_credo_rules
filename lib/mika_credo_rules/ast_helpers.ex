@@ -143,12 +143,41 @@ defmodule MikaCredoRules.AstHelpers do
 
   defp collect_defmodule_names(ast, names), do: {ast, names}
 
+  # An alias both ADDs and REMOVEs, and each half applies to qualified
+  # extensions as well as the exact name. `alias Tesla.Adapter` makes
+  # `Adapter.Finch` mean `Tesla.Adapter.Finch` (expansion — the house style
+  # mandates exactly this namespace-alias idiom), while `alias MyApp.Ecto`
+  # makes `Ecto.Query` mean `MyApp.Ecto.Query`, so the bare extension no
+  # longer resolves to Elixir's `Ecto.Query` (shadowing). `Elixir.`-prefixed
+  # spellings are absolute and never touched by either half.
   defp apply_alias({name, target}, paths) do
     target = strip_elixir_prefix(target)
-    resolves_to_target? = target in paths or [Elixir | target] in paths
-    paths = paths -- [name]
 
-    if resolves_to_target?, do: [name | paths], else: paths
+    expanded =
+      for path <- paths,
+          rest = remainder_after_either_prefix(target, path),
+          not is_nil(rest) do
+        name ++ rest
+      end
+
+    shadowed =
+      for path <- paths,
+          rest = remainder_after_prefix(name, path),
+          not is_nil(rest),
+          (target ++ rest) not in paths,
+          ([Elixir | target] ++ rest) not in paths do
+        path
+      end
+
+    Enum.uniq(expanded ++ (paths -- shadowed))
+  end
+
+  defp remainder_after_either_prefix(target, path) do
+    remainder_after_prefix(target, path) || remainder_after_prefix([Elixir | target], path)
+  end
+
+  defp remainder_after_prefix(prefix, path) do
+    if List.starts_with?(path, prefix), do: Enum.drop(path, length(prefix)), else: nil
   end
 
   defp strip_elixir_prefix([Elixir | segments]), do: segments
