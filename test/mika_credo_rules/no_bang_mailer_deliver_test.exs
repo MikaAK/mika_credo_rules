@@ -287,6 +287,23 @@ defmodule MikaCredoRules.NoBangMailerDeliverTest do
       |> refute_issues()
     end
 
+    test "reports __MODULE__.Mailer.deliver! without crashing the run" do
+      """
+      defmodule MyApp.Signup do
+        defmodule Mailer do
+          def deliver!(email), do: email
+        end
+
+        def perform(email) do
+          __MODULE__.Mailer.deliver!(email)
+        end
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoBangMailerDeliver)
+      |> assert_issue(fn issue -> assert issue.trigger === "__MODULE__.Mailer.deliver!" end)
+    end
+
     test "does not report a deliver! definition head" do
       """
       defmodule MyApp.Mailer do

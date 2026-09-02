@@ -124,7 +124,7 @@ defmodule MikaCredoRules.NoBangMailerDeliver do
        )
        when is_list(args) do
     if function in context.functions and mailer_module?(module, context.module_suffixes) do
-      trigger = "#{Enum.join(module, ".")}.#{function}"
+      trigger = "#{Enum.map_join(module, ".", &segment_to_string/1)}.#{function}"
 
       {ast, [delivery(trigger, alias_meta) | deliveries]}
     else
@@ -156,10 +156,19 @@ defmodule MikaCredoRules.NoBangMailerDeliver do
 
   defp traverse(ast, deliveries, _context), do: {ast, deliveries}
 
+  # An `__aliases__` segment list can carry AST nodes rather than atoms —
+  # `__MODULE__.Mailer.deliver!(email)` puts `{:__MODULE__, _, nil}` in the
+  # first slot — so identity and trigger building must not assume atoms.
   defp mailer_module?(module, module_suffixes) do
-    last_segment = module |> List.last() |> Atom.to_string()
-    Enum.any?(module_suffixes, &String.ends_with?(last_segment, &1))
+    last_segment = List.last(module)
+
+    is_atom(last_segment) and
+      Enum.any?(module_suffixes, &String.ends_with?(Atom.to_string(last_segment), &1))
   end
+
+  defp segment_to_string(segment) when is_atom(segment), do: Atom.to_string(segment)
+  defp segment_to_string({:__MODULE__, _meta, _context}), do: "__MODULE__"
+  defp segment_to_string(segment), do: Macro.to_string(segment)
 
   defp receiver_name({:@, meta, [{attribute, _, nil}]}), do: {:ok, "@#{attribute}", meta}
   defp receiver_name({variable, meta, nil}) when is_atom(variable), do: {:ok, "#{variable}", meta}
