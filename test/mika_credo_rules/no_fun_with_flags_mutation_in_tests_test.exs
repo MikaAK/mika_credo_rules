@@ -1,5 +1,5 @@
 defmodule MikaCredoRules.NoFunWithFlagsMutationInTestsTest do
-  use Credo.Test.Case
+  use Credo.Test.Case, async: true
 
   alias MikaCredoRules.DocExamples
   alias MikaCredoRules.NoFunWithFlagsMutationInTests

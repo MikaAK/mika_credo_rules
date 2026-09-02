@@ -1,5 +1,5 @@
 defmodule MikaCredoRules.NoRawMarkupInTemplatesTest do
-  use Credo.Test.Case
+  use Credo.Test.Case, async: true
 
   alias MikaCredoRules.NoRawMarkupInTemplates
 

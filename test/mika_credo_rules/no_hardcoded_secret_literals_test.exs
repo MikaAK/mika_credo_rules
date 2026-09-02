@@ -1,6 +1,6 @@
 # credo:disable-for-this-file MikaCredoRules.NoHardcodedSecretLiterals
 defmodule MikaCredoRules.NoHardcodedSecretLiteralsTest do
-  use Credo.Test.Case
+  use Credo.Test.Case, async: true
 
   alias MikaCredoRules.DocExamples
   alias MikaCredoRules.NoHardcodedSecretLiterals

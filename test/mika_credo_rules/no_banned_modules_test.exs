@@ -1,6 +1,6 @@
 # credo:disable-for-this-file MikaCredoRules.NoBannedModules
 defmodule MikaCredoRules.NoBannedModulesTest do
-  use Credo.Test.Case
+  use Credo.Test.Case, async: true
 
   alias MikaCredoRules.DocExamples
   alias MikaCredoRules.NoBannedModules

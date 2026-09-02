@@ -271,11 +271,13 @@ defmodule MikaCredoRules.NoResolverFnForAssociation do
     fn_column = fn_meta[:column]
     line_text = Credo.SourceFile.line_at(source_file, line)
 
-    line_text
-    |> :binary.matches("resolve:")
-    |> Enum.filter(fn {start, _length} -> start < fn_column - 1 end)
-    |> List.last()
-    |> case do
+    last_resolve_key =
+      line_text
+      |> :binary.matches("resolve:")
+      |> Enum.filter(fn {start, _length} -> start < fn_column - 1 end)
+      |> List.last()
+
+    case last_resolve_key do
       {start, _length} -> {line, start + 1, "resolve"}
       nil -> {line, fn_column, Issue.no_trigger()}
     end

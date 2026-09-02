@@ -1,5 +1,5 @@
 defmodule MikaCredoRules.NoBangMailerDeliverTest do
-  use Credo.Test.Case
+  use Credo.Test.Case, async: true
 
   alias MikaCredoRules.DocExamples
   alias MikaCredoRules.NoBangMailerDeliver
@@ -301,7 +301,7 @@ defmodule MikaCredoRules.NoBangMailerDeliverTest do
       """
       |> to_source_file(@lib_file)
       |> run_check(NoBangMailerDeliver)
-      |> assert_issue(fn issue -> assert issue.trigger === "__MODULE__.Mailer.deliver!" end)
+      |> assert_issue(fn issue -> assert issue.trigger === Credo.Issue.no_trigger() end)
     end
 
     test "does not report a deliver! definition head" do

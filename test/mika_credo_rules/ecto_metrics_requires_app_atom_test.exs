@@ -1,5 +1,5 @@
 defmodule MikaCredoRules.EctoMetricsRequiresAppAtomTest do
-  use Credo.Test.Case
+  use Credo.Test.Case, async: true
 
   alias MikaCredoRules.EctoMetricsRequiresAppAtom
 

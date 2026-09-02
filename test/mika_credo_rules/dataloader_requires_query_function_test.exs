@@ -1,5 +1,5 @@
 defmodule MikaCredoRules.DataloaderRequiresQueryFunctionTest do
-  use Credo.Test.Case
+  use Credo.Test.Case, async: true
 
   alias MikaCredoRules.DataloaderRequiresQueryFunction
   alias MikaCredoRules.DocExamples

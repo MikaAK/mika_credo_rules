@@ -1,5 +1,5 @@
 defmodule MikaCredoRules.PubSubRequiresMessageStructTest do
-  use Credo.Test.Case
+  use Credo.Test.Case, async: true
 
   alias MikaCredoRules.DocExamples
   alias MikaCredoRules.PubSubRequiresMessageStruct
@@ -12,20 +12,16 @@ defmodule MikaCredoRules.PubSubRequiresMessageStructTest do
                       |> DocExamples.indented_blocks()
                       |> DocExamples.bad_good_examples()
 
-  # DocExamples.readme_section/1 reads README.md, which does not carry this
-  # check's section until the integrator merges it — until then it returns ""
-  # and the four `for` comprehensions below would silently expand to zero
-  # tests. Read our own docs/readme_sections copy instead (the integrator
-  # merges it into README.md verbatim), and assert it actually produced
-  # examples so a broken fence or a renamed file fails loudly instead of
-  # quietly generating nothing.
-  @readme_examples "docs/readme_sections/PubSubRequiresMessageStruct.md"
-                   |> File.read!()
+  # Assert the README gate actually produced examples, so a renamed or
+  # dropped README section fails loudly instead of quietly generating
+  # zero tests.
+  @readme_examples "PubSubRequiresMessageStruct"
+                   |> DocExamples.readme_section()
                    |> DocExamples.fenced_blocks()
                    |> DocExamples.bad_good_examples()
 
   if @readme_examples === [] do
-    raise "docs/readme_sections/PubSubRequiresMessageStruct.md doc-gate found zero BAD/GOOD examples"
+    raise "README section `PubSubRequiresMessageStruct` doc-gate found zero BAD/GOOD examples"
   end
 
   for {index, "BAD", code} <- @moduledoc_examples do

@@ -1,5 +1,5 @@
 defmodule MikaCredoRules.NoBlanketRescueTest do
-  use Credo.Test.Case
+  use Credo.Test.Case, async: true
 
   alias MikaCredoRules.NoBlanketRescue
 

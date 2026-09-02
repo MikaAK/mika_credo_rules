@@ -5,7 +5,7 @@
 # know it, and asks for the choice to be stated regardless.
 # credo:disable-for-this-file MikaCredoRules.AsyncTrueRequired
 defmodule MikaCredoRules.AsyncTrueRequiredTest do
-  use Credo.Test.Case
+  use Credo.Test.Case, async: true
 
   alias MikaCredoRules.AsyncTrueRequired
   alias MikaCredoRules.DocExamples

@@ -396,18 +396,20 @@ defmodule MikaCredoRules.NoBannedModules do
       |> Credo.SourceFile.source()
       |> String.split("\n")
 
-    lines
-    |> Enum.drop(meta[:line] - 1)
-    |> Enum.with_index(meta[:line])
-    |> Enum.find_value(fn {line, line_no} ->
-      case :binary.match(line, text) do
-        {start, _length} -> {line_no, start + 1}
-        :nomatch -> nil
-      end
-    end)
-    |> case do
+    located =
+      lines
+      |> Enum.drop(meta[:line] - 1)
+      |> Enum.with_index(meta[:line])
+      |> Enum.find_value(fn {line, line_no} ->
+        case :binary.match(line, text) do
+          {start, _length} -> {line_no, start + 1}
+          :nomatch -> nil
+        end
+      end)
+
+    case located do
       nil -> {meta[:line], meta[:column]}
-      located -> located
+      found -> found
     end
   end
 
