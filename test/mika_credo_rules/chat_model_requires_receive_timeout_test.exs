@@ -1,5 +1,5 @@
 defmodule MikaCredoRules.ChatModelRequiresReceiveTimeoutTest do
-  use Credo.Test.Case
+  use Credo.Test.Case, async: true
 
   alias MikaCredoRules.ChatModelRequiresReceiveTimeout
   alias MikaCredoRules.DocExamples

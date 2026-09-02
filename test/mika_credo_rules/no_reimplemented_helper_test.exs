@@ -1,5 +1,5 @@
 defmodule MikaCredoRules.NoReimplementedHelperTest do
-  use Credo.Test.Case
+  use Credo.Test.Case, async: true
 
   alias Credo.Check.Params
   alias MikaCredoRules.NoReimplementedHelper

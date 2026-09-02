@@ -1,5 +1,5 @@
 defmodule MikaCredoRules.EnsureLoadedBeforeExportedTest do
-  use Credo.Test.Case
+  use Credo.Test.Case, async: true
 
   alias MikaCredoRules.EnsureLoadedBeforeExported
 
@@ -498,10 +498,7 @@ defmodule MikaCredoRules.EnsureLoadedBeforeExportedTest do
       """
       |> Credo.SourceFile.parse("lib/my_app/worker.ex")
       |> EnsureLoadedBeforeExported.run([])
-      |> case do
-        [] -> raise "BAD example does not fire — the docs are lying"
-        issues -> issues
-      end
+      |> assert_doc_example_fires()
     end
 
     test "moduledoc GOOD example does not fire" do
@@ -518,10 +515,21 @@ defmodule MikaCredoRules.EnsureLoadedBeforeExportedTest do
       """
       |> Credo.SourceFile.parse("lib/my_app/worker.ex")
       |> EnsureLoadedBeforeExported.run([])
-      |> case do
-        [] -> :ok
-        issues -> raise "GOOD example fires — #{inspect(issues)}"
-      end
+      |> refute_doc_example_fires()
+    end
+  end
+
+  defp assert_doc_example_fires(issues) do
+    case issues do
+      [] -> raise "BAD example does not fire — the docs are lying"
+      found -> found
+    end
+  end
+
+  defp refute_doc_example_fires(issues) do
+    case issues do
+      [] -> :ok
+      found -> raise "GOOD example fires — #{inspect(found)}"
     end
   end
 end

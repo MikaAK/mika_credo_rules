@@ -61,21 +61,29 @@ does) or these three checks will never see a file to run against.
 | Check | Category | What it catches |
 |---|---|---|
 | [`AbsintheDataloaderPluginRequired`](#absinthedataloaderpluginrequired) | `:warning` | A schema that builds a `Dataloader` but omits `Absinthe.Middleware.Dataloader` from `plugins/0` |
+| [`AsyncTrueRequired`](#asynctruerequired) | `:design` | A `use`d test case module must declare `:async` explicitly. Leaving `async:` |
 | [`CacheOptsNoHardcodedUri`](#cacheoptsnohardcodeduri) | `:warning` | A literal `uri`/`file_path` inside `use Cache, ..., opts: [...]` |
 | [`CacheRequiresSandboxOption`](#cacherequiressandboxoption) | `:warning` | `use Cache, ...` without `sandbox?: Mix.env() === :test` |
 | [`CredoConfigNamedDefault`](#credoconfignameddefault) | `:warning` | A `.credo.exs` with no config named `"default"` — Credo silently falls back to its own stock checks |
+| [`DataloaderRequiresQueryFunction`](#dataloaderrequiresqueryfunction) | `:warning` | `Dataloader.Ecto.new/1,2` must set `query:` — without it, association loads |
 | [`DistributionRequiresBuckets`](#distributionrequiresbuckets) | `:warning` | `distribution/2` whose literal opts omit `:reporter_options` |
 | [`EctoMetricsRequiresAppAtom`](#ectometricsrequiresappatom) | `:warning` | `PrometheusTelemetry.Metrics.Ecto.metrics/0` — pass the app atom |
+| [`EctoSchemaRequiresTypeT`](#ectoschemarequirestypet) | `:readability` | Every `Ecto.Schema` module must define `@type t :: %__MODULE__{}` for |
+| [`EmailRequiresTextBody`](#emailrequirestextbody) | `:design` | A Swoosh email built with `html_body/2` needs a matching `text_body/2`, or it |
 | [`EnsureLoadedBeforeExported`](#ensureloadedbeforeexported) | `:warning` | `function_exported?`/`macro_exported?`/`Code.loaded?/1` not guarded by `Code.ensure_loaded?/1` |
 | [`ChatModelRequiresReceiveTimeout`](#chatmodelrequiresreceivetimeout) | `:warning` | `ChatOpenAI.new!/1` (and siblings) called without `:receive_timeout` — long prompts hang indefinitely |
 | [`ErrorMessageRequired`](#errormessagerequired) | `:design` | `{:error, "string literal"}` tuples — use `%ErrorMessage{}` |
 | [`ExceptionNamesEndInError`](#exceptionnamesendinerror) | `:readability` | An exception module whose name does not end in `Error` |
+| [`FormlessPhxChange`](#formlessphxchange) | `:warning` | A `phx-change` binding on a bare `<input>`/`<select>`/`<textarea>` reaches LiveView's JS |
 | [`FunWithFlagsAtomFlagNames`](#funwithflagsatomflagnames) | `:warning` | `FunWithFlags.enabled?/1` (and siblings) called with a string flag name — silently always false |
 | [`GenServerRequiresHandleContinue`](#genserverrequireshandlecontinue) | `:refactor` | Real work in `init/1` instead of `handle_continue/2` |
 | [`HologramCookieKeysMustBeStrings`](#hologramcookiekeysmustbestrings) | `:warning` | An atom key literal passed to `get_cookie`/`put_cookie`/`delete_cookie` — cookie keys must be strings |
+| [`HttpWrapperRequiresPoolName`](#httpwrapperrequirespoolname) | `:warning` | A Finch-backed adapter attribute must carry a dedicated pool `name:` |
+| [`ImportComponentsNotAlias`](#importcomponentsnotalias) | `:readability` | `<.func>` component call syntax needs the component module `import`ed, not |
 | [`InUmbrellaDepsNoVersion`](#inumbrelladepsnoversion) | `:readability` | `{:app, "~> x", in_umbrella: true}` — a version requirement on an in_umbrella dep |
 | [`LiveViewSubscribeRequiresConnected`](#liveviewsubscriberequiresconnected) | `:warning` | A PubSub subscribe in `mount/3` not guarded by `connected?/1` |
 | [`LoggerModulePrefixAndInspect`](#loggermoduleprefixandinspect) | `:warning` | Logger messages missing the `#{__MODULE__}: ` prefix or interpolating values without `inspect/1` |
+| [`LowercaseErrorMessages`](#lowercaseerrormessages) | `:readability` | `ErrorMessage` constructor calls and `raise/2` message strings must not carry |
 | [`MigrationExecuteInChange`](#migrationexecuteinchange) | `:warning` | `execute/1` inside `def change` — irreversible, Ecto cannot roll it back |
 | [`MigrationFlushBetweenExecuteAndQuery`](#migrationflushbetweenexecuteandquery) | `:warning` | A direct `repo().query` after `execute/1,2` with no `flush()` between them |
 | [`MigrationForeignKeyNeedsIndex`](#migrationforeignkeyneedsindex) | `:warning` | A `references(...)` foreign key column with no covering index in the same migration |
@@ -83,6 +91,7 @@ does) or these three checks will never see a file to run against.
 | [`NoAccessOnStructSubject`](#noaccessonstructsubject) | `:warning` | `changeset[:name]` — `Access` on a struct raises `UndefinedFunctionError` |
 | [`NoApplicationEnvOutsideConfig`](#noapplicationenvoutsideconfig) | `:design` | Any read or write of application env outside a config module |
 | [`NoAtomStringKeyFallback`](#noatomstringkeyfallback) | `:warning` | `m["key"] \|\| m[:key]` mixed-key fallback reads — normalize keys at the boundary |
+| [`NoBannedModules`](#nobannedmodules) | `:design` | Generic, param-driven module ban — the reusable shape behind `NoMockingLibraries` |
 | [`NoBarePatternMatchOnFallible`](#nobarepatternmatchonfallible) | `:warning` | `{:ok, x} = call()` — a bare match with no handling for the failure path |
 | [`NoBinaryPatternForStringPrefix`](#nobinarypatternforstringprefix) | `:readability` | `<<"GET ", rest::binary>>` instead of `"GET " <> rest` |
 | [`NoBangMailerDeliver`](#nobangmailerdeliver) | `:warning` | `deliver!/1` on a Mailer module — crashes on SES failure instead of returning `{:error, _}` |
@@ -92,39 +101,56 @@ does) or these three checks will never see a file to run against.
 | [`NoClickHandlerOnNonInteractiveElement`](#noclickhandleronnoninteractiveelement) | `:design` | A click binding on `<span>`/`<div>`/... with no `role`/`tabindex` escape hatch |
 | [`NoCondElseAtom`](#nocondelseatom) | `:readability` | A `cond`'s last clause falling through on `:else` instead of `true` |
 | [`NoContinueFromLiveViewMount`](#nocontinuefromliveviewmount) | `:warning` | `mount/3` returning `{:ok, socket, {:continue, term}}` — a GenServer shape, not a LiveView one |
+| [`NoDataMigrationInSchemaMigration`](#nodatamigrationinschemamigration) | `:warning` | A migration must not mix DDL with data DML in the same `change`/`up` body. A migration |
 | [`NoDirectErlangRpc`](#nodirecterlangrpc) | `:design` | Direct `:rpc`/`:erpc` calls and `Node.spawn*` — route through your app's RPC wrapper |
+| [`NoDirectFunWithFlags`](#nodirectfunwithflags) | `:design` | `FunWithFlags` must be read through the app's own feature-flag wrapper |
 | [`NoDirectHttpClient`](#nodirecthttpclient) | `:design` | Direct `Finch`/`HTTPoison`/`Tesla`/`Req` calls — route through your app's HTTP wrapper |
+| [`NoDirectPhoenixPubSub`](#nodirectphoenixpubsub) | `:design` | `Phoenix.PubSub` must be called through the app's own topic/wrapper module, |
+| [`NoDirectRepoCall`](#nodirectrepocall) | `:design` | Contexts must call `EctoShorts.Actions`, never `Repo` directly — the house rule |
+| [`NoDoPrefixedHelper`](#nodoprefixedhelper) | `:readability` | A public/private pair split only by a `do_` prefix — `def process/1` calling |
 | [`NoEctoSchemaInWebApp`](#noectoschemainwebapp) | `:design` | `use Ecto.Schema` inside a web app instead of the dedicated `_pg`/`schemas` app |
 | [`NoForWithDiscardedResult`](#noforwithdiscardedresult) | `:warning` | A `for` comprehension in statement position whose built result is thrown away |
+| [`NoFunWithFlagsMutationInTests`](#nofunwithflagsmutationintests) | `:warning` | `FunWithFlags.enable/disable/clear` mutate GLOBAL flag state — never call them |
 | [`NoHeexSigilInHologramModule`](#noheexsigilinhologrammodule) | `:warning` | `~H` sigils or `use Phoenix.LiveView`/`use Phoenix.Component` inside a Hologram module |
 | [`NoHardcodedSecretLiterals`](#nohardcodedsecretliterals) | `:warning` | String literals shaped like Stripe/AWS/Slack/GitHub/PEM/Bearer credentials |
+| [`NoIOANSIRawEscapes`](#noioansirawescapes) | `:readability` | Terminal color must go through `IO.ANSI.format/2`, never a raw escape |
 | [`NoIdentityRewrap`](#noidentityrewrap) | `:refactor` | `case` expressions whose every clause returns its pattern unchanged |
 | [`NoInspectModuleInMigrationSql`](#noinspectmoduleinmigrationsql) | `:warning` | `inspect/1` or string interpolation of a module alias in a migration |
+| [`NoIntermediateSingleUseVariable`](#nointermediatesingleusevariable) | `:refactor` | A variable bound once and used exactly once, immediately after, adds a name |
 | [`NoJasonDeriveOnEctoSchema`](#nojasonderiveonectoschema) | `:design` | `@derive Jason.Encoder` inside Ecto schema modules |
 | [`NoKernelPrefix`](#nokernelprefix) | `:readability` | `Kernel.inspect(value)` — `Kernel` is auto-imported, drop the prefix |
+| [`NoLengthZeroComparison`](#nolengthzerocomparison) | `:readability` | Comparing `length/1` (or `Enum.count/1`) against `0` must use `Enum.empty?/1` |
 | [`NoMixEnvAtRuntime`](#nomixenvatruntime) | `:warning` | `Mix.env()`/`Mix.target()` in compiled code — crashes in releases |
 | [`NoMockingLibraries`](#nomockinglibraries) | `:design` | Any reference to Mox, Hammox, Mock, Mimic, Patch or `:meck` |
 | [`NoNilComparison`](#nonilcomparison) | `:readability` | `x == nil` / `x != nil` — use `is_nil/1` |
 | [`NoObanInsertBang`](#noobaninsertbang) | `:warning` | `Oban.insert!`/`Oban.insert_all!` in application code — prefer the non-bang form and handle `{:error, _}` |
 | [`NoPhxBindingsInHoloTemplate`](#nophxbindingsinholotemplate) | `:warning` | `phx-*` attributes or EEx tags inside a `~HOLO` template |
+| [`NoPipeIntoControlFlow`](#nopipeintocontrolflow) | `:readability` | Piping directly into `case`/`if`/`unless`/`cond`/`with` obscures the piped |
 | [`NoProcessSleepInTests`](#noprocesssleepintests) | `:warning` | `Process.sleep/1` and `:timer.sleep/1` in test files |
+| [`NoQueryImportInContext`](#noqueryimportincontext) | `:design` | Query composition belongs in the schema module, not the context. `by_*`/ |
 | [`NoRawEts`](#norawets) | `:design` | Raw `:ets` calls — wrap in `Cache.ETS` from elixir_cache |
 | [`NoRawMarkupInTemplates`](#norawmarkupintemplates) | `:design` | Literal `style="..."`, hardcoded hex colors, inline `<svg>`, and banned raw tags inside `~H`/`~F` bodies |
 | [`NoReimplementedHelper`](#noreimplementedhelper) | `:design` | Local re-implementations of shared library helpers |
 | [`NoRepoWritesInTests`](#norepowritesintests) | `:design` | Write-side `Repo` calls (`insert!`, `update!`, `delete!`, ...) in test files — use `FactoryEx` |
+| [`NoResolverFnForAssociation`](#noresolverfnforassociation) | `:design` | A `resolve` anonymous function whose entire body is `{:ok, root.field}` (or |
 | [`NoSelfSendZeroDelay`](#noselfsendzerodelay) | `:refactor` | `Process.send_after(self(), _, 0)` and `send(self(), _)` in `init/1` — use `{:continue, term}` instead |
 | [`NoServerCodeInHologramAction`](#noservercodeinhologramaction) | `:warning` | DB/IO/server calls, session/cookie access, or unimplemented client forms inside a Hologram action |
+| [`NoSharedUtilsHTTPOutsideApiApps`](#nosharedutilshttpoutsideapiapps) | `:design` | `SharedUtils.HTTP` is the shared HTTP transport — domain code must call its |
 | [`NoSingleLetterVariables`](#nosinglelettervariables) | `:readability` | Single-letter variable bindings |
 | [`NoStaticNotLoadedDropList`](#nostaticnotloadeddroplist) | `:design` | `Map.drop(map, [:__meta__, ...])` — a static drop-list scrubbing `%Ecto.Association.NotLoaded{}` |
+| [`NoSyncMailerDeliverInWeb`](#nosyncmailerdeliverinweb) | `:warning` | Web-layer code — controllers and LiveViews — must not deliver mail inline. A |
 | [`NoTaskAsyncInGenServer`](#notaskasyncingenserver) | `:warning` | `Task.async`/`Task.Supervisor.async` inside a GenServer/GenStage callback — a crashing task takes the server down |
 | [`NoTelemetrySupervisorModule`](#notelemetrysupervisormodule) | `:design` | A `*Telemetry` module using `Supervisor` — add a `PrometheusTelemetry` child spec instead |
+| [`NoTemplateVariableAssignment`](#notemplatevariableassignment) | `:warning` | A `<% var = ... %>` EEx assignment tag inside a `~H`/`~F` template body disables HEEx |
 | [`NoTruthyAndOr`](#notruthyandor) | `:warning` | `and`/`or`/`not` on a provably-nilable operand (`opts[:key]`, `Map.get/2`, ...) — use `&&`/`\|\|`/`!` |
+| [`NoUnboundBlockAssignment`](#nounboundblockassignment) | `:warning` | An `if`/`case`/`cond`/`unless` used as a statement — an element of a block |
 | [`NoUnsupervisedTaskStart`](#nounsupervisedtaskstart) | `:warning` | `Task.start` — a crash inside it is silently discarded |
 | [`NoVacuousAssert`](#novacuousassert) | `:warning` | `assert true` / `assert <literal>` / `refute false` / `assert x === x` — placeholder assertions that can never fail |
 | [`NoWordSigilLists`](#nowordsigillists) | `:readability` | `~w`/`~W` sigils — use a list literal instead |
 | [`ObanWorkerRequiresMaxAttempts`](#obanworkerrequiresmaxattempts) | `:design` | `use Oban.Worker` whose literal opts omit `:max_attempts` |
 | [`PhxValueNoDashes`](#phxvaluenodashes) | `:warning` | A dashed multiword `phx-value-*` key — LiveView never converts it, so a `%{"foo_bar" => _}` handler clause won't match |
 | [`PrometheusExporterMustBeGated`](#prometheusexportermustbegated) | `:warning` | `exporter: [enabled?: true]` — the metrics endpoint must be gated to prod |
+| [`PubSubRequiresMessageStruct`](#pubsubrequiresmessagestruct) | `:design` | A `Phoenix.PubSub` broadcast payload must be a message struct, never a bare |
 | [`RefuteOverAssertNot`](#refuteoverassertnot) | `:readability` | `assert !expr` / `assert not expr` — use `refute` |
 | [`SingleModulePerFile`](#singlemoduleperfile) | `:design` | More than one top-level `defmodule` per file (nested modules allowed) |
 | [`SqlSandboxPlugMustBeCompileGated`](#sqlsandboxplugmustbecompilegated) | `:warning` | `plug Phoenix.Ecto.SQL.Sandbox` not gated on `Application.compile_env/2,3` |
@@ -132,6 +158,7 @@ does) or these three checks will never see a file to run against.
 | [`TaskAsyncStreamRequiresTimeout`](#taskasyncstreamrequirestimeout) | `:warning` | `Task.async_stream`/`Task.Supervisor.async_stream` missing an explicit `:timeout` |
 | [`TestOnlyDepsScoped`](#testonlydepsscoped) | `:warning` | A dev/test-only mix.exs dep missing `only:` or `runtime: false` |
 | [`TodosNeedTickets`](#todosneedtickets) | `:design` | TODO/FIXME comments without an adjacent ticket URL |
+| [`VerifiedRoutesRequired`](#verifiedroutesrequired) | `:warning` | A navigation call's `to:` option must be a `~p` verified-route sigil, never |
 
 ---
 
@@ -168,6 +195,57 @@ long as every required module appears somewhere in its body — a bare list or a
 |---|---|---|
 | `required_plugins` | `[Absinthe.Middleware.Dataloader]` | Modules that must all appear in `plugins/0` when the schema builds a Dataloader |
 | `excluded_paths` | `[]` | Path fragments naming files this check skips |
+
+### `AsyncTrueRequired`
+
+A `use`d test case module must declare `:async` explicitly. Leaving `async:`
+unstated hides sandbox misuse a concurrent run would surface — a test that
+only passes because it never races another test — and, for a project's own
+case module, means the *effective* default (serial or async) lives wherever
+that macro's body decides it, not at the call site. Every test case should
+state its concurrency choice on purpose, not depend on an implicit default.
+
+```elixir
+# BAD — async left to ExUnit's serial default
+defmodule MyApp.OrdersTest do
+  use ExUnit.Case
+end
+
+# GOOD — the choice is explicit
+defmodule MyApp.OrdersTest do
+  use ExUnit.Case, async: true
+end
+```
+
+`:case_suffixes` matches the last segment of the `use`d module as written, so
+`use MyApp.DataCase` and `use MyApp.ConnCase` are caught by the default
+`"Case"` suffix, without this check needing to name every project's case
+module. Only a literal keyword list is inspected — `use MyApp.DataCase,
+@data_case_opts` cannot be reasoned about statically and is left alone. The
+check only scans files matching `:test_files` (a `run/2` guard, not a
+`files:` param).
+
+**Limitations:** an explicit `async: false` opt-out is never flagged here —
+deliberately turning concurrency off for a test case that cannot run in
+parallel is a different, narrower problem than never having stated a choice
+at all. `use ExUnit.CaseTemplate` is not itself a test case, it defines one —
+its last segment, `"CaseTemplate"`, does not end in the default `"Case"`
+suffix, so it is correctly never flagged. `Wallaby.Feature` is deliberately
+not a default `:case_suffixes` target either — `Wallaby.Feature.__using__/1`
+ignores every option it is given and never itself calls `use ExUnit.Case`, so
+flagging it would recommend `use Wallaby.Feature, async: true`, an option
+Wallaby silently discards; the real fix belongs to the case module declared
+above it, which the default `"Case"` suffix already covers. This check
+cannot see through a `use`d macro's own body, so it cannot tell whether an
+omitted `:async` actually falls back to a serial run (plain `ExUnit.Case`)
+or an async one (some house case modules default the other way) — the
+message asks for an explicit choice either way, rather than asserting what
+the implicit one is.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `case_suffixes` | `["Case"]` | Suffixes identifying a test case module by the last segment of the `use`d module, as written |
+| `test_files` | `["_test.exs"]` | Filename suffixes this check runs on |
 
 ### `CacheOptsNoHardcodedUri`
 
@@ -307,6 +385,45 @@ one even though it isn't — write `configs:` as a plain list literal.
 | `config_files` | `[".credo.exs"]` | Path suffixes treated as Credo config files |
 | `allowed_names` | `["default"]` | Config names Credo will actually select without `--config-name` |
 
+### `DataloaderRequiresQueryFunction`
+
+`Dataloader.Ecto.new/1,2` must set `query:` — without it, association loads
+fall back to `Dataloader.Ecto`'s own default query function, which discards
+every GraphQL filter, order, and paginate argument the caller passes.
+
+```elixir
+# BAD — no query function, so filter args on association loads are dropped
+Dataloader.Ecto.new(MyApp.Repo)
+
+# GOOD — filter args flow through EctoShorts.CommonFilters
+Dataloader.Ecto.new(MyApp.Repo, query: &EctoShorts.CommonFilters.convert_params_to_filter/2)
+```
+
+A piped construction (`MyApp.Repo |> Dataloader.Ecto.new(query: ...)`) is
+handled the same way: the pipe's right-hand call carries one fewer argument
+than the call actually has (the repo is the pipe's left-hand side, not a call
+argument), so the true arity is re-derived as `1 + length(args)` and the opts
+— when present — are inspected exactly like the non-piped form. A piped call
+with `query:` set stays silent; one missing it is flagged the same as its
+non-piped equivalent, at its own true arity.
+
+Only a literal opts keyword list is inspected — opts held in a variable or
+built by a helper function is invisible to a static check and left alone
+rather than guessed at (an accepted false negative), whether the call is
+piped or not. `Dataloader.KV.new/1,2` is a different source type with no
+query-function contract and is never matched. Alias-aware on
+`Dataloader.Ecto`: an `alias`, an `as:` rename, and the fully qualified
+`Elixir.Dataloader.Ecto` spelling are all resolved.
+
+**Limitations:** opts held in a variable or module attribute
+(`Dataloader.Ecto.new(MyApp.Repo, @opts)`) is invisible and silently
+skipped — the same is true under a pipe
+(`MyApp.Repo |> Dataloader.Ecto.new(opts)`).
+
+| Param | Default | Meaning |
+|---|---|---|
+| `excluded_paths` | `["_test.exs", "test/"]` | Path fragments naming files this check skips. |
+
 ### `DistributionRequiresBuckets`
 
 `Telemetry.Metrics.distribution/2` must set `:reporter_options` with `:buckets`.
@@ -369,6 +486,143 @@ accepted to avoid flagging an unrelated module that happens to be named `Ecto`.
 |---|---|---|
 | `module_functions` | `[{PrometheusTelemetry.Metrics.Ecto, :metrics}]` | `{module, function}` pairs whose zero-arity call is banned |
 | `excluded_paths` | `[]` | Path fragments exempt from the check |
+
+### `EctoSchemaRequiresTypeT`
+
+Every `Ecto.Schema` module must define `@type t :: %__MODULE__{}` for
+Dialyzer. Without it, every function returning a struct from this schema is
+typed as a bare `map()` (or left unspeced) to Dialyzer — a caller matching
+the wrong field name, or passing the wrong struct entirely, gets no static
+warning. `@type t :: %__MODULE__{}` gives Dialyzer the struct shape once,
+for every `@spec` that returns it.
+
+```elixir
+# BAD — no @type t for Dialyzer
+defmodule MyApp.User do
+  use Ecto.Schema
+
+  schema "users" do
+    field :name, :string
+  end
+end
+
+# GOOD — @type t documents the struct shape for Dialyzer
+defmodule MyApp.User do
+  use Ecto.Schema
+
+  @type t :: %__MODULE__{}
+
+  schema "users" do
+    field :name, :string
+  end
+end
+```
+
+`embedded_schema` modules use the same `use Ecto.Schema` and are checked
+identically. The check is scoped per module, not per file — a nested
+`defmodule` inside a schema file is judged on its own body: it is only
+flagged when it declares its own `use Ecto.Schema` and calls `schema`/
+`embedded_schema` itself, and it must define its own `@type t` even when an
+enclosing module already has one. A module whose `use Ecto.Schema` never
+reaches an actual `schema`/`embedded_schema` call is not flagged — most
+commonly a base module that injects `use Ecto.Schema` for its callers from
+inside a `quote` block, or a bare `use Ecto.Schema` with no schema block at
+all.
+
+**Limitations:** only a type literally named `t`, arity 0, declared via
+`@type`, `@opaque`, or `@typep` (`@type t :: ...`, `@opaque t :: ...`,
+`@type t() :: ...`, etc.), satisfies the check — a differently named type
+alias for the same struct is not recognized. Aliases are resolved from a
+flat, file-level table rather than a lexical scope stack, and an alias
+injected by a macro (via `__using__`) is invisible to Credo. A schema built
+through a project base wrapper (a module that itself calls `use Ecto.Schema`,
+e.g. `use MyApp.Schema`) is invisible under the default
+`schema_modules: [Ecto.Schema]` — list the wrapper too, e.g.
+`schema_modules: [Ecto.Schema, MyApp.Schema]`.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `schema_modules` | `[Ecto.Schema]` | Modules whose `use` counts as declaring an Ecto schema, alias-aware |
+| `excluded_paths` | `["_test.exs", "test/"]` | Path fragments exempt from the check (segment-boundary matched) — a schema struct built only for a test fixture has no Dialyzer caller relying on `t()` |
+
+### `EmailRequiresTextBody`
+
+A Swoosh email built with `html_body/2` needs a matching `text_body/2`, or it
+renders empty in a text-only client. `html_body/2` and `text_body/2` set
+independent parts of a multipart message — setting only the HTML part means
+any client that prefers or requires plain text shows a blank body instead of
+falling back sensibly.
+
+```elixir
+# BAD — no text fallback
+defmodule MyApp.Emails.Welcome do
+  import Swoosh.Email
+
+  def welcome(user) do
+    new() |> subject("Welcome!") |> html_body("<h1>Welcome!</h1>")
+  end
+end
+
+# GOOD — both parts set
+defmodule MyApp.Emails.Welcome do
+  import Swoosh.Email
+
+  def welcome(user) do
+    new()
+    |> subject("Welcome!")
+    |> html_body("<h1>Welcome!</h1>")
+    |> text_body("Welcome!")
+  end
+end
+```
+
+The check is a module-level heuristic, scoped to each top-level `defmodule`
+or `defimpl` in the file: if `html_body/2` is called anywhere in the scope's
+body — including inside a nested `defmodule` — and `text_body/2` is never
+called anywhere in that same body, one issue is reported at the first
+`html_body` call site. A definition head — `def html_body(...)`, a bodiless
+multi-clause head (`def html_body(user, greeting \\ "Hi")`), or a
+`defdelegate html_body(...), to: ...` — is not a call and is never counted,
+nor is a bare variable, or a module-attribute definition or read whose own
+name is `@html_body`/`@text_body` (`@html_body "<h1>..."`) — the
+attribute's own name collides with the call shape, not evidence of a real
+call. A real `html_body`/`text_body` call nested inside a differently-named
+attribute's value (`@base new() |> text_body(body)`) is still counted
+normally. Both functions are matched by bare, unqualified name — the shape
+`import Swoosh.Email` produces — piped or not, so `email |> html_body(body)`
+and `html_body(email, body)` are both caught: piping drops the implicit
+first argument from the AST, so a genuine call is seen with either one
+argument (piped) or two (direct, matching Swoosh's real `html_body/2`). A
+call with zero, three, or more arguments is not counted.
+
+**Limitations:** a module-qualified call — `Swoosh.Email.html_body(email,
+body)` — is invisible; only the bare, unqualified name is matched. The
+module body is scanned flat, not per nested `defmodule` or `defimpl`: a
+nested scope that itself calls `text_body/2` satisfies the whole enclosing
+scope. Keep one Swoosh email per top-level module to get an accurate scope.
+A top-level `defprotocol` is never opened as its own scope either — moot in
+practice, since a protocol definition may only declare function heads,
+never bodies with real calls. Only the body of a top-level `defmodule` or
+`defimpl` is ever scanned: code outside any such block — a bare script
+invoking `html_body/2` at the top level of a `.exs` file, for instance —
+opens no scope and is never checked at all. `Swoosh.Email.new/1` accepts
+`text_body:`/`html_body:` as keyword options, applied the same as calling
+the two functions directly; the check does not read `new/1`'s options, so a
+module that sets the text body only this way is still flagged for a later
+`html_body` call, and a module that sets only the HTML body this way is not
+flagged at all. The match is name-only: `import Swoosh.Email` is not
+required, and the two functions are matched independently by name. A local
+helper function named `html_body/1` or `html_body/2` with nothing to do
+with Swoosh is indistinguishable from the real one and will be flagged. The
+same is true in reverse, and is the more dangerous direction: a local
+helper function named `text_body`, called with one or two arguments
+anywhere in the scope, satisfies the check even when it never touches the
+email being built — silencing a genuine unset HTML-only email instead of
+flagging it.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `excluded_paths` | `["_test.exs", "test/"]` | Path fragments and suffixes naming files this check skips. |
 
 ### `EnsureLoadedBeforeExported`
 
@@ -505,6 +759,102 @@ undetected — the `defexception` call is not textually present. A
 | `suffix` | `"Error"` | The suffix an exception module's last name segment must end with |
 | `excluded_paths` | `[]` | Path fragments naming files this check skips |
 
+### `FormlessPhxChange`
+
+A `phx-change` binding on a bare `<input>`/`<select>`/`<textarea>` reaches LiveView's JS
+fine — `phx-change` is read straight off the input (`input.getAttribute(phxChange)` in
+`live_socket.js`), independent of form membership — but two hops later `View.pushInput/6`
+throws `"form events require the input to be inside a form"` (`view.js`) because
+`inputEl.form` is `null` for an element that is not form-associated. In a real browser this
+surfaces as an uncaught JS `Error` in the console, not a silently swallowed event. To be
+form-associated, the element must either be a DOM descendant of a
+`<form>`/`<.form>`/`<.simple_form>`, or carry an HTML `form="<id>"` attribute referencing one
+elsewhere in the document (which this check also treats as exempt).
+
+```elixir
+# BAD
+~H"""
+<input type="text" phx-change="update_q" />
+"""
+
+# GOOD
+~H"""
+<.form for={@form} phx-change="update_q">
+  <input type="text" name="q" />
+</.form>
+"""
+```
+
+Wrap the element in `<.form>` (or `<form>`/`<.simple_form>`), moving `phx-change` onto the
+form itself if it is not there already.
+
+**Limitations:** Credo only lints `.ex`/`.exs` files — a `.html.heex` template file is
+never read by Credo (`Credo.Sources.@default_sources_glob` is `~w(** *.{ex,exs})`), so
+this check is **blind to every `.html.heex` file**. Only `~H`/`~F` sigils colocated inside
+a `.ex`/`.exs` module are covered.
+
+This is a raw-text scan of the whole sigil body, not an HTML parser with offset tracking,
+so it cannot tell which elements a `<.form>` actually wraps. The moment ANY `:form_markers`
+substring appears anywhere in the sigil, the ENTIRE sigil is exempted — including a second,
+genuinely formless input elsewhere in the same body that the form does not wrap. Precisely
+locating what a `<.form>` wraps needs a real HTML parser tracking open/close tags and their
+offsets, which this check does not have.
+
+Measured false positive: a field-group function component whose own `~H` body has no form
+marker still fires even when every caller wraps it in `<.form>` — idiomatic Phoenix
+slot/component decomposition, e.g. a sibling `address_fields/1` rendered from `render/1`'s
+`<.form>`. The form-marker exemption is scanned per sigil, never across the sigils of the
+functions that compose it.
+
+Measured false positive: Surface's `<Form>` component (`:sigil_F`) is not in the default
+`:form_markers` list — its raw input children fire by default, because Surface capitalizes
+the tag and the defaults only cover HEEx's `<.form`/`<form`/`<.simple_form` spellings. A
+Surface repo must add `"<Form"` to `:form_markers`.
+
+Measured false positive: a module-qualified (remote) form function component, e.g.
+`<Phoenix.Component.form for={@form}>` or `<MyAppWeb.CoreComponents.form for={@form}>`,
+matches no default `:form_markers` entry either — every default marker anchors `<`
+immediately before the tag word, so a fully-qualified module path between `<` and `.form`
+never matches, and a raw input inside one fires. Add `".form"` (and `".simple_form"` if
+used remotely) to `:form_markers` — the marker is matched anywhere in the sigil body, so
+the bare suffix also matches the qualified call.
+
+Measured false positive: `<%!-- <input phx-change="..." /> --%>` (a HEEx comment) and
+`<!-- <input phx-change="..." /> -->` (an HTML comment) both still fire — same class of gap
+as `NoRawMarkupInTemplates`'s `<svg` inside an HTML comment.
+
+The mirror gap also exists: a `:form_markers` substring left inside a commented-out
+`<.form>` (HEEx or HTML comment) still exempts the whole sigil, silencing a genuinely
+formless input elsewhere in the same body.
+
+An opening tag is bounded by `[^>]*` up to the next `>`, so a `>` character inside a quoted
+or interpolated attribute value (e.g. `value={if @count > 1, do: "many"}`) would incorrectly
+end the tag scan early, silencing any `phx-change` that follows on the same tag — accepted as
+a rare edge case, same as `NoClickHandlerOnNonInteractiveElement`.
+
+The `phx-change` attribute regex is matched against the whole opening-tag text, not
+attribute-aware, so `phx-change` appearing inside a different attribute's quoted value (e.g.
+`placeholder=" phx-change='x'"`) also fires — same class of gap as
+`NoRawMarkupInTemplates`'s `style="..."` prose false positive.
+
+Measured false negative: the mirror image of the gap above also exists on the `form=`
+attribute regex. It too is matched against the whole opening-tag text, not attribute-aware,
+so a `form=` substring appearing inside a different attribute's quoted value (e.g.
+`placeholder="pick a form='x' value"` or `title="a form='b'"`) is read as a genuine
+form-association and silences a control that is not actually form-associated in the DOM —
+it still throws in a real browser. The same raw-text match also treats an empty `form=""`
+(naming no form owner at all) as form-associated, for the same reason.
+
+Suppressing an issue reported inside a sigil body works the same way as every other sigil
+check in this package — see `NoRawMarkupInTemplates`'s Limitations section for the two
+escapes that actually work (a HEEx-comment-wrapped pragma inside the sigil does not).
+
+| Param | Default | Meaning |
+|---|---|---|
+| `sigils` | `[:sigil_H, :sigil_F]` | Which sigil names count as template bodies. |
+| `form_markers` | `["<.form", "<form", "<.simple_form"]` | Substrings whose presence anywhere in the sigil exempts the whole sigil, matched at a text boundary (so `<.form_group>` does not match `<.form`). A Surface repo scanning `~F` must add `"<Form"` — matching is case-sensitive. A module-qualified form component like `<Phoenix.Component.form>` needs a bare `".form"` entry. |
+| `excluded_paths` | `[]` | Path fragments naming files this check skips. |
+
 ### `FunWithFlagsAtomFlagNames`
 
 `FunWithFlags` flag names must be atoms, never string literals. `FunWithFlags`
@@ -586,6 +936,152 @@ variable is left alone since its runtime value is unknown to a static check.
 |---|---|---|
 | `hologram_modules` | `[Hologram.Page, Hologram.Component]` | Modules whose `use` marks a `defmodule` as a Hologram module |
 | `functions` | `[:get_cookie, :put_cookie, :delete_cookie]` | Local cookie function names to check |
+
+### `HttpWrapperRequiresPoolName`
+
+A Finch-backed adapter attribute must carry a dedicated pool `name:`.
+`Tesla.Adapter.Finch.call/2` requires `:name` — it calls
+`Keyword.fetch!(opts, :name)`, so an adapter tuple with no `name:` (or no
+opts at all) compiles cleanly but raises `KeyError` the instant a request
+actually goes out. Setting `name: __MODULE__` on the `@adapter` attribute —
+matching a Finch pool started under that same name, typically via
+`SharedUtils.HTTP.child_spec(name: __MODULE__)` in the wrapper's own
+`child_spec/1` — is what keeps the attribute usable at runtime.
+
+```elixir
+# BAD — no opts at all, so nothing can carry name:
+defmodule MyApp.Courses do
+  @adapter Tesla.Adapter.Finch
+
+  def new(opts \\ []) do
+    SharedUtils.HTTP.client([], @adapter, opts)
+  end
+end
+
+# GOOD — a dedicated pool
+defmodule MyApp.Courses do
+  @adapter {Tesla.Adapter.Finch, name: __MODULE__}
+
+  def new(opts \\ []) do
+    SharedUtils.HTTP.client([], @adapter, opts)
+  end
+end
+```
+
+Only the attribute's own opts position is ever inspected. When it is a
+literal keyword list, it is checked for `:name` directly. When the whole
+attribute is just the bare adapter module — no tuple, no opts position on
+the attribute itself — the check assumes the house idiom holds (the full
+adapter tuple, `name:` included, lives on the attribute) and fires the same
+as an empty opts list. A nested attribute or a computed value in the tuple's
+opts position is opaque to a static check and is left alone rather than
+guessed at.
+
+This check targets the `@adapter` attribute itself and never a
+`SharedUtils.HTTP.get/post/delete/patch/request` call site. An earlier
+version of this spec proposed flagging those calls directly for a missing
+`name:` opt; that direction was dropped because `SharedUtils.HTTP`'s verb
+functions `defdelegate ..., to: Tesla`, and Tesla builds the request `Env`
+via `struct(Env, options ++ [...])` — `struct/2` silently drops any key it
+does not already define, so a bare `name:` at the top level of a call's
+opts list would be discarded rather than doing anything. The adapter tuple
+(or a per-request `opts: [adapter: [...]]`, see Limitations) is where a
+pool name actually has to live, which is why this check inspects `@adapter`
+instead. Call sites that route through `SharedUtils.HTTP` outside an
+API-wrapper app are covered by the sibling `NoSharedUtilsHTTPOutsideApiApps`
+check.
+
+**Limitations:** only a literal keyword list in the attribute's opts
+position is inspected — anything else there is silently skipped rather than
+guessed at, an accepted false negative even when it genuinely carries
+`name:` at runtime. This covers a nested attribute reference
+(`@adapter {Tesla.Adapter.Finch, @default_adapter_opts}`), a call result,
+and a literal list whose entries are not `key: value` pairs
+(`@adapter {Tesla.Adapter.Finch, ["name"]}`, or a string-keyed
+`[{"name", __MODULE__}]`) — even though the latter provably can never carry
+`name:` at all. Only a directly-authored `@attribute value` form is
+recognised — an attribute set through `Module.put_attribute/3` or injected
+by a macro is invisible to Credo. An adapter tuple passed inline to
+`SharedUtils.HTTP.client/3` without ever being stored on the configured
+attribute is not checked — this package's house idiom always names the
+adapter tuple on an attribute first, and this check follows that idiom. A
+bare-module attribute (`@adapter Tesla.Adapter.Finch`) always fires, even
+when a call site diverges from that idiom and splices `name:` around the
+attribute itself (`{@adapter, name: __MODULE__}`), or when the pool name
+instead arrives per request via `opts: [adapter: [name: MyFinch]]` (Tesla
+merges `env.opts[:adapter]` over the adapter tuple's own opts at the
+highest precedence, and `SharedUtils.HTTP.client/3` forwards `opts[:adapter]`
+the same way) — call sites are never inspected, only the attribute's own
+AST shape, so both are indistinguishable from a call site that supplies no
+name at all. An accepted false positive.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `attribute` | `:adapter` | The module attribute name that holds the Tesla adapter tuple. |
+| `adapter_modules` | `[Tesla.Adapter.Finch]` | Adapter modules whose opts are checked for a dedicated pool `name:`, alias-aware. |
+| `excluded_paths` | `["_test.exs", "test/"]` | Path fragments naming files this check skips (matched on segment boundaries). |
+
+### `ImportComponentsNotAlias`
+
+`<.func>` component call syntax needs the component module `import`ed, not
+aliased. `alias MyAppWeb.CourseShowComponents` only shortens the qualified
+name to `CourseShowComponents.card(assigns)` — Elixir never treats an
+aliased module as imported, so an unqualified `<.card>` cannot resolve and
+every call site needs the module qualifier instead, breaking the idiom the
+`<.func>` syntax exists for.
+
+```elixir
+# BAD — alias leaves calls qualified, <.card> cannot resolve
+defmodule MyAppWeb.CourseShowLive do
+  alias MyAppWeb.CourseShowComponents
+
+  def card_slot(assigns), do: CourseShowComponents.card(assigns)
+end
+
+# GOOD — import keeps card/1 (and <.card>) callable unqualified
+defmodule MyAppWeb.CourseShowLive do
+  import MyAppWeb.CourseShowComponents
+
+  def card_slot(assigns), do: card(assigns)
+end
+```
+
+A components module is identified by its own last alias segment, however
+deeply nested — `MyAppWeb.Admin.CourseShowComponents` still ends in
+`"Components"`. A name that merely contains the suffix without ending in it
+(`MyApp.ComponentsRegistry`), whose *last* segment does not match
+(`MyAppWeb.Components.Card`, last segment `Card`), or whose last segment *is*
+the suffix with nothing before it (`MyAppWeb.Components`, a pure namespace
+with no functions of its own to import), is left alone. An `as:` rename is
+followed, not defeated — `alias MyAppWeb.CourseShowComponents, as: CSC`
+still fires. A multi-alias group —
+`alias MyAppWeb.{CourseShowComponents, Layouts}` — reports only the segment
+that matches, not the whole statement. The
+`:"Elixir.MyAppWeb.CourseShowComponents"` atom spelling of a target is
+recognized the same as the dotted form. Test files are exempt by default.
+
+**Limitations:** this is a naming heuristic on the alias statement itself,
+not usage analysis — an alias that is never actually called still fires, and
+a components module re-exported under an unrelated name is invisible. The
+alias may also be needed as a bare module value rather than for qualified
+calls (`module={CardComponents}`, `apply(CardComponents, ...)`) — there,
+`import` is additive, not a replacement, and following the advice literally
+(removing the alias) breaks the reference. A last segment that exactly equals a suffix
+(`alias MyAppWeb.Components`) is treated as a namespace and never flagged,
+even when it holds real
+`*Components` submodules — a namespace segment like this is usually not a
+defined module at all, so `import`ing it is a `CompileError` (`module
+MyAppWeb.Components is not loaded and could not be found`); on the rare
+occasion it is defined, it exports nothing of its own, so the import is just
+a silent no-op either way. Relative or macro-built alias targets
+(`alias __MODULE__.CardComponents`, `alias __MODULE__.{A, B}`,
+`alias unquote(mod).CardComponents`) are not resolved and are never
+flagged.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `suffixes` | `["Components"]` | Suffixes identifying a components module by its own last alias segment. |
+| `excluded_paths` | `["_test.exs", "test/"]` | Path fragments naming files this check skips. |
 
 ### `InUmbrellaDepsNoVersion`
 
@@ -688,6 +1184,73 @@ Qualified spellings of allowed functions match on the function name, so
 | `logger_functions` | `[:debug, :info, :warning, :warn, :error, :critical]` | Logger functions whose messages are checked |
 | `enforce_prefix` | `true` | Require the `__MODULE__` interpolation as the very first segment |
 | `allowed_interpolations` | `[:__MODULE__, :inspect]` | What may appear inside an interpolation — add your own formatting helpers |
+
+### `LowercaseErrorMessages`
+
+`ErrorMessage` constructor calls and `raise/2` message strings must not carry
+a trailing `.` or `!` — the caller composes them into larger sentences and
+log lines, where a stray terminator reads oddly. Only the first argument of a
+constructor call is inspected, and the trailing-punctuation half of the rule
+skips any string whose LAST segment is interpolation (`"missing: #{id}"`),
+since the runtime value of the trailing character is unknowable statically —
+the lowercase-first half still inspects such a string's FIRST segment, which
+is always known statically.
+
+```elixir
+# BAD — trailing period
+ErrorMessage.not_found("User not found.")
+
+# GOOD — no trailing punctuation
+ErrorMessage.not_found("user not found")
+
+# BAD — trailing bang, positional
+raise ArgumentError, "Bad input!"
+
+# BAD — trailing bang, via a message: keyword
+raise ArgumentError, message: "Bad input!"
+
+# GOOD — no trailing punctuation
+raise ArgumentError, "bad input"
+```
+
+The same rule applies to a piped `raise` (`Mod |> raise("...")` or
+`Mod |> raise(message: "...")`) — piping folds `Mod` into `raise/1`'s first
+argument, giving the same two-arg shape as `raise Mod, ...`.
+
+A trailing `?` is left alone. By default only trailing punctuation is
+enforced; `enforce_lowercase_first: true` additionally requires the first
+letter to be lowercase, off by default because a proper noun as the first
+word ("GitHub is unreachable") would otherwise be a false positive.
+
+Every issue is reported at the call itself — the constructor's module
+reference, or `raise`'s own keyword — never at the message literal, which
+carries no source position of its own. A multi-line constructor call's
+message can sit on a later line than the call; a piped call's message (its
+LHS) can sit on an earlier one. Either way, the reported line and column are
+the CALL's, not the message's.
+
+**Limitations:** only the first argument of a constructor call is inspected —
+a bad trailing character inside a `details` argument is invisible. `raise/2`'s
+exception module identity is never checked; any two-arg `raise` is in scope —
+but only the bare `raise` spelling, not the fully qualified `Kernel.raise(...)`.
+A bare `raise "message"` (arity 1, no exception module, not piped) and an
+unqualified, `import`ed constructor call are not recognised — module identity
+is resolved only for the qualified `ErrorMessage.<fun>` spelling. A message
+built with a sigil (`~s(...)`) is not recognised — only a plain string literal
+or a `"...#{...}"` interpolation is inspected. A non-interpolated heredoc
+lowers to a plain string literal, so it IS inspected — but its trailing
+newline normally defeats the trailing-punctuation half of the rule; only a
+heredoc using a line-continuation `\` on its last content line (dropping that
+newline) can fire that half. An interpolated heredoc lowers to the same AST
+shape as any other interpolated string and is inspected the same way. The
+lowercase-first half only inspects the first character, so it is unaffected
+by the trailing newline and can fire on any heredoc, interpolated or not.
+`enforce_lowercase_first` matches ASCII `[A-Z]` only.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `enforce_lowercase_first` | `false` | Also requires a lowercase first letter. |
+| `functions` | the 14 most common `ErrorMessage` HTTP-status constructors (`ErrorMessage` ships 49) | Constructor names whose first argument is checked. |
 
 ### `MigrationExecuteInChange`
 
@@ -937,6 +1500,82 @@ either order. `Map.get/2`, `Map.get/3` and bracket access all count, in any
 combination, including adjacent reads inside a chained fallback. Different key
 names, same-type keys, different subjects and plain lookup-or-default
 (`params["id"] || %{}`) are never flagged.
+
+### `NoBannedModules`
+
+Generic, param-driven module ban — the reusable shape behind `NoMockingLibraries`.
+Some libraries must never appear in a codebase, however they're referenced —
+`use`, `alias`, a remote call, or a bare mention in an attribute all count. The
+default list bans `Guardian` and `Joken`: this project authenticates with
+Redis-backed session tokens (see `elixir-auth-sessions`), not JWTs, so either
+library issuing or signing a session token is itself the bug. Code that
+instead VERIFIES a third-party issuer's JWTs (an Auth0/JWKS integration, for
+example) is a legitimate, deliberate exception to the default — opt those
+files out with `excluded_paths` rather than disabling the check outright.
+
+```elixir
+# BAD — a JWT library wired up directly
+use Guardian, otp_app: :my_app
+
+# GOOD — Redis-backed session tokens
+MyApp.Sessions.create(user)
+```
+
+An explicit alias still resolves back to the banned module — `alias Guardian`
+followed by a bare `Guardian.encode_and_sign(user)` fires twice, once for the
+alias itself and once for the call. A banned module's submodules count too —
+`use Joken.Config` is Joken's own canonical entry point, so it still bans on
+the `Joken` entry, the same as `Guardian.Plug.Pipeline` bans on `Guardian`.
+Banned modules are matched by segment prefix, so `MyApp.Guardian` is a
+different, unrelated module (the banned name is a LATER segment, not the
+first) and is never flagged. Alias resolution is aware of an alias of the
+banned module ITSELF (`alias Guardian` then a bare `Guardian`), but not of an
+alias of one of its submodules — see Limitations. A locally defined module
+shadows a banned bare name the same way a project `alias` does — a nested
+`defmodule Guardian do ... end` deregisters the bare name, and every
+submodule beneath it, for the rest of that file, so a stub or fake by that
+name is never mistaken for the real library. The fully-qualified
+`Elixir.Guardian` spelling, written as a dotted alias, always still fires,
+shadowed or not; the `:"Elixir.Guardian"` atom spelling fires too, but only
+as a dot-call's module receiver or a bare attribute value (`@behaviour
+:"Elixir.Guardian"`), not in every AST position.
+
+**Limitations:** module identity is a naming heuristic, the same as
+`NoMockingLibraries` and `NoBangMailerDeliver` — it matches AST module
+references, not what a library actually does. A string or atom that merely
+mentions a banned name (`"Guardian token expired"`, `:guardian_error`) is never
+flagged, and `mix.exs` dependency declarations (`{:guardian, "~> 2.0"}`) are
+ordinary lowercase Hex-package atoms, not module references, so they never
+match either. Aliases are resolved from a flat, file-level table rather than a
+lexical scope stack, and an alias injected by a macro (via `__using__`) is
+invisible to Credo and cannot be resolved. Alias resolution only registers an
+alias whose target EXACTLY matches a banned entry — `alias Guardian.Plug`
+does not register the local name `Plug` as a `Guardian` reference (only
+`Guardian` itself is a banned entry, not `Guardian.Plug`), so a later bare
+`Plug.sign_in(...)` is silent; writing `Guardian.Plug.sign_in` out in full
+still matches, since that needs no alias resolution at all. A project `alias`
+naming the banned module itself is a second shadowing source, alongside
+`defmodule`: `alias MyApp.Guardian` deregisters the bare `Guardian` name
+file-wide, so a later bare `Guardian.encode_and_sign(user)` is silent — but
+the `Elixir.Guardian` and `:"Elixir.Guardian"` spellings still fire
+regardless, since those are matched against the module's unaliased identity,
+never the shadowed one. `defmodule` shadowing is file-level the same way: a
+nested stub defined inside one top-level module deregisters the bare name for
+every other top-level module
+in that file too, not only its own — and a top-level, single-segment
+`defmodule Guardian do ... end` shadows the bare name file-wide the same as a
+nested one would. A banned module held in a variable or module attribute
+value, reached via `apply/3`, or referenced by a dynamically built alias is
+not recognised — only a literal AST reference to the module's name is. The
+`modules` param expects `{module, reason}` tuples of genuine Elixir modules —
+an erlang-style atom (`:meck`) or a bare module with no `reason` tuple raises
+when the check reads its params, rather than being silently ignored; this
+check offers no `erlang_modules` param the way `NoMockingLibraries` does.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `modules` | `[{Guardian, "no JWT here — sessions are Redis tokens (elixir-auth-sessions)"}, {Joken, "no JWT here — sessions are Redis tokens (elixir-auth-sessions)"}]` | `{module, reason}` tuples to ban (and every submodule beneath each `module`); `reason` is appended to the issue message. `module` must be a genuine Elixir module — an erlang-style atom or a bare module with no tuple raises. |
+| `excluded_paths` | `[]` | Path fragments naming files this check skips (segment-boundary matched). Empty by default — a banned module is banned everywhere, tests included. |
 
 ### `NoBarePatternMatchOnFallible`
 
@@ -1249,6 +1888,78 @@ opposite callback, opposite advice.
 |---|---|---|
 | `excluded_paths` | `[]` | Path fragments naming files this check skips |
 
+### `NoDataMigrationInSchemaMigration`
+
+A migration must not mix DDL with data DML in the same `change`/`up` body. A migration
+that both alters the schema and rewrites data holds the DDL's lock across the data
+rewrite — every row the `UPDATE`/`INSERT`/`DELETE`/`MERGE` touches sits behind the same
+transaction as the `create`/`alter`/`drop` — and it can't be safely retried, since
+re-running a partially-applied migration re-runs the DDL too. Split the data step into
+its own migration, an Oban job, or a `mix run` task.
+
+```elixir
+# BAD — the UPDATE shares a transaction with the alter's lock
+def change do
+  alter table(:users) do
+    add :status, :string
+  end
+
+  execute "UPDATE users SET status = 'active' WHERE status IS NULL"
+end
+
+# GOOD — the data rewrite moves to its own migration
+def change do
+  alter table(:users) do
+    add :status, :string
+  end
+end
+
+# BAD — repo().update_all is the same shape as an execute() UPDATE
+def up do
+  create index(:users, [:status])
+  repo().update_all(MyApp.User, set: [status: "active"])
+end
+
+# GOOD — a pure data migration, on its own, is legitimate
+def change do
+  execute "UPDATE users SET status = 'active' WHERE status IS NULL"
+end
+```
+
+Both `execute/1,2` string literals (matched case-insensitively against
+`UPDATE`/`INSERT`/`DELETE`/`MERGE` at the start of the SQL, including the leading literal
+segment of a heredoc that goes on to interpolate) and
+`repo().update_all/insert_all/delete_all` count as the data-DML half. For the `repo()`
+spellings, piped into (`from(...) |> repo().update_all(...)`) or called directly makes no
+difference; `execute/1,2` is only recognised called directly (see Limitations). The DDL
+half is `create`, `create_if_not_exists`, `alter`, `drop`, `drop_if_exists`, or `rename`
+on a `table(...)`/`index(...)`/`unique_index(...)` target. Only `def change` and `def up`
+are scanned — `def down` is exempt, since it only ever reverses what `up` already
+committed. A `rescue`/`after`/`else`/`catch` clause on `def change`/`def up` does not
+shrink what's scanned — the `do` body is still scanned the same as without one.
+
+**Limitations:** `execute/1,2`'s SQL must be a plain double-quoted string, a heredoc, or
+a heredoc/string whose leading literal segment (before its first `#{...}`) contains the
+DML keyword; a sigil literal (`~s(...)`), a variable, or a DML keyword that only appears
+inside or after an interpolation is invisible to this check. `execute/1,2` piped into
+(`sql |> execute()`) is invisible to this check — unlike the `repo()` spellings, only the
+directly-called form is recognised. Only the bare, unqualified `execute(...)` and
+`repo().update_all/insert_all/delete_all` spellings are recognised — a qualified
+`Ecto.Migration.execute(...)` call is not. The DDL half only recognises a
+`table(...)`/`index(...)`/`unique_index(...)` target — `create constraint(...)` does not
+count as DDL for this check. Both halves must live directly in the scanned `change`/`up`
+body — moving the DML into a helper `defp` called from `change`/`up` (an ordinary
+refactor) hides it from this check. The DDL half must be a
+`table(...)`/`index(...)`/`unique_index(...)` call target — a DDL statement written as
+raw SQL (`execute "CREATE TABLE ..."`) is not recognised as the DDL half. The DML regex
+anchors at the very start of the SQL string with no multiline flag — a leading SQL
+comment line (e.g. in a heredoc) before the `UPDATE`/`INSERT`/`DELETE`/`MERGE` keyword
+hides the match.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `included_paths` | `["migrations/"]` | Path fragments (segment-boundary match) treated as migration directories |
+
 ### `NoDirectErlangRpc`
 
 Remote nodes must be called through the app's RPC wrapper, never directly.
@@ -1289,6 +2000,57 @@ directly is exactly the case this rule exists to catch.
 are both undetected — only a literal `module.function(...)` dot-call is
 matched. A locally nested `defmodule Node do ... end` is not treated as
 shadowing — `Node.spawn(node, fun)` still fires inside such a module.
+
+### `NoDirectFunWithFlags`
+
+`FunWithFlags` must be read through the app's own feature-flag wrapper
+module, never directly from application code. `FunWithFlags` matches a flag
+by atom identity — a typo'd flag name scattered across call sites silently
+returns `false` at every one of them, instead of being caught in the one
+place a wrapper module would centralize the name.
+
+```elixir
+# BAD — reads FunWithFlags directly from a context
+FunWithFlags.enabled?(:new_checkout, for: user)
+
+# GOOD — routed through the app's own feature-flag wrapper module
+MyApp.FeatureFlags.new_checkout_visible?(user)
+```
+
+An explicit `alias FunWithFlags` still fires, since the alias resolves the
+bare name right back to the library it names. `FunWithFlags` is a
+single-segment name, so unlike a namespaced module it can be shadowed by a
+module locally defined in the same file — a nested `defmodule FunWithFlags do
+... end` deregisters the bare name for the rest of that file, and every later
+bare `FunWithFlags.enabled?(...)` then resolves to the local module instead.
+Files under `:allowed_paths` (default `["feature_flags", "feature_flag"]`)
+are exempt — that is where the wrapper module itself is expected to live,
+whether as a single file (`lib/my_app/feature_flags.ex`), a directory
+(`lib/my_app/feature_flags/manager.ex`), or any path segment merely ending
+in one of the entries (`lib/my_app_feature_flag/manager.ex`,
+`lib/my_app/legacy_feature_flags.ex`). Test files (`:excluded_paths`,
+default `["_test.exs", "test/"]`) are exempt too.
+
+**Limitations:** only a literal `FunWithFlags.function(...)` call,
+alias-aware, is recognised. A `FunWithFlags` value held in a variable or
+module attribute (`flags = FunWithFlags; flags.enabled?(:x)`),
+`apply(FunWithFlags, :enabled?, [:x])`, and a bare call reached via `import
+FunWithFlags` are all undetected. A project module is exempted purely by
+module identity, never by name resemblance — `MyApp.FeatureFlags.enabled?(:x)`
+stays silent regardless of what its own name contains. Aliases are resolved
+from a flat, file-level table rather than a lexical scope stack, and an alias
+injected by a macro (via `__using__`) is invisible to Credo. The default
+`:functions` list covers only the read API — `enable/1,2`, `disable/1,2`, and
+`clear/1,2` are not banned by default; add them via `:functions` if your app
+wants writes routed through the wrapper too. Only the bare `FunWithFlags`
+spelling can be shadowed by a local `defmodule` — the fully-qualified
+`Elixir.FunWithFlags` spelling always still fires.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `functions` | `[:enabled?, :get_flag, :all_flags, :all_flag_names]` | `FunWithFlags` read functions to flag. |
+| `allowed_paths` | `["feature_flags", "feature_flag"]` | Paths where the app's own feature-flag wrapper module may call `FunWithFlags` directly. |
+| `excluded_paths` | `["_test.exs", "test/"]` | Path fragments naming files this check skips. |
 
 ### `NoDirectHttpClient`
 
@@ -1349,6 +2111,179 @@ single-segment entries for `Finch` itself, never for a two-segment submodule
 spelling. Same gap for `alias HTTPoison.Base`. A locally nested
 `defmodule Req do ... end` is not treated as shadowing, so `Req.get(url)`
 inside such a module can still fire.
+
+### `NoDirectPhoenixPubSub`
+
+`Phoenix.PubSub` must be called through the app's own topic/wrapper module,
+never directly from application code. A wrapper module centralizes topic
+naming and payload shape, so every subscriber can rely on a consistent
+message format instead of each call site inventing its own topic string.
+
+```elixir
+# BAD — calls Phoenix.PubSub directly from a LiveView
+Phoenix.PubSub.subscribe(MyApp.PubSub, "courses:#{course_id}")
+
+# GOOD — routed through the app's own topic/wrapper module
+MyApp.PubSub.Courses.subscribe_course(course_id)
+```
+
+An aliased call resolves the same way — `alias Phoenix.PubSub` then a bare
+`PubSub.broadcast(...)` still fires, since the alias makes the bare name mean
+`Phoenix.PubSub` for the rest of the file. A project alias that shadows the
+bare name wins instead: once `alias MyApp.PubSub` is in force, the
+same-looking `PubSub.broadcast(...)` calls the app's own module, not
+Phoenix's, and stays silent. Files under `:allowed_paths` (default
+`["pubsub", "pub_sub", "topics"]`) are exempt — that is where the wrapper
+module itself is expected to live, e.g. `lib/my_app/pubsub/courses.ex`,
+`lib/my_app_pub_sub/courses.ex`, or `lib/my_app_web/topics/subscription_events.ex`.
+Each entry is trimmed of any leading or trailing `/` before matching, so
+`"pubsub"`, `"pubsub/"`, `"/pubsub"`, and `"/pubsub/"` all behave identically.
+An entry with no remaining internal `/` matches both a whole path segment
+named that AND a segment merely ending in it (`"pubsub"` also matches
+`legacy_pubsub/`); an entry with an internal `/` matches only as a literal,
+consecutive run of whole segments. Matching is against directory segments
+only — a single-file wrapper (`lib/my_app/pub_sub.ex`) must be listed in
+`:excluded_paths` instead. Test files (`:excluded_paths`, default
+`["_test.exs", "test/"]`) are exempt too.
+
+**Limitations:** only a literal `Phoenix.PubSub.function(...)` call,
+alias-aware, is recognised. A `Phoenix.PubSub` value held in a variable or
+module attribute (`pubsub = Phoenix.PubSub; pubsub.broadcast(...)`),
+`apply(Phoenix.PubSub, :broadcast, [...])`, and a bare call reached via
+`import Phoenix.PubSub` are all undetected. A project module is exempted
+purely by module identity, never by name resemblance —
+`MyApp.PubSub.Courses.subscribe_course(id)` stays silent because its module
+segments are not `Phoenix.PubSub`, regardless of what its own name contains.
+The default `:functions` list does not include `direct_broadcast/5`,
+`direct_broadcast!/5`, or `local_broadcast_from/5` — add them if your app
+uses them. A nested `defmodule PubSub do ... end` is not treated as a
+shadowing source the way a file-level `alias` is, so a call resolved through
+an earlier `alias Phoenix.PubSub` still fires even inside a file that later
+defines its own nested `PubSub` module.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `functions` | `[:subscribe, :unsubscribe, :broadcast, :broadcast!, :local_broadcast, :broadcast_from, :broadcast_from!]` | `Phoenix.PubSub` functions to flag. |
+| `allowed_paths` | `["pubsub", "pub_sub", "topics"]` | Paths where the app's own PubSub wrapper module may call `Phoenix.PubSub` directly. |
+| `excluded_paths` | `["_test.exs", "test/"]` | Path fragments naming files this check skips. |
+
+### `NoDirectRepoCall`
+
+Contexts must call `EctoShorts.Actions`, never `Repo` directly — the house rule
+with the longest incident history. A raw `Repo.insert/1` scattered across
+contexts duplicates the changeset pipeline, error mapping, and filtering that
+`EctoShorts.Actions` already centralizes.
+
+```elixir
+# BAD — context calls Repo directly
+%User{} |> User.changeset(attrs) |> MyApp.Repo.insert()
+
+# GOOD — context calls EctoShorts.Actions
+EctoShorts.Actions.create(User, attrs)
+```
+
+A repo module is identified by its last alias segment *as written at the call
+site* — `MyApp.Repo.insert(changeset)` and, under `alias MyApp.Repo`,
+`Repo.insert(changeset)` are both caught, piped or not, as is a
+differently-named repo such as `Schemas.JobsRepo.delete_all(query)`.
+`Repo.transaction/1` and `Repo.transact/2` are exempt by default (see
+`:allowed_functions`), as are `Repo.query/2`, `Repo.query!/2`,
+`Repo.checkout/2`, `Repo.disconnect_all/2`, `Repo.config/0`,
+`Repo.start_link/1`, `Repo.stop/1`, and `Repo.load/2` — raw SQL and pool
+management with no `EctoShorts.Actions` call to redirect to. This is a fixed
+allowlist of those specific functions, not a rule that exempts every
+function with no Actions equivalent (see Limitations). A module that itself
+defines a repo (`use Ecto.Repo`) is exempt entirely, including every call
+inside it. Tests, seeds, and migrations are out of scope by default (see
+`:excluded_paths`).
+
+| Param | Default | Meaning |
+|---|---|---|
+| `repo_suffixes` | `["Repo"]` | Suffixes identifying a repo module by its last alias segment |
+| `allowed_functions` | `[:transaction, :transact, :query, :query!, :checkout, :disconnect_all, :config, :start_link, :stop, :load]` | Repo functions that may be called directly |
+| `excluded_paths` | `["_test.exs", "test/", "priv/repo/", "migrations/"]` | Path fragments exempt from the check (segment-boundary matched) |
+
+**Limitations:** module identity is a naming heuristic, not alias resolution,
+the same as `NoBangMailerDeliver` — `alias MyApp.Reporting, as: Repo` would
+flag an unrelated module's calls, and renaming a real repo alias away from the
+`Repo` suffix (`alias MyApp.Repo, as: DB`) makes it invisible. The heuristic
+runs in both directions on the suffix itself: any module merely ending in
+`Repo` is caught, Ecto or not (`GitHub.Repo.fetch(name)`), while a repo built
+on a house wrapper instead of a literal `use Ecto.Repo` (`use MyApp.RepoBase,
+...`) is not recognised as a repo-defining module and stays in scope. Only a
+literal `Module.function(...)` call at the call site is recognised — no
+import-based `Repo` idiom exists in this house style, so an unqualified call
+is never flagged; an injected repo (`@repo.insert!()`, `repo().insert()`) or
+`apply(Repo, :insert, [x])` is also undetected, as is
+`defdelegate insert(cs), to: MyApp.Repo` and a call through a non-literal
+alias segment (`__MODULE__.Repo.insert(...)`,
+`unquote(schema).Repo.insert(...)` inside a macro). `:allowed_functions`
+deliberately omits `Repo.aggregate/3` — it sits closer to the CRUD surface
+`EctoShorts.Actions` covers, so it still fires with the Actions message by
+default. `:allowed_functions` is a fixed list, not "every function with no
+Actions equivalent" — bulk DML (`Repo.insert_all/3`, `Repo.update_all/2`,
+`Repo.delete_all/2`), `Repo.preload/2`, `Repo.exists?/2`, and a house repo
+wrapper function such as `Repo.insert_or_upsert_many/3` also have none, yet
+still fire by default; add whichever ones a given context has no better
+option for.
+
+### `NoDoPrefixedHelper`
+
+A public/private pair split only by a `do_` prefix — `def process/1` calling
+`defp do_process/1` — hides what the private half actually does behind a
+name that just repeats the public one. Find a descriptive name instead.
+
+```elixir
+# BAD — the prefix says nothing the caller couldn't already guess
+defmodule MyApp.Importer do
+  def process(row) do
+    do_process(row, [])
+  end
+
+  defp do_process(row, acc) do
+    [row | acc]
+  end
+end
+
+# GOOD — the name describes the work
+defmodule MyApp.Importer do
+  def process(row) do
+    normalize_row(row, [])
+  end
+
+  defp normalize_row(row, acc) do
+    [row | acc]
+  end
+end
+```
+
+Both `def name` + `defp do_name` and `defp name` + `defp do_name` pairs are
+flagged, at the `defp do_name` head. A `defp do_name` with no sibling `name`
+definition anywhere in the module is left alone — a recursion accumulator
+with no public twin is legitimate. Definitions are collected per module in a
+first pass, then compared, so the pair is found regardless of definition
+order. A multi-clause `defp do_name` is flagged once, at its earliest
+clause — not once per clause. Scoping is per module: a pair split across an
+outer module and a nested one, or across two sibling modules in one file, is
+not flagged. A `defimpl`, `defprotocol`, or `quote` block is likewise its
+own scope, independent of the module it is written inside — a `def`
+injected by a `__using__` macro's `quote` block pairs only with a `do_name`
+also injected by that same `quote` block, never with an unrelated `do_name`
+living in the module the `quote` happens to be written inside.
+
+**Limitations:** matching is by name only, not arity — `def process/1` pairs
+with `defp do_process/3` just as readily as `defp do_process/1`. Only `def`
+and `defp` are considered; `defmacro`/`defmacrop` and `defdelegate` are
+never collected, even though `defdelegate name(x), to: Other` does define
+`name/1`. A `def do_name` head is never flagged directly, even when a
+sibling `name` exists — a public function's name is part of its API, not a
+naming choice this check can veto. A metaprogrammed head
+(`def unquote(name)(args)`) has no static name and is invisible to this
+check.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `excluded_paths` | `[]` | Path fragments naming files this check skips. |
 
 ### `NoEctoSchemaInWebApp`
 
@@ -1436,6 +2371,73 @@ for those.
 **Limitations.** A `for` inside a `quote do ... end` body is flagged even
 though it is macro-generated AST, not a runtime comprehension.
 
+### `NoFunWithFlagsMutationInTests`
+
+`FunWithFlags.enable/disable/clear` mutate GLOBAL flag state — never call them
+directly in a test. `FunWithFlags` persists flags in a store shared by the
+whole test run (often Redis- or Ecto-backed), not per-process, so a test that
+flips a flag leaks that change into whatever else runs concurrently and
+poisons any other `async: true` test that happens to check the same flag.
+
+```elixir
+# BAD — leaks into every other async test
+defmodule MyApp.BannerTest do
+  test "shows the beta banner" do
+    FunWithFlags.enable(:beta_banner)
+    assert MyApp.Banner.visible?()
+  end
+end
+
+# GOOD — the code under test takes the flag as an argument
+defmodule MyApp.BannerTest do
+  test "shows the beta banner" do
+    assert MyApp.Banner.visible?(beta_banner: true)
+  end
+end
+```
+
+A project's own flag facade (`MyApp.FeatureFlags.enable/1`, say) mutates the
+same underlying store and is caught too, via the `:wrapper_suffixes` param —
+a module is a wrapper when the last segment named at the call site ends with
+one of those suffixes, aliased or fully qualified. Only test files are in
+scope, identified via `:included_paths` — unlike the checks scoped by
+`excluded_paths`, and in line with the `test_files` scoping of the other
+test-only checks, since a `FunWithFlags` mutation in `lib/` code (an admin
+action, a migration task) is the library doing its job, not a violation.
+
+A suite that installs its own per-process flag sandbox — a mock adapter
+keyed on the test's `self()`, the pattern a flag facade's own test suite
+typically uses to test its own `enable/1`/`disable/1`/`clear/1` wrappers —
+never reaches the shared store this check exists to protect. Add that file,
+or its directory, to `:excluded_paths` to silence it there.
+
+**Limitations:** A suite that installs its own per-process flag sandbox (a
+mock adapter keyed on `self()`) is a known false positive — the mutation is
+process-local, so it never poisons another async test, and "inject the flag
+value into the code under test instead" does not apply when the flag store
+itself is the code under test. This is the shape of a flag facade's own
+test suite, testing its own `enable/1`/`disable/1`/`clear/1` wrappers. Add
+the file, or its directory, to `:excluded_paths`, or use `#
+credo:disable-for-this-file MikaCredoRules.NoFunWithFlagsMutationInTests`
+inline. `apply(FunWithFlags, :enable, [:foo])` is invisible — this check
+only matches the `Module.function(args)` call shape, not dynamic dispatch.
+Module identity is a naming heuristic on the last segment written at the
+call site, not full alias resolution — a wrapper injected as a dependency
+(`@flags.enable(:foo)`) or renamed via `as:` to drop its suffix is
+invisible, and an unrelated local module that happens to share a wrapper
+suffix would be a false positive. A call rooted in `__MODULE__` or
+`unquote/1` (e.g. `__MODULE__.FeatureFlags.enable(:x)`, or
+`unquote(mod).FeatureFlags.enable(:x)` inside a `quote` block) is invisible,
+as is the Elixir-prefixed atom spelling
+(`:"Elixir.FunWithFlags".enable(:foo)`).
+
+| Param | Default | Meaning |
+|---|---|---|
+| `functions` | `[:enable, :disable, :clear]` | Mutating `FunWithFlags` functions to flag. |
+| `included_paths` | `["_test.exs", "test/"]` | Path fragments identifying test files. The check runs ONLY on a match. |
+| `wrapper_suffixes` | `["FeatureFlags"]` | Suffixes identifying a project's own flag facade by its last call-site segment, in addition to `FunWithFlags` itself. |
+| `excluded_paths` | `[]` | Path fragments naming test files to skip even though they match `included_paths` — the escape hatch for a suite that installs its own per-process flag sandbox. |
+
 ### `NoHeexSigilInHologramModule`
 
 A Hologram module must not use `~H` (HEEx) sigils or `use Phoenix.LiveView`/
@@ -1516,6 +2518,51 @@ of the source are ever visible to a check.
 | `patterns` | Stripe, AWS, Slack, GitHub, PEM, Bearer shapes (see source) | A list of `{label, regex}` pairs, matched anywhere in the literal. Replaces the default when supplied. |
 | `excluded_paths` | `[]` | Path fragments naming files this check skips. Nothing is exempted by default — but `config/*.exs` is only scanned if Credo's own `files.included` reaches it; most `.credo.exs` files (including this package's own) scope it to `["lib/", "test/", "mix.exs"]`, so add `"config/"` there to cover it. |
 
+### `NoIOANSIRawEscapes`
+
+Terminal color must go through `IO.ANSI.format/2`, never a raw escape
+literal or a live `IO.ANSI` call interpolated straight into a string. A raw
+`\e[Nm` byte sequence always prints, even when `IO.ANSI.format/2` would have
+been called with `emit` false for a non-tty, and it means nothing to a
+reader without decoding the byte. Interpolating `IO.ANSI.green()` directly
+into a string bypasses `format/2` the same way, just spelled with a
+function call instead of a literal byte.
+
+```elixir
+# BAD — a raw escape sequence hardcodes the terminal control bytes
+def banner, do: "\e[32mDeploy succeeded\e[0m"
+
+# BAD — a live IO.ANSI call interpolated straight into the string
+def banner(text), do: "#{IO.ANSI.green()}#{text}"
+
+# GOOD — build ansidata and let IO.ANSI.format/2 emit the codes
+def banner(text), do: IO.ANSI.format([:green, text], true)
+```
+
+Only a string literal containing the actual ESC control byte (`0x1B`)
+immediately followed by `[` is flagged — a doc string spelling out the
+escape as literal text (`"\\e["`, a backslash then `e`) is a different
+binary and is left alone. A 0-arity, dot-qualified `IO.ANSI.<fun>()` call is
+flagged only when it is the interpolated expression itself — through any
+alias of `IO.ANSI`, including an `as:` rename — the same call built into an
+iolist by hand (`[IO.ANSI.green(), text]`) never goes through string
+interpolation and is left alone.
+
+**Limitations:** a concatenated or dynamically built escape sequence
+(`<<0x1B>> <> "[32m"`, or an ANSI code held in a variable before being
+interpolated) is invisible — static analysis only sees the literal source
+text. Only a 0-arity, dot-qualified `IO.ANSI.<fun>()` call interpolated
+directly is caught; a multi-arity call interpolated the same way
+(`"#{IO.ANSI.color(1, 2, 3)}"`), or an unqualified call reached through
+`import IO.ANSI`, is not. A charlist escape (`~c"\e[32mok"`) is invisible —
+only a string literal is scanned. A `~s`/`~S` sigil escape (`~s"\e[32mok"`)
+is invisible too — a sigil holds its raw, undecoded source text in the AST,
+so the ESC byte is never present for the check to see.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `excluded_paths` | `[]` | Path fragments naming files this check skips. |
+
 ### `NoIdentityRewrap`
 
 A `case` whose every clause returns its pattern unchanged is a no-op re-wrap —
@@ -1568,6 +2615,64 @@ regardless; this check just can't see through it.
 |---|---|---|
 | `migration_paths` | `["migrations/"]` | Path fragments (segment-boundary match) treated as migration directories |
 | `also_flag_interpolation` | `true` | Also flag string interpolation of a module alias, not just `inspect/1` |
+
+### `NoIntermediateSingleUseVariable`
+
+A variable bound once and used exactly once, immediately after, adds a name
+with no payoff — inline the right-hand side into the statement that consumes
+it.
+
+```elixir
+# BAD — `provider` is bound once and used once, immediately after
+def config_provider(opts) do
+  provider = Keyword.get(opts, :provider, :ses)
+  case provider do
+    :ses -> MyApp.Mailer.SES
+    :smtp -> MyApp.Mailer.SMTP
+  end
+end
+
+# GOOD — the call moves into the `case` subject
+def config_provider(opts) do
+  case Keyword.get(opts, :provider, :ses) do
+    :ses -> MyApp.Mailer.SES
+    :smtp -> MyApp.Mailer.SMTP
+  end
+end
+```
+
+This is deliberately narrow, to keep false positives near zero. All of the
+following must hold for the binding statement: the right-hand side is
+call-shaped — a function call, a pipe chain, an operator expression, a
+module attribute, or dot-field access all qualify — never a literal
+(including sigils, binaries, unary-minus/-plus numbers like `-1`, and an
+operator expression whose operands are themselves all literals, like
+`1..10` or `1 + 2`), an `if`/`case`/`with`/`cond`, or a capture; the very
+next statement in the same block consumes the variable as its sole use — a
+`case` subject, the one argument of a call (`f(var)`, `Mod.f(var)`,
+`fun.(var)`), or the source piped into a chain whose first stage is a
+zero-arg call (`var |> f()`, `var |> f() |> g(3)`); the variable appears
+nowhere else in the enclosing function clause — bound once, used once; and
+the right-hand side's own text stays under `:max_inline_length` characters,
+so inlining does not make the next line harder to read than the two lines
+it replaces.
+
+**Limitations:** only the function clause's own top-level block is scanned —
+a bind-and-use pair nested inside an `if`/`case`/`cond` branch is not chased.
+A variable used more than once, rebound later, or consumed alongside another
+argument (`f(x, var)`) is untouched, as is an underscore-prefixed variable
+(`_provider`). For a pipe consumer whose right-hand side is a call with
+arguments (`var = f(a); var |> g()`), following the advice moves that call to
+the head of the chain, which `Credo.Check.Refactor.PipeChainStart`, if
+enabled, will separately ask to be extracted back out — this check does not
+account for that other check's rule. This is a readability nudge
+(`base_priority: :low`), not a correctness rule — and that low priority
+means a plain `mix credo` run never reports it at all; `mix credo --strict`
+(or a `min_priority` override) is required to see its issues.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `max_inline_length` | `60` | Exclusive upper bound on textual length (via `Macro.to_string/1`) of a right-hand side call or pipe chain — at or above this length, the check stays silent. |
 
 ### `NoJasonDeriveOnEctoSchema`
 
@@ -1648,6 +2753,80 @@ the same banned function but evade detection — neither matches the
 |---|---|---|
 | `allowed_functions` | `[]` | Function name atoms allowed to keep the `Kernel.` prefix anyway |
 | `excluded_paths` | `[]` | Path fragments naming files this check skips |
+
+### `NoLengthZeroComparison`
+
+Comparing `length/1` (or `Enum.count/1`) against `0` must use `Enum.empty?/1`
+instead. `length(list)` walks the entire list — `O(n)` — just to throw the
+count away and keep only whether it was zero; `Enum.empty?/1` answers the
+same question in `O(1)`.
+
+```elixir
+# BAD
+def none?(list), do: length(list) === 0
+
+# GOOD
+def none?(list), do: Enum.empty?(list)
+```
+
+`0` on either side is caught by every equality operator (`===`, `==`, `!==`,
+`!=`), and `length(list) > 0` / `length(list) >= 1` are caught too — both
+mean "not empty", so the rewrite is `not Enum.empty?(list)`. `Enum.count/1`
+(no predicate) is caught the same way as `length/1`. Guard clauses are
+caught, with the message pointing at the guard-safe pattern match (`x !==
+[]`) instead of `Enum.empty?/1`, which is not allowed in a guard.
+
+`length(x) === 0` is also caught by Credo's own default-on
+`Credo.Check.Warning.ExpensiveEmptyEnumCheck` (`EX5003`) — measured: its
+operator list (`==`, `!=`, `===`, `!==`, `>`, `<`, `>=`, `<=`) is a strict
+superset of this check's, so every comparison this check flags is flagged
+twice by a repo running both. What this check adds instead: alias-awareness
+(`alias Enum, as: E; E.count(x) === 0` fires here but evades the stock
+check's hardcoded `Enum` pattern; `alias MyApp.Vendor.Enum` correctly stays
+silent here, where the stock check false-positives since it never resolves
+aliases), a `column:` on every issue instead of `line_no` only, and
+configurable `local_functions`/`remote_functions`. Disable the stock check
+if the double report is unwanted:
+
+```elixir
+checks: %{
+  enabled: [{MikaCredoRules.NoLengthZeroComparison, []}],
+  disabled: [{Credo.Check.Warning.ExpensiveEmptyEnumCheck, []}]   # superseded, minus <, <=, Enum.count/2
+}
+```
+
+Disabling it also drops its `<`/`<=` coverage and its `Enum.count/2` advice
+(`not Enum.any?/2`) — only disable it if that coverage isn't otherwise
+wanted.
+
+**Limitations:** only a comparison against the literal `0`/`1` is
+understood — `length(list) === 3` and `length(list) === len` (a variable)
+are left alone. `Enum.count/2` (with a predicate) has no `Enum.empty?/1`
+equivalent and is never flagged. Only `>`/`>=` are matched, and only with
+length on the left (`length(x) > 0`, `length(x) >= 1`) — `0 < length(x)`,
+`1 <= length(x)`, `length(x) < 1`, and `length(x) <= 0` are not matched
+here, regardless of which side `length(x)` is on, but this is not an
+uncovered gap for a repo also running `Credo.Check.Warning.ExpensiveEmptyEnumCheck`,
+which already flags all four forms (see above). A piped call (`list |> Enum.count() === 0`) is a false negative,
+since the piped argument is not part of the call's own argument list in the
+raw AST. Only `local_functions`/`remote_functions` calls are recognised, and
+`local_functions` matches on the bare call name alone, not on which
+function it resolves to — `import Kernel, except: [length: 1]` followed by
+`import MyApp.Sizes, only: [length: 1]` makes `length(ring) === 0` fire with
+the `Enum.empty?/1` / `=== []` advice even though `MyApp.Sizes.length/1` may
+not return a list-like count at all. A single-segment `remote_functions` module (e.g. `Enum`) can be
+shadowed by a `defmodule <Name>` of the same bare name anywhere in the
+file, but the deregistration is file-scoped, not lexical — it silences
+bare `Enum` for the entire file, including code above the nested
+`defmodule`, not just from its definition onward. The guard-safe
+alternative (`=== []`) is only offered for a `local_functions` match — a
+`remote_functions` match such as `Enum.count/1` can never appear in a
+guard and is not equivalent to `=== []` for every collection type.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `local_functions` | `[:length]` | Bare/imported 1-arity function names that count as a length computation |
+| `remote_functions` | `[{Enum, :count}]` | `{Module, function}` pairs naming a remote 1-arity call that counts as a length computation (alias-aware). `Module` must be an Elixir module — an erlang module atom (e.g. `:maps`) raises `ArgumentError` and aborts the run |
 
 ### `NoMixEnvAtRuntime`
 
@@ -1799,6 +2978,53 @@ first-class alternative to `def template`.
 | `hologram_modules` | `[Hologram.Page, Hologram.Component]` | Modules whose `use` marks a `defmodule` as a Hologram module |
 | `excluded_paths` | `[]` | Path fragments to exempt from the check (segment-boundary matched) |
 
+### `NoPipeIntoControlFlow`
+
+Piping directly into `case`/`if`/`unless`/`cond`/`with` obscures the piped
+subject — bind it to a name first, then branch on the name. `|> case do`
+buries the branched-on value on the far side of a pipe operator, so a reader
+has to hold the whole pipeline in their head before they can even see what is
+being matched.
+
+```elixir
+# BAD — the branched-on value never gets a name
+defmodule MyApp.Orders.Pricing do
+  def apply_discount(order) do
+    order
+    |> calculate_total()
+    |> case do
+      total when total > 100 -> total * 0.9
+      total -> total
+    end
+  end
+end
+
+# GOOD — bind the pipeline's result, then branch on the name
+defmodule MyApp.Orders.Pricing do
+  def apply_discount(order) do
+    total = order |> calculate_total()
+
+    case total do
+      total when total > 100 -> total * 0.9
+      total -> total
+    end
+  end
+end
+```
+
+**Limitations:** only a bare pipe into the construct itself is flagged — a
+construct nested inside a piped anonymous function (`x |> Enum.map(fn y ->
+case y do ... end end)`) is left alone, since the pipe's actual target is the
+function receiving it, not the construct. `cond` is kept in `constructs` for
+parity with its siblings, but a real `|> cond do ... end` does not compile —
+`cond` only accepts a do-block, so piping into it produces a call to a
+nonexistent `cond/2`. A construct reached via a prefix-form `Kernel.|>/2`
+call evades the AST shape this check keys on.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `constructs` | `[:case, :if, :unless, :cond, :with]` | Control-flow construct atoms that count as a violation when piped into directly |
+
 ### `NoProcessSleepInTests`
 
 Tests must not sleep — sleeping is the number one source of flaky, slow suites. A
@@ -1825,6 +3051,56 @@ with `:excluded_paths` instead of disabling the whole check.
 | `test_files` | `["_test.exs"]` | Path suffixes the check runs on — everything else is skipped |
 | `functions` | `[{Process, :sleep}, {:timer, :sleep}]` | Sleep functions to flag |
 | `excluded_paths` | `[]` | Path fragments exempt from the check (segment-boundary matched) |
+
+### `NoQueryImportInContext`
+
+Query composition belongs in the schema module, not the context. `by_*`/
+`join_*` query fragments live on the schema — conventionally in the dedicated
+database-layer app (`_pg`/`schemas`) — and the context orchestrates by
+calling them. `import Ecto.Query` (or `require Ecto.Query`, or a qualified
+`Ecto.Query.from`/`dynamic` call) outside that app means the context is
+building queries itself instead of delegating.
+
+```elixir
+# BAD — apps/my_app/lib/my_app/courses.ex builds the query itself
+defmodule MyApp.Courses do
+  import Ecto.Query
+
+  def list_open do
+    from(course in MyApp.Course, where: course.status == :open)
+  end
+end
+
+# GOOD — apps/my_app/lib/my_app/courses.ex delegates to the schema
+defmodule MyApp.Courses do
+  alias MyApp.Course
+
+  def list_open, do: Course.by_status(:open)
+end
+```
+
+`require Ecto.Query` is caught the same way `import` is. A qualified call to
+`Ecto.Query.from` or `Ecto.Query.dynamic` is caught too, alias-aware —
+`alias Ecto.Query, as: Q` then `Q.from(...)` is the same smell as importing
+it outright. Merely aliasing `Ecto.Query` without ever calling `from` or
+`dynamic` through it is not itself flagged.
+
+**Limitations:** only `from` and `dynamic`, at any arity, are caught on a
+qualified call — the two functions that actually start composing a query; a
+qualified `Ecto.Query.where/3` continuing a query built elsewhere is not
+caught. `apply(Ecto.Query, :from, [...])` evades the qualified-call matcher.
+An `import`/`require` brought in by a macro (through `__using__`) is
+invisible to Credo. Aliases are resolved from a flat, file-level table — an
+alias declared inside one function is treated as applying to the whole
+file. `require Ecto.Query, as: Q` does not register `Q` as an alias, so a
+later `Q.from(...)` evades the qualified-call matcher (the `require` itself
+still fires). A single-segment `:modules` entry is not deshadowed by a
+local `defmodule` of the same name.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `allowed_paths` | `["_pg/", "/schemas/", "priv/", "_test.exs", "test/"]` | Path fragments/suffixes where query composition is allowed — the schema app, migrations, tests (segment-boundary matched; a `.`-containing entry like `_test.exs` is a filename suffix, anchored only if written with a leading `/`) |
+| `modules` | `[Ecto.Query]` | Modules whose `import`, `require`, or qualified `from`/`dynamic` call counts as query composition |
 
 ### `NoRawEts`
 
@@ -2079,6 +3355,89 @@ directly there is legitimate. Only a literal alias at the call site is
 recognised: `@repo.insert!()`, `repo().insert!()`, `apply(Repo, :insert!, [x])`,
 and `Ecto.Adapters.SQL.query!(Repo, "DELETE ...", [])` are all undetected.
 
+### `NoResolverFnForAssociation`
+
+A `resolve` anonymous function whose entire body is `{:ok, root.field}` (or
+`{:ok, Map.get(root, :field)}`) defeats Dataloader batching — it issues one
+query per parent object instead of one batched query for the whole list.
+Both the direct-call form and the `resolve:` keyword-option form are
+matched.
+
+```elixir
+# BAD — one query per parent instead of a batched load
+field :owner, :user do
+  resolve fn root, _args, _info ->
+    {:ok, root.owner}
+  end
+end
+
+# BAD — same idiom, as a `resolve:` keyword option
+field :owner, :user, resolve: fn root, _args, _info -> {:ok, root.owner} end
+
+# GOOD — batches through Dataloader
+field :owner, :user do
+  resolve dataloader(Accounts)
+end
+```
+
+Only the simple shape is matched: the fn must have exactly 3 parameters —
+the arity Absinthe binds to `(source, args, info)` — and the flagged
+variable must be the fn's FIRST parameter, referenced directly. At any
+other arity the check stays silent: Absinthe binds parameter 1 to `args`
+itself at 2-arity, not the parent/source, so `fn args, _info -> {:ok,
+args.message} end` is a different idiom, not a parent access; 1-arity and
+4-or-more-arity clauses are not valid Absinthe resolvers at all. Only the
+LAST expression of the clause body is inspected; an earlier statement that
+does not touch the first parameter (a log call, a reassignment of some
+OTHER variable) is never looked at and does not exempt the fn — but a body
+that reassigns the first parameter itself before the final expression is
+left alone entirely, since the check's own advice (drop the resolver) would
+also drop that reassignment and change what the field returns — a
+destructuring reassignment that binds the same name (`{root, _meta} = ...`)
+counts too. A destructured first parameter, a `Map.get/2` call keyed by
+anything other than an atom literal, or computation wrapping the field
+access in that final expression is a different idiom and is left alone.
+`{:ok, root}` (passing the whole parent straight through), a
+`resolve(&Resolvers.thing/3)` capture, and a `resolve(dataloader(Source))`
+call are never matched. The `resolve:` keyword form is matched only as a
+keyword-list argument of a plain local call (`field`, `value`,
+`subscription`, and similar Absinthe DSL macros) — the last argument, or
+the last argument before a trailing `do...end` block when the call has
+one. Elixir operators (`=`, `++`, `&&`, `|>`, ...), a 3-or-more-element
+tuple literal (`{:a, :b, [resolve: fn ...]}`), and module attribute
+assignments (`@anything ...`, not only `@resolve fn ... end`) quote to
+the same shape as a local call and are excluded, whatever their body —
+`table = [resolve: fn ...]`, `[name: :a] ++ [resolve: fn ...]`, `{:a,
+:b, [resolve: fn ...]}`, and `@dispatch_table [resolve: fn ...]` are
+never matched. A `%{resolve: fn ...}` map literal and a
+`Keyword.merge(..., resolve: fn ...)` call to a qualified function are a
+different construct and are never matched either. `Map.get/2` is
+recognised under any alias, `Elixir.`-prefixed spelling, or local
+shadowing.
+
+**Limitations:** only a fn with exactly one clause, exactly 3 parameters,
+and a plain (non-pattern) first parameter is inspected — a guarded or
+multi-clause fn, a 2-arity or 1-arity or 4-or-more-arity clause (2-arity
+binds parameter 1 to `args`, not the source; the others are not valid
+Absinthe resolvers), or one that destructures its first parameter (`fn
+%{source: root}, _args, _info -> ... end`), is silently skipped rather than
+guessed at. A resolve fn piped in rather than passed as a direct call argument
+(`fn root, _args, _info -> {:ok, root.owner} end |> resolve()`) is not
+matched either — the pipe's raw AST carries no arguments on the `resolve`
+call node to inspect. The keyword form's `resolve:` text is located by
+scanning the fn's own source line — when the keyword and the fn it points
+to are split across lines, the issue is reported with no trigger token
+rather than a wrong or missing column. The message's "drop the resolver"
+advice assumes the accessed field name already matches the enclosing
+`field`'s identifier — Absinthe's default resolution (and `dataloader/1`)
+reads by field name, so dropping the resolver when the two differ (`field
+:creator, :user do resolve fn post, _, _ -> {:ok, post.author} end end`)
+would change what the field returns; the check does not compare the two.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `excluded_paths` | `["_test.exs", "test/"]` | Path fragments naming files this check skips. |
+
 ### `NoSelfSendZeroDelay`
 
 `Process.send_after(self(), _, 0)` and `send(self(), _)` in `init/1` schedule a
@@ -2161,6 +3520,79 @@ is a param.
 | `banned_functions` | `[:get_session, :put_session, :delete_session, :get_cookie, :put_cookie, :delete_cookie]` | Local session/cookie function names banned from an action |
 | `banned_forms` | `[:with, :try, :receive]` | Special forms not usable inside an action because Hologram's client compiler does not implement them yet |
 
+### `NoSharedUtilsHTTPOutsideApiApps`
+
+`SharedUtils.HTTP` is the shared HTTP transport — domain code must call its
+app's dedicated `*_api` wrapper module instead of reaching for the transport
+directly. Calling the transport from ordinary domain code bypasses whatever
+auth headers, base URL, and error mapping the wrapper app centralizes, and
+couples every caller to the transport's raw request/response shape instead
+of a stable per-service contract.
+
+```elixir
+# BAD — domain code calls the transport directly
+defmodule MyApp.Courses do
+  def fetch(id) do
+    SharedUtils.HTTP.get("https://example.com/courses/#{id}", [])
+  end
+end
+
+# GOOD — domain code calls its app's dedicated wrapper
+defmodule MyApp.Courses do
+  def fetch(id) do
+    MyApp.CoursesApi.fetch(id)
+  end
+end
+```
+
+Aliasing the transport doesn't help — the alias is resolved back to the
+banned module before matching, the same as a fully qualified call. Only
+files under one of `:allowed_paths` are exempt: a dedicated `*_api` wrapper
+app (`git_hub_api/`, matched by directory-name suffix, not only a directory
+literally named `_api`), `shared_utils` itself, and tests.
+
+Only the functions that actually make a request are banned (see `:functions`
+for the default list). A bare reference to the module elsewhere — a
+supervision child spec, the Tesla-client-builder call the wrapper itself is
+built from — is left alone, because it either has no wrapper equivalent or
+the wrapper must reach it to exist. `@spec`/`@type`/`@typep`/`@opaque`/
+`@callback`/`@macrocallback` bodies are pruned entirely and never inspected,
+so a typespec referencing the transport module is never flagged either.
+
+A defmodule whose own body declares `@behaviour SharedUtils.HTTP` — the
+sanctioned shape for building a wrapper, documented in `SharedUtils.HTTP`'s
+own moduledoc — IS the wrapper, so its own request-verb calls are exempt
+entirely, even outside an `*_api` path:
+
+```elixir
+# not flagged — this module is the wrapper being built
+defmodule MyApp.VendorClient do
+  @behaviour SharedUtils.HTTP
+
+  @impl SharedUtils.HTTP
+  def new(opts), do: SharedUtils.HTTP.client([], nil, opts)
+
+  def fetch(url), do: SharedUtils.HTTP.get(new(), url, [])
+end
+```
+
+**Limitations:** only the `__aliases__` call shape is matched — the
+Elixir-prefixed atom spelling (`:"Elixir.SharedUtils.HTTP".get(url)`) and
+`apply/3` dynamic dispatch are both invisible. A transport reference injected
+as a dependency (`@http.get(url)`, or a variable holding the module) carries
+no module segments to resolve and is invisible too — only a literal alias or
+fully qualified call is matched. The `@behaviour` wrapper exemption is a
+literal-attribute match: a module with the same shape but no `@behaviour
+<one of :modules>` declaration is still flagged. Only calls inside a
+`defmodule` body are collected — a call at the top level of a `.exs` script,
+or inside a `defimpl` block, is invisible.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `modules` | `[SharedUtils.HTTP]` | Modules banned as the shared HTTP transport, alias-aware. Only a call whose function name is also in `:functions` is flagged. A defmodule declaring `@behaviour` naming one of these modules is exempt entirely. A non-Elixir-module entry (a string, or an erlang-style atom) is silently ignored rather than raising. |
+| `functions` | `[:get, :post, :patch, :delete, :request]` | Function names that count as making a request — the request verbs `SharedUtils.HTTP` actually delegates to Tesla. A bare reference to the module elsewhere (child spec, client builder, typespec) is left alone. |
+| `allowed_paths` | `["_api/", "shared_utils/", "_test.exs", "test/"]` | Path fragments naming files this check skips. An entry starting with `_` also matches as an app-directory-name suffix, not only a literal fragment. |
+
 ### `NoSingleLetterVariables`
 
 Variables must not be named with a single letter — the name should say what the
@@ -2218,6 +3650,57 @@ matched alias-aware.
 |---|---|---|
 | `marker_key` | `:__meta__` | The atom that marks a drop-list as an association-scrubbing list |
 | `excluded_paths` | `[]` | Path fragments (segment-boundary match) exempt from the check |
+
+### `NoSyncMailerDeliverInWeb`
+
+Web-layer code — controllers and LiveViews — must not deliver mail inline. A
+synchronous `Mailer.deliver/1` call blocks the request on the mail adapter's
+round trip, and `deliver!/1` on top of that crashes the request on any
+transient adapter failure. Enqueue an Oban worker instead: delivery gets its
+own retries and the request returns immediately.
+
+```elixir
+# BAD — apps/my_app_web/lib/my_app_web/controllers/signup_controller.ex
+MyApp.Mailer.deliver(Emails.welcome(user))
+
+# GOOD — apps/my_app_web/lib/my_app_web/controllers/signup_controller.ex
+%{user_id: user.id} |> SendWelcomeEmail.new() |> Oban.insert()
+```
+
+A mailer module is identified by its last alias segment *as written at the
+call site* — `MyApp.Mailer.deliver(email)` and, under `alias MyApp.Mailer`,
+`Mailer.deliver!(email)` are both caught, piped or not. An unqualified
+`deliver(email)`, as written under `import MyApp.Mailer`, is caught by name
+alone — as is a mailer injected as a dependency, `@mailer.deliver(email)` or
+`mailer.deliver(email)`. A plain field or attribute read with no parentheses
+— `assigns.deliver`, `conn.deliver` — is not a call and is never flagged. In
+scope: any file matching `included_paths` — a directory whose name ends in
+`_web` (e.g. `apps/my_app_web/...`), a directory named `controllers`/`live`,
+or a file whose name ends in `_live.ex` or `_controller.ex`. A `_test.exs`
+file, and any file under a `test/` path segment, is always out of scope,
+even one that otherwise matches, because it never runs as part of handling
+a live request. A `deliver!` call in a
+web-layer file is also reported by `NoBangMailerDeliver`, with different
+advice — the Oban fix this check asks for subsumes that one.
+
+**Limitations:** module identity is a naming heuristic, so an `as:` rename
+that drops the suffix (`alias MyApp.Mailer, as: Notifier`) is invisible.
+Wherever the module is not a literal alias — an unqualified `deliver(email)`,
+an injected `@mailer.deliver(email)` or `mailer.deliver(email)` — identity
+comes from the function name alone, so an unrelated `deliver/1` on those
+shapes is flagged; narrow `functions` if that bites. Indirection through
+`apply(MyApp.Mailer, :deliver, [email])`, or a module spelled as an
+`:"Elixir.MyApp.Mailer"` atom or an erlang-style atom (`:mailer`) rather than
+an alias path, evades every clause here and is silently missed. So does an
+alias path whose first segment is itself computed —
+`__MODULE__.Mailer.deliver(email)` or `@base.Mailer.deliver(email)` — rather
+than a literal alias.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `functions` | `[:deliver, :deliver!]` | Mailer delivery functions to flag inside a web-layer file. |
+| `module_suffixes` | `["Mailer"]` | Suffixes identifying a mailer module by its last alias segment. |
+| `included_paths` | `["_web/", "controllers/", "live/", "_live.ex", "_controller.ex"]` | Path fragments and file suffixes marking a file as web-layer. |
 
 ### `NoTaskAsyncInGenServer`
 
@@ -2294,6 +3777,63 @@ is correctly not treated as Elixir's `Supervisor`.
 | `supervisor_modules` | `[Supervisor]` | Modules that count as the `Supervisor` behaviour in a `use` expression (alias-aware) |
 | `excluded_paths` | `[]` | Path fragments exempt from the check (segment-boundary matched) |
 
+### `NoTemplateVariableAssignment`
+
+A `<% var = ... %>` EEx assignment tag inside a `~H`/`~F` template body disables HEEx
+change tracking for every dynamic part that reads the variable, so those parts are
+recomputed and re-sent on every diff instead of being skipped when nothing changed.
+
+```elixir
+# BAD
+~H"""
+<% user = @current_user %>
+<p>{user.name}</p>
+"""
+
+# GOOD
+~H"""
+<p>{@current_user.name}</p>
+"""
+```
+
+Compute the value where it belongs instead: `assign/3` in `mount/3` or `handle_event/3`,
+or a function component, so it participates in change tracking the same as every other
+assign. A discard assignment (`<% _ = something %>`) still fires — the shape on the page
+is identical to a real assignment, and singling out `_` for a pass would need a second
+regex for a case rare enough not to earn one.
+
+**Limitations:** Credo only lints `.ex`/`.exs` files — a `.html.heex` template file is
+never read by Credo (`Credo.Sources.@default_sources_glob` is `~w(** *.{ex,exs})`), so
+this check is **blind to every `.html.heex` file**. Only `~H`/`~F` sigils colocated
+inside a `.ex`/`.exs` module are covered.
+
+This is also a raw-text regex scan of the sigil body, not an EEx parser, so it only
+recognizes a bare-identifier left-hand side. A destructuring assignment
+(`<% {first, second} = compute_pair() %>`) is a measured false negative, and so is a
+second assignment sharing a tag with the first (`<% a = 1; b = 2 %>` only reports
+`a =`) — the regex requires `<%` to be followed directly by a single identifier, not
+a pattern, and scans each `<%` opener once. An output tag (`<%= user = @current_user
+%>`) is deliberately silent by design, not a gap: the regex only matches a plain `<%`
+opener, never `<%=`.
+
+Measured false positive: a `<%!-- ... --%>` HEEx comment still fires when its text
+happens to contain `<% var = ... %>` — this is a raw-text scan of the sigil body, not
+an EEx parser, so it has no notion that `<%!-- --%>` wraps its contents as a comment
+never evaluated at runtime (same class of gap as `NoRawMarkupInTemplates`'s `<svg`
+inside an HTML comment).
+
+A `#` inside a `~H`/`~F` heredoc is template string content, not a comment token, so
+`# credo:disable-for-next-line` placed directly above the `~H"""` line never
+suppresses an issue reported from inside the body — the issue's line is inside the
+template, past that anchor. Suppress with `# credo:disable-for-lines:N` or
+`# credo:disable-for-this-file` placed above the enclosing `def` instead (see
+`NoRawMarkupInTemplates`'s Limitations section for the full explanation of why).
+
+| Param | Default | Meaning |
+|---|---|---|
+| `sigils` | `[:sigil_H, :sigil_F]` | Which sigil names count as template bodies. |
+| `excluded_paths` | `[]` | Path fragments naming files this check skips. |
+
 ### `NoTruthyAndOr`
 
 `and`/`or`/`not` must not be used on a provably-nilable operand. `and` and `or`
@@ -2325,6 +3865,56 @@ this runs, so that specific shape can never raise there.
 |---|---|---|
 | `nilable_functions` | `[{Access, :get, 2}, {Map, :get, 2}, {Keyword, :get, 2}, {List, :first, 1}, {Map, :get, 3}, {Keyword, :get, 3}]` | `{module, function, arity}` shapes that count as provably nilable — `{Access, :get, 2}` also covers `x[:k]` bracket syntax |
 | `excluded_paths` | `["test/support/"]` | Path fragments exempt from the check (segment-boundary matched) |
+
+### `NoUnboundBlockAssignment`
+
+An `if`/`case`/`cond`/`unless` used as a statement — an element of a block
+that is not the block's own last expression — must not end a branch in a bare
+assignment. The binding is scoped to that branch and never escapes the block,
+so the assignment is silently lost. This is the classic
+`socket = assign(...)` LiveView bug.
+
+```elixir
+# BAD — `socket` inside the `if` never reaches the return value
+def handle(socket, val) do
+  if connected?(socket) do
+    socket = assign(socket, :val, val)
+  end
+
+  {:noreply, socket}
+end
+
+# GOOD — bind the `if`'s own result instead
+def handle(socket, val) do
+  socket = if connected?(socket), do: assign(socket, :val, val), else: socket
+  {:noreply, socket}
+end
+```
+
+`case` and `cond` branches, and `unless`, are checked the same way. An
+`if`/`case`/`cond`/`unless` that IS the last expression of its enclosing
+block is only safe if that enclosing block's own value is itself used —
+being the last expression of a NESTED `if`/`case`/`cond`/`unless` is not
+enough, since a discarded outer value discards the inner one too; the check
+chases a branch's tail through nested `if`/`case`/`cond`/`unless` to any
+depth. Also not flagged: an assignment that the branch itself goes on to use
+before the block ends.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `excluded_paths` | `[]` | Path fragments exempt from the check, matched at a path-segment boundary — the bug is exactly as real in a test as anywhere else, so nothing is exempt by default. |
+
+**Limitations.** Only a bare single-variable left-hand side is recognised —
+a destructuring tail assignment (`{a, b} = compute()`) is not flagged,
+assigning to the wildcard `_` or any `_`-prefixed name (`_socket`) is never
+flagged (an explicit discard, matching the compiler's own unused-variable
+convention), and `var!(socket) = ...` (unquoted assignment inside a macro
+body) is not flagged either — its left-hand side is a `var!/1` call, not a
+bare variable node. A branch's tail is chased through nested
+`if`/`case`/`cond`/`unless` to any depth; an assignment buried inside a
+`with`/`try`/`receive` whose own last expression is the bare assignment is
+not chased through. Only the bare macro spelling is recognised — a
+fully-qualified call (`Kernel.if/2`, `Kernel.case/2`) is not.
 
 ### `NoUnsupervisedTaskStart`
 
@@ -2533,6 +4123,64 @@ assigned to a variable before being referenced (`conf = [enabled?: true];
 exporter: conf`) all evade the check — the last is the realistic way a
 hardcoded flag survives review, since the literal and the flagged key end up
 on different lines.
+
+### `PubSubRequiresMessageStruct`
+
+A `Phoenix.PubSub` broadcast payload must be a message struct, never a bare
+atom, tuple, or map literal. Subscribers pattern-match on the payload —
+`%MyApp.PubSub.Message{}` keeps that match compiler-checked, so renaming or
+adding a field is caught everywhere it is matched on. A bare literal gives
+subscribers nothing but a runtime shape to match against, and a refactor that
+changes that shape fails silently at every subscriber.
+
+```elixir
+# BAD — bare atom payload
+Phoenix.PubSub.broadcast(pubsub, topic, :updated)
+
+# BAD — bare tuple payload
+Phoenix.PubSub.broadcast(pubsub, topic, {:course_updated, course})
+
+# GOOD — payload is a message struct
+Phoenix.PubSub.broadcast(pubsub, topic, %MyApp.PubSub.Message{event: :updated})
+```
+
+A call is checked when it resolves to `Phoenix.PubSub` under the file's own
+alias declarations — a literal `Phoenix.PubSub.broadcast(...)`, or the aliased
+`PubSub.broadcast(...)` under `alias Phoenix.PubSub`, piped or not (see
+Limitations below for how that resolution can misfire when a local name is
+reused). `broadcast_from`/`broadcast_from!` take the payload one argument
+later than `broadcast`/`broadcast!`/`local_broadcast` (they also take the
+sending `from` pid), and both positions are checked correctly. This check runs
+everywhere `Phoenix.PubSub` is called directly, including inside a project's
+own PubSub wrapper module — whether broadcasts should be routed through a
+wrapper at all is a separate concern this check does not enforce, so there is
+no path exemption for a `pubsub/`-named directory. Test files are exempt by
+default, since a test commonly asserts on the payload shape subscribers
+receive rather than exercising a production broadcaster's message struct.
+
+**Limitations:** alias resolution is file-wide, not lexical — when two
+modules in the same file each `alias` a different target onto the same local
+name `PubSub`, only the *last* such alias in the file is honored for every
+`PubSub.broadcast(...)` call in the file, regardless of which module the call
+is actually in; this can both over-report (a call to a project's own `PubSub`
+wrapper gets flagged as `Phoenix.PubSub`) and under-report (a real
+`Phoenix.PubSub.broadcast` call is missed). A variable or function-call
+payload is never flagged — this is a static, single-file AST check, so
+whether it evaluates to a struct at runtime is out of reach. A list, string,
+number, or charlist literal payload is undetected — only the atom/tuple/map
+shapes shown above are recognised. `%{base | field: value}` map-update syntax
+is treated as a bare map literal even when `base` is already a message
+struct. `apply(Phoenix.PubSub, :broadcast, [...])`, an unqualified
+`broadcast(...)` reached via `import Phoenix.PubSub`, and the atom-spelled
+module form `:"Elixir.Phoenix.PubSub".broadcast(...)` are all undetected.
+`local_broadcast_from`, `direct_broadcast`, and `direct_broadcast!` are
+genuine `Phoenix.PubSub` broadcast functions but are absent from the default
+`:functions` list — they are unchecked unless added to that param explicitly.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `functions` | `[:broadcast, :broadcast!, :local_broadcast, :broadcast_from, :broadcast_from!]` | The `Phoenix.PubSub` functions whose payload argument is checked |
+| `excluded_paths` | `["_test.exs", "test/"]` | Path fragments/suffixes exempt from this check |
 
 ### `RefuteOverAssertNot`
 
@@ -2824,3 +4472,45 @@ cover their conventions; keep them.
 ## License
 
 MIT
+
+### `VerifiedRoutesRequired`
+
+A navigation call's `to:` option must be a `~p` verified-route sigil, never
+a plain string. A hand-typed path string is only checked when the browser
+hits it — a typo in a route segment or a renamed live route surfaces as a
+404 in production. `~p"/courses/#{id}"` is checked by the router at compile
+time instead: a path that does not match any route is a compiler warning at
+build time (an error under `--warnings-as-errors`).
+
+```elixir
+# BAD — a typo here is a runtime 404, not a build-time warning
+{:noreply, push_navigate(socket, to: "/courses/#{id}")}
+
+# GOOD — the router checks this route exists at compile time
+{:noreply, push_navigate(socket, to: ~p"/courses/#{id}")}
+```
+
+The same applies to a plain literal, not only an interpolated one —
+`redirect(conn, to: "/login")` is flagged the same as an interpolated path.
+Bare (`push_navigate(socket, to: "/x")`), piped
+(`socket |> push_navigate(to: "/x")`), and qualified
+(`Phoenix.LiveView.push_navigate(socket, to: "/x")`) forms are all matched,
+and only the `to:` option is checked — `external:` takes a full URL, which
+`~p` cannot express, so a plain string there is left alone. A variable or
+module attribute under `to:` is left alone too, since it cannot be
+statically proven to be an unchecked literal. A `~s` or `~S` sigil under
+`to:` is treated the same as a plain string.
+
+**Limitations:** matching is by function name alone, regardless of which
+module a qualified call names — a same-named function defined on an
+unrelated module is flagged the same as `Phoenix.Controller.redirect/2`,
+whether called bare or qualified. Narrow `:functions` if that bites. A route
+string built by a helper (`to: build_path(id)`) is invisible to this check
+— only what is statically a binary, an interpolated `<<>>` node, a
+`~s`/`~S` sigil, or a `<>` concatenation anchored on a binary literal
+(`to: "/courses/" <> id`) is caught.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `functions` | `[:push_navigate, :push_patch, :redirect, :live_redirect]` | Navigation functions whose `to:` option is checked. |
+| `excluded_paths` | `["_test.exs", "test/"]` | Path fragments naming files this check skips. |

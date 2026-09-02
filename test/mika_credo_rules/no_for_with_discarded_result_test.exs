@@ -1,5 +1,5 @@
 defmodule MikaCredoRules.NoForWithDiscardedResultTest do
-  use Credo.Test.Case
+  use Credo.Test.Case, async: true
 
   alias MikaCredoRules.NoForWithDiscardedResult
 

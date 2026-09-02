@@ -124,9 +124,7 @@ defmodule MikaCredoRules.NoBangMailerDeliver do
        )
        when is_list(args) do
     if function in context.functions and mailer_module?(module, context.module_suffixes) do
-      trigger = "#{Enum.map_join(module, ".", &segment_to_string/1)}.#{function}"
-
-      {ast, [delivery(trigger, alias_meta) | deliveries]}
+      {ast, [delivery(alias_trigger(module, function), alias_meta) | deliveries]}
     else
       {ast, deliveries}
     end
@@ -166,22 +164,33 @@ defmodule MikaCredoRules.NoBangMailerDeliver do
       Enum.any?(module_suffixes, &String.ends_with?(Atom.to_string(last_segment), &1))
   end
 
-  defp segment_to_string(segment) when is_atom(segment), do: Atom.to_string(segment)
-  defp segment_to_string({:__MODULE__, _meta, _context}), do: "__MODULE__"
-  defp segment_to_string(segment), do: Macro.to_string(segment)
+  # A non-atom segment (`__MODULE__.Mailer.deliver!`) has no source text the
+  # alias meta can anchor a trigger to — report without one, at the real
+  # column, and name only the function in the message.
+  defp alias_trigger(module, function) do
+    if Enum.all?(module, &is_atom/1) do
+      "#{Enum.map_join(module, ".", &Atom.to_string/1)}.#{function}"
+    else
+      {Credo.Issue.no_trigger(), Atom.to_string(function)}
+    end
+  end
 
   defp receiver_name({:@, meta, [{attribute, _, nil}]}), do: {:ok, "@#{attribute}", meta}
   defp receiver_name({variable, meta, nil}) when is_atom(variable), do: {:ok, "#{variable}", meta}
   defp receiver_name(_receiver), do: :error
 
+  defp delivery({trigger, display}, meta) do
+    %{trigger: trigger, display: display, line_no: meta[:line], column: meta[:column]}
+  end
+
   defp delivery(trigger, meta) do
-    %{trigger: trigger, line_no: meta[:line], column: meta[:column]}
+    %{trigger: trigger, display: trigger, line_no: meta[:line], column: meta[:column]}
   end
 
   defp issue_for(delivery, issue_meta) do
     format_issue(issue_meta,
       message:
-        "#{delivery.trigger} found — deliver! crashes on SES failure; use deliver/1 and handle {:error, reason}",
+        "#{delivery.display} found — deliver! crashes on SES failure; use deliver/1 and handle {:error, reason}",
       trigger: delivery.trigger,
       line_no: delivery.line_no,
       column: delivery.column

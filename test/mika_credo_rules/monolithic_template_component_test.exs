@@ -1,5 +1,5 @@
 defmodule MikaCredoRules.MonolithicTemplateComponentTest do
-  use Credo.Test.Case
+  use Credo.Test.Case, async: true
 
   alias MikaCredoRules.MonolithicTemplateComponent
 

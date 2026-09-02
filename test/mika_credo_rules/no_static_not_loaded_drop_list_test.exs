@@ -1,5 +1,5 @@
 defmodule MikaCredoRules.NoStaticNotLoadedDropListTest do
-  use Credo.Test.Case
+  use Credo.Test.Case, async: true
 
   alias MikaCredoRules.NoStaticNotLoadedDropList
 
