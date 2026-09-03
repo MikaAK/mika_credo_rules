@@ -4,6 +4,7 @@ defmodule MikaCredoRules.NoBarePatternMatchOnFallible do
     category: :warning,
     param_defaults: [
       tags: [:ok, :error],
+      allowed_functions: [:start_link, :start],
       excluded_paths: ["_test.exs", "test/", "/application.ex", "priv/repo/"]
     ],
     explanations: [
@@ -13,6 +14,19 @@ defmodule MikaCredoRules.NoBarePatternMatchOnFallible do
         side is a 2-tuple starting with one of these atoms is inspected.
 
         Defaults to `[:ok, :error]`.
+        """,
+        allowed_functions: """
+        A list of function-name atoms whose calls may be bare-matched, whatever module
+        they live on. Process-start functions are the canonical entries: a start
+        failure is a boot problem, so crashing at the match site is exactly the right
+        behaviour — `{:ok, pid} = Task.start_link(fn -> ... end)` is the idiom, and
+        rewriting it as a handled failure path (or worse, swapping to a raw
+        `spawn_link` to appease the check) makes the code strictly worse.
+
+        Matched on the final call of the right-hand side (through pipes), qualified
+        or unqualified.
+
+        Defaults to `[:start_link, :start]`.
         """,
         excluded_paths: """
         A list of path fragments exempt from the check, matched at a path-segment
@@ -49,6 +63,18 @@ defmodule MikaCredoRules.NoBarePatternMatchOnFallible do
         with {:ok, user} <- Accounts.fetch(id) do
           broadcast(user)
         end
+      end
+
+  Process-start calls are the deliberate exception. A start failure is a boot
+  problem — crashing at the match site is exactly right, and the crash carries
+  the start error in its `MatchError`. `:allowed_functions` (default
+  `[:start_link, :start]`) exempts them by function name, on any module:
+
+      # GOOD — a failed start SHOULD crash here; do not "handle" it,
+      # and never swap to a raw spawn_link to appease this check
+      def start_link(opts) do
+        {:ok, pid} = Task.start_link(fn -> init_table(opts) end)
+        {:ok, pid}
       end
 
   Only a match whose right-hand side is an actual call — a local call, a remote
@@ -119,9 +145,10 @@ defmodule MikaCredoRules.NoBarePatternMatchOnFallible do
     else
       issue_meta = IssueMeta.for(source_file, params)
       tags = Params.get(params, :tags, __MODULE__)
+      allowed = Params.get(params, :allowed_functions, __MODULE__)
 
       source_file
-      |> Credo.Code.prewalk(&traverse(&1, &2, tags))
+      |> Credo.Code.prewalk(&traverse(&1, &2, {tags, allowed}))
       |> Enum.map(&issue_for(&1, issue_meta))
     end
   end
@@ -136,19 +163,31 @@ defmodule MikaCredoRules.NoBarePatternMatchOnFallible do
   # -> ...` binds the whole matched value alongside a shape and must not be
   # treated as a missed-failure-path match. The head is discarded here; the
   # body is still walked normally by the outer prewalk.
-  defp traverse({:->, meta, [_head, body]}, matches, _tags) do
+  defp traverse({:->, meta, [_head, body]}, matches, _context) do
     {{:->, meta, [[], body]}, matches}
   end
 
-  defp traverse({:=, meta, [lhs, rhs]} = ast, matches, tags) do
-    if fallible_pattern?(lhs, tags) and call?(rhs) do
+  defp traverse({:=, meta, [lhs, rhs]} = ast, matches, {tags, allowed}) do
+    if fallible_pattern?(lhs, tags) and call?(rhs) and not allowed_call?(rhs, allowed) do
       {ast, [%{line_no: meta[:line], column: meta[:column], tag: elem(lhs, 0)} | matches]}
     else
       {ast, matches}
     end
   end
 
-  defp traverse(ast, matches, _tags), do: {ast, matches}
+  defp traverse(ast, matches, _context), do: {ast, matches}
+
+  # A pipe's riskiness lives in its final call — `fn -> ... end |> Task.start_link()`
+  # is an allowed call exactly when `Task.start_link(...)` is.
+  defp allowed_call?({:|>, _, [_lhs, rhs]}, allowed), do: allowed_call?(rhs, allowed)
+
+  defp allowed_call?({{:., _, [_target, function]}, _, args}, allowed) when is_list(args),
+    do: function in allowed
+
+  defp allowed_call?({name, _, args}, allowed) when is_atom(name) and is_list(args),
+    do: name in allowed
+
+  defp allowed_call?(_rhs, _allowed), do: false
 
   defp fallible_pattern?(lhs, tags) do
     is_tuple(lhs) and tuple_size(lhs) === 2 and elem(lhs, 0) in tags

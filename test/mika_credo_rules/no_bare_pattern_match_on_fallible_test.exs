@@ -569,4 +569,121 @@ defmodule MikaCredoRules.NoBarePatternMatchOnFallibleTest do
       |> refute_issues()
     end
   end
+
+  describe "&run/2 allows crash-preferable calls via :allowed_functions" do
+    test "allows a bare match on Task.start_link under default params" do
+      """
+      defmodule MyApp.Loader do
+        def start_link(opts) do
+          {:ok, pid} = Task.start_link(fn -> init_table(opts) end)
+          {:ok, pid}
+        end
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoBarePatternMatchOnFallible)
+      |> refute_issues()
+    end
+
+    test "allows a bare match on Task.Supervisor.start_link under default params" do
+      """
+      defmodule MyApp.Boot do
+        def start_tasks do
+          {:ok, pid} = Task.Supervisor.start_link(name: MyApp.TaskSupervisor)
+          pid
+        end
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoBarePatternMatchOnFallible)
+      |> refute_issues()
+    end
+
+    test "allows a piped bare match ending in an allowed call" do
+      """
+      defmodule MyApp.Loader do
+        def start_link(opts) do
+          {:ok, pid} = fn -> init_table(opts) end |> Task.start_link()
+          {:ok, pid}
+        end
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoBarePatternMatchOnFallible)
+      |> refute_issues()
+    end
+
+    test "allows any module's start and start_link — the name is the signal" do
+      """
+      defmodule MyApp.Boot do
+        def start_all do
+          {:ok, tree} = Supervisor.start_link([], strategy: :one_for_one)
+          {:ok, agent} = Agent.start(fn -> %{} end)
+          {tree, agent}
+        end
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoBarePatternMatchOnFallible)
+      |> refute_issues()
+    end
+
+    test "allows an unqualified local start_link call" do
+      """
+      defmodule MyApp.Boot do
+        def boot(opts) do
+          {:ok, pid} = start_link(opts)
+          pid
+        end
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoBarePatternMatchOnFallible)
+      |> refute_issues()
+    end
+
+    test "still reports Task.start_link when :allowed_functions is emptied" do
+      """
+      defmodule MyApp.Loader do
+        def start_link(opts) do
+          {:ok, pid} = Task.start_link(fn -> init_table(opts) end)
+          {:ok, pid}
+        end
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoBarePatternMatchOnFallible, allowed_functions: [])
+      |> assert_issue(fn issue -> assert issue.line_no === 3 end)
+    end
+
+    test "allows a custom name added through :allowed_functions" do
+      """
+      defmodule MyApp.Boot do
+        def start_worker(spec) do
+          {:ok, pid} = DynamicSupervisor.start_child(MyApp.WorkerSup, spec)
+          pid
+        end
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoBarePatternMatchOnFallible,
+        allowed_functions: [:start_link, :start, :start_child]
+      )
+      |> refute_issues()
+    end
+
+    test "still reports a non-start function on the same module" do
+      """
+      defmodule MyApp.Runner do
+        def run(work) do
+          {:ok, result} = Task.yield(work)
+          result
+        end
+      end
+      """
+      |> to_source_file(@lib_file)
+      |> run_check(NoBarePatternMatchOnFallible)
+      |> assert_issue(fn issue -> assert issue.line_no === 3 end)
+    end
+  end
 end

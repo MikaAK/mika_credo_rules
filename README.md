@@ -1598,7 +1598,18 @@ def sync(id) do
     broadcast(user)
   end
 end
+
+# GOOD — process starts are crash-preferable; a failed start SHOULD crash here,
+# and never swap to a raw spawn_link to appease this check
+def start_link(opts) do
+  {:ok, pid} = Task.start_link(fn -> init_table(opts) end)
+  {:ok, pid}
+end
 ```
+
+Process-start calls are the deliberate exception: a start failure is a boot
+problem, so `:allowed_functions` (default `[:start_link, :start]`) exempts them
+by function name on any module, through pipes, qualified or unqualified.
 
 Only a match whose right-hand side is an actual call — a local call, a remote
 call, or a pipe — is flagged. Rebinding an already-tagged value
@@ -1614,6 +1625,7 @@ anonymous function call (`fun.()`) still count.
 | Param | Default | Meaning |
 |---|---|---|
 | `tags` | `[:ok, :error]` | Atoms that mark a 2-tuple as fallible. |
+| `allowed_functions` | `[:start_link, :start]` | Function names whose calls may be bare-matched on any module — process starts are crash-preferable. |
 | `excluded_paths` | `["_test.exs", "test/", "/application.ex", "priv/repo/"]` | Path fragments exempt from the check — tests use the bare match as an assertion, and a boot-time `{:ok, pid} = Supervisor.start_link(...)` in `application.ex` or a broken seed script under `priv/repo/` is deliberate. |
 
 **Limitations.** Only a literal local call, remote call, or pipe on the
